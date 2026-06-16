@@ -8,7 +8,7 @@ const GROUND_STATION = [
   {
     lat: 13.16,
     lng: 100.93,
-    name: 'GISTDA Ground Station\\nSriracha, Thailand',
+    name: 'GISTDA Sriracha Ground Station',
     color: '#00eaff',
   },
 ]
@@ -60,14 +60,14 @@ function App() {
       {
         lat: 15,
         lng: 105,
-        altitude: 2.2,
+        altitude: 2.9,
       },
       1000,
     )
 
     const controls = globeRef.current.controls()
     controls.autoRotate = true
-    controls.autoRotateSpeed = 0.35
+    controls.autoRotateSpeed = 0.1
     controls.enableZoom = true
   }, [])
 
@@ -145,11 +145,13 @@ function App() {
         <p>MISSION STATUS</p>
         <h2>THEOS-2 PASS SIMULATION</h2>
         <ul>
-          <li>Orbit visualization: Active</li>
-          <li>Ground station: Sriracha</li>
-          <li>Tracking mode: Demonstration</li>
-          <li>Signal link: Simulated</li>
-        </ul>
+  <li>Orbit visualization: Active</li>
+  <li>Ground station: Sriracha</li>
+  <li>AOS: Approaching Thailand</li>
+  <li>MAX EL: Simulation Mode</li>
+  <li>LOS: Waiting for next pass</li>
+  <li>Signal link: Simulated</li>
+</ul>
       </section>
     </main>
   )
