@@ -16,3 +16,15 @@ body {
   min-height: 100vh;
   background: #01050c;
 }
+
+.control-panel {
+  width: 430px;
+}
+
+.control-row {
+  flex-wrap: nowrap;
+}
+
+.control-row button {
+  min-width: 62px;
+}

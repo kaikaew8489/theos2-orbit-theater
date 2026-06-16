@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Globe from 'react-globe.gl'
+import * as THREE from 'three'
 import './App.css'
 
 const GROUND_STATION = {
@@ -34,7 +35,10 @@ function getSatellitePosition(progress: number) {
   }
 }
 
-function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+function distanceKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+) {
   const earthRadiusKm = 6371
   const dLat = ((b.lat - a.lat) * Math.PI) / 180
   const dLng = ((b.lng - a.lng) * Math.PI) / 180
@@ -47,6 +51,136 @@ function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: numb
     Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
 
   return 2 * earthRadiusKm * Math.asin(Math.sqrt(h))
+}
+
+function createSatelliteModel() {
+  const group = new THREE.Group()
+
+  const gold = new THREE.MeshBasicMaterial({ color: '#d8a536' })
+  const darkGold = new THREE.MeshBasicMaterial({ color: '#8f6421' })
+  const bluePanel = new THREE.MeshBasicMaterial({ color: '#173d92' })
+  const panelLine = new THREE.MeshBasicMaterial({ color: '#58d8ff' })
+  const white = new THREE.MeshBasicMaterial({ color: '#f3f7ff' })
+  const cyan = new THREE.MeshBasicMaterial({ color: '#00eaff' })
+
+  // ตัวบัสดาวเทียมสีทอง
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(1.1, 1.1, 1.45),
+    gold,
+  )
+  group.add(body)
+
+  // แผง solar panel ซ้ายขวา
+  const leftPanel = new THREE.Mesh(
+    new THREE.BoxGeometry(2.4, 0.06, 0.95),
+    bluePanel,
+  )
+  leftPanel.position.x = -1.85
+  group.add(leftPanel)
+
+  const rightPanel = new THREE.Mesh(
+    new THREE.BoxGeometry(2.4, 0.06, 0.95),
+    bluePanel,
+  )
+  rightPanel.position.x = 1.85
+  group.add(rightPanel)
+
+  // เส้นบนแผงโซลาร์
+  for (let i = -2; i <= 2; i += 1) {
+    const lineLeft = new THREE.Mesh(
+      new THREE.BoxGeometry(0.035, 0.075, 0.95),
+      panelLine,
+    )
+    lineLeft.position.set(-1.85 + i * 0.32, 0.045, 0)
+    group.add(lineLeft)
+
+    const lineRight = new THREE.Mesh(
+      new THREE.BoxGeometry(0.035, 0.075, 0.95),
+      panelLine,
+    )
+    lineRight.position.set(1.85 + i * 0.32, 0.045, 0)
+    group.add(lineRight)
+  }
+
+  // จาน/กล้องวงกลมด้านหน้า คล้ายรูปจริง
+  const dish = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.48, 0.48, 0.12, 40),
+    white,
+  )
+  dish.rotation.x = Math.PI / 2
+  dish.position.z = 0.78
+  group.add(dish)
+
+  const dishRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.5, 0.025, 12, 48),
+    cyan,
+  )
+  dishRing.position.z = 0.86
+  group.add(dishRing)
+
+  // กล่อง payload ด้านล่าง
+  const payload = new THREE.Mesh(
+    new THREE.BoxGeometry(0.45, 0.38, 0.35),
+    darkGold,
+  )
+  payload.position.set(0, -0.72, -0.25)
+  group.add(payload)
+
+  // จุดแสง THEOS-2
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 24, 24),
+    new THREE.MeshBasicMaterial({ color: '#ffb347' }),
+  )
+  glow.position.set(0, 0, 1.05)
+  group.add(glow)
+
+  group.rotation.z = -0.25
+  group.scale.set(1.35, 1.35, 1.35)
+
+  return group
+}
+
+function createGroundStationModel() {
+  const group = new THREE.Group()
+
+  const cyan = new THREE.MeshBasicMaterial({ color: '#00eaff' })
+  const green = new THREE.MeshBasicMaterial({ color: '#27ff9a' })
+  const white = new THREE.MeshBasicMaterial({ color: '#dffaff' })
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.45, 0.6, 0.22, 32),
+    green,
+  )
+  base.position.y = -0.2
+  group.add(base)
+
+  const mast = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08, 0.08, 0.9, 16),
+    cyan,
+  )
+  mast.position.y = 0.25
+  group.add(mast)
+
+  // จานสายอากาศ
+  const dish = new THREE.Mesh(
+    new THREE.ConeGeometry(0.75, 0.38, 40, 1, true),
+    white,
+  )
+  dish.rotation.x = Math.PI / 2
+  dish.position.set(0, 0.75, 0.25)
+  group.add(dish)
+
+  const dishEdge = new THREE.Mesh(
+    new THREE.TorusGeometry(0.75, 0.035, 12, 48),
+    cyan,
+  )
+  dishEdge.rotation.x = Math.PI / 2
+  dishEdge.position.set(0, 0.75, 0.25)
+  group.add(dishEdge)
+
+  group.scale.set(1.2, 1.2, 1.2)
+
+  return group
 }
 
 function App() {
@@ -68,7 +202,23 @@ function App() {
   )
 
   const satelliteDistanceKm = distanceKm(satellite, GROUND_STATION)
-  const linkActive = satelliteDistanceKm < 2600
+  const linkActive = satelliteDistanceKm < 3500
+
+  const objectsData = useMemo(
+    () => [
+      {
+        type: 'ground',
+        ...GROUND_STATION,
+        altitude: 0.035,
+      },
+      {
+        type: 'satellite',
+        ...satellite,
+        altitude: 0.14,
+      },
+    ],
+    [satellite],
+  )
 
   useEffect(() => {
     const handleResize = () => {
@@ -125,15 +275,15 @@ function App() {
         bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
         backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
 
-        pointsData={[GROUND_STATION, satellite]}
-        pointLat="lat"
-        pointLng="lng"
-        pointColor="color"
-        pointAltitude={(point) =>
-          point.name === 'THEOS-2' ? 0.08 : 0.025
-        }
-        pointRadius={(point) =>
-          point.name === 'THEOS-2' ? 0.55 : 0.42
+        objectsData={objectsData}
+        objectLat="lat"
+        objectLng="lng"
+        objectAltitude="altitude"
+        objectLabel="name"
+        objectThreeObject={(object) =>
+          object.type === 'satellite'
+            ? createSatelliteModel()
+            : createGroundStationModel()
         }
 
         labelsData={[GROUND_STATION, satellite]}
@@ -144,11 +294,11 @@ function App() {
           label.name === 'THEOS-2' ? '#ffb347' : '#00eaff'
         }
         labelSize={(label) =>
-          label.name === 'THEOS-2' ? 1.9 : 1.45
+          label.name === 'THEOS-2' ? 1.45 : 1.35
         }
-        labelDotRadius={0.28}
+        labelDotRadius={0.18}
         labelAltitude={(label) =>
-          label.name === 'THEOS-2' ? 0.1 : 0.04
+          label.name === 'THEOS-2' ? 0.18 : 0.055
         }
 
         pathsData={[orbitPath]}
@@ -156,7 +306,7 @@ function App() {
         pathPointLat="lat"
         pathPointLng="lng"
         pathColor={() => '#00eaff'}
-        pathStroke={1.65}
+        pathStroke={1.55}
         pathDashLength={0.035}
         pathDashGap={0.014}
         pathDashAnimateTime={3600}
@@ -178,10 +328,24 @@ function App() {
         arcEndLat="endLat"
         arcEndLng="endLng"
         arcColor={() => ['#00eaff', '#ffb347']}
-        arcStroke={1.7}
-        arcDashLength={0.32}
-        arcDashGap={0.045}
-        arcDashAnimateTime={1400}
+        arcStroke={2.2}
+        arcDashLength={0.26}
+        arcDashGap={0.08}
+        arcDashAnimateTime={Math.max(600, 2800 / Math.sqrt(speed))}
+
+        ringsData={[
+          {
+            lat: GROUND_STATION.lat,
+            lng: GROUND_STATION.lng,
+            color: linkActive ? '#27ff9a' : '#00eaff',
+          },
+        ]}
+        ringLat="lat"
+        ringLng="lng"
+        ringColor={(ring) => ring.color}
+        ringMaxRadius={linkActive ? 7 : 4}
+        ringPropagationSpeed={linkActive ? 2.2 : 0.9}
+        ringRepeatPeriod={linkActive ? 850 : 1800}
       />
 
       <header className="title-panel">

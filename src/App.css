@@ -176,3 +176,16 @@
   border-color: #00eaff;
   box-shadow: 0 0 16px rgba(0, 234, 255, 0.25);
 }
+
+.control-panel {
+  width: 430px;
+}
+
+.control-row {
+  flex-wrap: nowrap;
+}
+
+.control-row button {
+  min-width: 62px;
+}
+
