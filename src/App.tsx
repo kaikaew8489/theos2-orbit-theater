@@ -16,7 +16,8 @@ function App() {
     const container = cesiumContainerRef.current
     if (!container) return
 
-    const viewer = new Viewer(container, {
+    const viewer = new Viewer (container, {
+      
       baseLayer: false,
       skyBox: false,
       skyAtmosphere: false,
@@ -32,6 +33,7 @@ function App() {
       selectionIndicator: false,
       timeline: false,
     })
+    console.log('Cesium viewer created:', viewer)
 
     viewer.scene.backgroundColor = Color.fromCssColorString('#01050c')
     viewer.scene.globe.enableLighting = false
