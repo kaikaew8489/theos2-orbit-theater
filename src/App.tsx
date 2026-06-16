@@ -13,16 +13,60 @@ const GROUND_STATION = {
   color: '#00eaff',
 }
 
-const THEOS2_TLE = {
+const FALLBACK_TLE = {
   name: 'THEOS-2',
   line1: '1 58016U 23155A   26166.96487797  .00000718  00000-0  97744-4 0  9995',
   line2: '2 58016  97.8882 237.9656 0001407  90.8603 269.2771 14.81738229145245',
+  source: 'Fallback',
+  fetchedAt: '',
 }
 
-const THEOS2_SATREC = satelliteJs.twoline2satrec(
-  THEOS2_TLE.line1,
-  THEOS2_TLE.line2,
-)
+const TLE_CACHE_KEY = 'theos2-orbit-theater-tle-v1'
+const TLE_API_FALLBACK_URL = 'https://theos2-orbit-theater.vercel.app/api/tle'
+
+function getTleApiUrl() {
+  if (window.location.hostname.endsWith('vercel.app')) {
+    return '/api/tle'
+  }
+
+  return TLE_API_FALLBACK_URL
+}
+
+function isValidTle(tle: any) {
+  return (
+    tle &&
+    typeof tle.line1 === 'string' &&
+    typeof tle.line2 === 'string' &&
+    tle.line1.startsWith('1 58016') &&
+    tle.line2.startsWith('2 58016')
+  )
+}
+
+function loadCachedTle() {
+  try {
+    const cached = localStorage.getItem(TLE_CACHE_KEY)
+    if (!cached) return FALLBACK_TLE
+
+    const parsed = JSON.parse(cached)
+    if (isValidTle(parsed)) return parsed
+  } catch {
+    // use fallback
+  }
+
+  return FALLBACK_TLE
+}
+
+function saveCachedTle(tle: any) {
+  try {
+    localStorage.setItem(TLE_CACHE_KEY, JSON.stringify(tle))
+  } catch {
+    // ignore cache error
+  }
+}
+
+function createSatrec(tle: any) {
+  return satelliteJs.twoline2satrec(tle.line1, tle.line2)
+}
 
 const SPEED_OPTIONS = [1, 10, 50, 100]
 const PASS_MIN_ELEVATION_DEG = 5
@@ -38,8 +82,8 @@ function toDegrees(radians: number) {
   return (radians * 180) / Math.PI
 }
 
-function getTheos2PositionByDate(date: Date) {
-  const positionAndVelocity = satelliteJs.propagate(THEOS2_SATREC, date)
+function getTheos2PositionByDate(date: Date, satrec: any) {
+  const positionAndVelocity = satelliteJs.propagate(satrec, date)
 
   if (
     !positionAndVelocity ||
@@ -71,8 +115,8 @@ function getTheos2PositionByDate(date: Date) {
   }
 }
 
-function getTheos2LookAnglesByDate(date: Date) {
-  const positionAndVelocity = satelliteJs.propagate(THEOS2_SATREC, date)
+function getTheos2LookAnglesByDate(date: Date, satrec: any) {
+  const positionAndVelocity = satelliteJs.propagate(satrec, date)
 
   if (
     !positionAndVelocity ||
@@ -141,11 +185,11 @@ function getClockInfo(date: Date) {
   }
 }
 
-function createTleOrbitPath(baseDate: Date, minutes = 100) {
+function createTleOrbitPath(baseDate: Date, satrec: any, minutes = 100) {
   return Array.from({ length: 220 }, (_, index) => {
     const offsetMinutes = -minutes / 2 + (minutes * index) / 219
     const date = new Date(baseDate.getTime() + offsetMinutes * 60 * 1000)
-    const pos = getTheos2PositionByDate(date)
+    const pos = getTheos2PositionByDate(date, satrec)
 
     return {
       lat: pos.lat,
@@ -285,28 +329,70 @@ function App() {
   })
 
   const [speed, setSpeed] = useState(10)
+  const [tle, setTle] = useState(() => loadCachedTle())
+  const [tleStatus, setTleStatus] = useState('TLE: cache/fallback ready')
+  const [tleUpdating, setTleUpdating] = useState(false)
+
+const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
   const [isPlaying, setIsPlaying] = useState(true)
   const [simulatedTimeMs, setSimulatedTimeMs] = useState(() => Date.now())
 
   const orbitPathKey = Math.floor(simulatedTimeMs / (5 * 60 * 1000))
 
   const orbitPath = useMemo(
-    () => createTleOrbitPath(new Date(simulatedTimeMs), 100),
-    [orbitPathKey],
+    () => createTleOrbitPath(new Date(simulatedTimeMs), satrec, 100),
+    [orbitPathKey, satrec],
   )
 
   const satellite = useMemo(
-    () => getTheos2PositionByDate(new Date(simulatedTimeMs)),
-    [simulatedTimeMs],
+    () => getTheos2PositionByDate(new Date(simulatedTimeMs), satrec),
+    [simulatedTimeMs, satrec],
   )
 
   const lookAngles = useMemo(
-    () => getTheos2LookAnglesByDate(new Date(simulatedTimeMs)),
-    [simulatedTimeMs],
+    () => getTheos2LookAnglesByDate(new Date(simulatedTimeMs), satrec),
+    [simulatedTimeMs, satrec],
   )
 
   const satelliteDistanceKm = lookAngles.rangeKm
   const linkActive = lookAngles.elevationDeg >= PASS_MIN_ELEVATION_DEG
+
+  async function updateTle() {
+    try {
+      setTleUpdating(true)
+      setTleStatus('TLE: updating from CelesTrak...')
+  
+      const response = await fetch(getTleApiUrl(), {
+        cache: 'no-store',
+      })
+  
+      if (!response.ok) {
+        throw new Error(`API error ${response.status}`)
+      }
+  
+      const data = await response.json()
+  
+      if (!isValidTle(data)) {
+        throw new Error('Invalid TLE data')
+      }
+  
+      const nextTle = {
+        name: data.name || 'THEOS-2',
+        line1: data.line1,
+        line2: data.line2,
+        source: data.source || 'CelesTrak',
+        fetchedAt: data.fetchedAt || new Date().toISOString(),
+      }
+  
+      setTle(nextTle)
+      saveCachedTle(nextTle)
+      setTleStatus('TLE: updated from CelesTrak')
+    } catch (error) {
+      setTleStatus('TLE: update failed, using cache/fallback')
+    } finally {
+      setTleUpdating(false)
+    }
+  }
 
   const clockInfo = useMemo(
     () => getClockInfo(new Date(simulatedTimeMs)),
@@ -327,7 +413,7 @@ function App() {
       timeMs <= endTimeMs;
       timeMs += NEXT_PASS_STEP_SECONDS * 1000
     ) {
-      const testLookAngles = getTheos2LookAnglesByDate(new Date(timeMs))
+      const testLookAngles = getTheos2LookAnglesByDate(new Date(timeMs), satrec)
       const testElevationDeg = testLookAngles.elevationDeg
       const testRangeKm = testLookAngles.rangeKm
 
@@ -557,6 +643,19 @@ function App() {
           <li>Range: {Math.round(satelliteDistanceKm).toLocaleString()} km</li>
           <li>Speed: {speed}x Simulation</li>
           <li>Signal link: {linkActive ? 'Active' : 'Standby'}</li>
+
+          <li>TLE Source: {tle.source || 'Fallback'}</li>
+          <li>
+            TLE Updated:{' '}
+            {tle.fetchedAt
+              ? new Date(tle.fetchedAt).toLocaleString('en-GB', {
+                  timeZone: 'Asia/Bangkok',
+                  hour12: false,
+                })
+              : 'Fallback only'}
+          </li>
+          <li>{tleStatus}</li>
+
         </ul>
       </section>
 
@@ -571,6 +670,10 @@ function App() {
           <button onClick={jumpToNextPass}>
             NEXT PASS
           </button>
+
+          <button onClick={updateTle} disabled={tleUpdating}>
+          {tleUpdating ? 'UPDATING' : 'UPDATE TLE'}
+        </button>
 
           {SPEED_OPTIONS.map((option) => (
             <button
