@@ -332,3 +332,63 @@
   font-size: 13px !important;
   border-radius: 9px !important;
 }
+
+.clock-panel {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  z-index: 30;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 45, 45, 0.75);
+  border-radius: 10px;
+  background: rgba(10, 0, 0, 0.72);
+  box-shadow:
+    0 0 22px rgba(255, 45, 45, 0.28),
+    inset 0 0 16px rgba(255, 45, 45, 0.1);
+  color: #ff3030;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.08em;
+  text-shadow:
+    0 0 6px rgba(255, 45, 45, 0.95),
+    0 0 14px rgba(255, 45, 45, 0.55);
+  pointer-events: none;
+}
+
+.clock-item {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.clock-item span {
+  font-size: 10px;
+  font-weight: 700;
+  color: #ff8a8a;
+}
+
+.clock-item strong {
+  font-size: 18px;
+  font-weight: 800;
+  color: #ff2b2b;
+}
+
+@media (max-width: 1100px) {
+  .clock-panel {
+    top: 120px;
+    left: 16px;
+    right: auto;
+    transform: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  .clock-item strong {
+    font-size: 15px;
+  }
+}

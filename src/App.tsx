@@ -108,6 +108,39 @@ function getTheos2LookAnglesByDate(date: Date) {
   }
 }
 
+function pad2(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function pad3(value: number) {
+  return String(value).padStart(3, '0')
+}
+
+function getUtcDayOfYear(date: Date) {
+  const startOfYear = Date.UTC(date.getUTCFullYear(), 0, 1)
+  const currentDay = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+  )
+
+  return Math.floor((currentDay - startOfYear) / 86400000) + 1
+}
+
+function getClockInfo(date: Date) {
+  const thailandDate = new Date(date.getTime() + 7 * 60 * 60 * 1000)
+
+  return {
+    localTime: `${pad2(thailandDate.getUTCHours())}:${pad2(
+      thailandDate.getUTCMinutes(),
+    )}:${pad2(thailandDate.getUTCSeconds())}`,
+    utcTime: `${pad2(date.getUTCHours())}:${pad2(
+      date.getUTCMinutes(),
+    )}:${pad2(date.getUTCSeconds())}`,
+    doy: pad3(getUtcDayOfYear(date)),
+  }
+}
+
 function createTleOrbitPath(baseDate: Date, minutes = 100) {
   return Array.from({ length: 220 }, (_, index) => {
     const offsetMinutes = -minutes / 2 + (minutes * index) / 219
@@ -274,6 +307,11 @@ function App() {
 
   const satelliteDistanceKm = lookAngles.rangeKm
   const linkActive = lookAngles.elevationDeg >= PASS_MIN_ELEVATION_DEG
+
+  const clockInfo = useMemo(
+    () => getClockInfo(new Date(simulatedTimeMs)),
+    [simulatedTimeMs],
+  )
 
   function jumpToNextPass() {
     const startTimeMs = simulatedTimeMs + 60 * 1000
@@ -488,6 +526,25 @@ function App() {
         <h1>THEOS-2 ORBIT THEATER</h1>
         <span>Thailand Satellite Ground Station Experience</span>
       </header>
+
+
+      <section className="clock-panel">
+  <div className="clock-item">
+    <span>THA LOCAL</span>
+    <strong>{clockInfo.localTime}</strong>
+  </div>
+
+  <div className="clock-item">
+    <span>DOY</span>
+    <strong>{clockInfo.doy}</strong>
+  </div>
+
+  <div className="clock-item">
+    <span>UTC</span>
+    <strong>{clockInfo.utcTime}</strong>
+  </div>
+</section>
+
 
       <section className="mission-panel">
         <p>MISSION STATUS</p>
