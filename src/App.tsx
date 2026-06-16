@@ -8,7 +8,7 @@ import './App.css'
 const GROUND_STATION = {
   lat: 13.16,
   lng: 100.93,
-  name: 'GISTDA Sriracha Ground Station',
+  name: 'GISTDA Ground Station, Sriracha',
   color: '#00eaff',
 }
 
@@ -135,7 +135,7 @@ function createSatelliteModel() {
   group.add(glow)
 
   group.rotation.z = -0.25
-  group.scale.set(1.35, 1.35, 1.35)
+  group.scale.set(1.05, 1.05, 1.05)
 
   return group
 }
@@ -178,7 +178,7 @@ function createGroundStationModel() {
   dishEdge.position.set(0, 0.75, 0.25)
   group.add(dishEdge)
 
-  group.scale.set(1.2, 1.2, 1.2)
+  group.scale.set(0.22, 0.22, 0.22)
 
   return group
 }
@@ -214,7 +214,7 @@ function App() {
       {
         type: 'satellite',
         ...satellite,
-        altitude: 0.14,
+        altitude: 0.18,
       },
     ],
     [satellite],
@@ -328,10 +328,10 @@ function App() {
         arcEndLat="endLat"
         arcEndLng="endLng"
         arcColor={() => ['#00eaff', '#ffb347']}
-        arcStroke={2.2}
-        arcDashLength={0.26}
-        arcDashGap={0.08}
-        arcDashAnimateTime={Math.max(600, 2800 / Math.sqrt(speed))}
+        arcStroke={1.45}
+        arcDashLength={0.18}
+        arcDashGap={0.11}
+        arcDashAnimateTime={Math.max(500, 2200 / Math.sqrt(speed))}
 
         ringsData={[
           {
@@ -343,9 +343,9 @@ function App() {
         ringLat="lat"
         ringLng="lng"
         ringColor={(ring) => ring.color}
-        ringMaxRadius={linkActive ? 7 : 4}
-        ringPropagationSpeed={linkActive ? 2.2 : 0.9}
-        ringRepeatPeriod={linkActive ? 850 : 1800}
+        ringMaxRadius={linkActive ? 1.8 : 0.8}
+        ringPropagationSpeed={linkActive ? 0.9 : 0.35}
+        ringRepeatPeriod={linkActive ? 1200 : 2600}
       />
 
       <header className="title-panel">
