@@ -1,13 +1,21 @@
 import { useEffect, useRef } from 'react'
 import {
+  BoundingSphere,
+  Cartesian2,
   Cartesian3,
   Color,
-  Math as CesiumMath,
+  LabelStyle,
+  VerticalOrigin,
   Viewer,
 } from 'cesium'
 
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import './App.css'
+
+const GROUND_STATION = {
+  longitude: 100.93,
+  latitude: 13.16,
+}
 
 function App() {
   const cesiumContainerRef = useRef<HTMLDivElement | null>(null)
@@ -16,8 +24,7 @@ function App() {
     const container = cesiumContainerRef.current
     if (!container) return
 
-    const viewer = new Viewer (container, {
-      
+    const viewer = new Viewer(container, {
       baseLayer: false,
       skyBox: false,
       skyAtmosphere: false,
@@ -33,25 +40,58 @@ function App() {
       selectionIndicator: false,
       timeline: false,
     })
-    console.log('Cesium viewer created:', viewer)
 
     viewer.scene.backgroundColor = Color.fromCssColorString('#01050c')
-    viewer.scene.globe.enableLighting = false
-    viewer.scene.globe.baseColor = Color.fromCssColorString('#168bd2')
 
-    viewer.scene.globe.show = true
-    viewer.scene.globe.enableLighting = false
-    viewer.scene.globe.baseColor = Color.CYAN
-    
-    viewer.camera.setView({
-      destination: Cartesian3.fromDegrees(105, 15, 22_000_000),
-      orientation: {
-        heading: CesiumMath.toRadians(0),
-        pitch: CesiumMath.toRadians(-90),
-        roll: 0,
+    // ปิด Globe จริงของ Cesium ก่อน
+    // แล้วใช้ Ellipsoid จำลองเป็นโลกแทน เพื่อพิสูจน์ WebGL
+    viewer.scene.globe.show = false
+
+    viewer.entities.add({
+      name: 'Demo Earth',
+      position: Cartesian3.ZERO,
+      ellipsoid: {
+        radii: new Cartesian3(6_378_137, 6_378_137, 6_356_752),
+        material: Color.fromCssColorString('#168bd2'),
+        outline: true,
+        outlineColor: Color.CYAN,
       },
     })
-    
+
+    viewer.entities.add({
+      name: 'GISTDA Ground Station — Sriracha',
+      position: Cartesian3.fromDegrees(
+        GROUND_STATION.longitude,
+        GROUND_STATION.latitude,
+      ),
+      point: {
+        pixelSize: 14,
+        color: Color.CYAN,
+        outlineColor: Color.WHITE,
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+      label: {
+        text: 'GISTDA GROUND STATION\nSRIRACHA',
+        font: '600 15px sans-serif',
+        fillColor: Color.CYAN,
+        outlineColor: Color.BLACK,
+        outlineWidth: 4,
+        style: LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cartesian2(0, -28),
+        verticalOrigin: VerticalOrigin.BOTTOM,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    })
+
+    // บังคับกล้องให้เห็นลูกโลกจำลองเต็มใบ
+    viewer.camera.flyToBoundingSphere(
+      new BoundingSphere(Cartesian3.ZERO, 7_000_000),
+      {
+        duration: 0,
+      },
+    )
+
     viewer.scene.requestRender()
 
     return () => {
