@@ -135,9 +135,10 @@ function createSatelliteModel() {
   group.add(glow)
 
   group.rotation.z = -0.25
-  group.scale.set(1.05, 1.05, 1.05)
+  group.scale.set(1.5, 1.5, 1.5)
 
-  return group
+return group
+
 }
 
 function createGroundStationModel() {
@@ -204,6 +205,40 @@ function App() {
   const satelliteDistanceKm = distanceKm(satellite, GROUND_STATION)
   const linkActive = satelliteDistanceKm < 3500
 
+
+  const linkArcs = useMemo(() => {
+    if (!linkActive) return []
+
+    const link = {
+      startLat: GROUND_STATION.lat,
+      startLng: GROUND_STATION.lng,
+      endLat: satellite.lat,
+      endLng: satellite.lng,
+    }
+
+    return [
+      {
+        ...link,
+        type: 'beam',
+      },
+      {
+        ...link,
+        type: 'pulse',
+        offset: 0,
+      },
+      {
+        ...link,
+        type: 'pulse',
+        offset: 0.33,
+      },
+      {
+        ...link,
+        type: 'pulse',
+        offset: 0.66,
+      },
+    ]
+  }, [linkActive, satellite])
+
   const objectsData = useMemo(
     () => [
       {
@@ -238,16 +273,15 @@ function App() {
 
     globeRef.current.pointOfView(
       {
-        lat: 15,
-        lng: 105,
-        altitude: 2.9,
+        lat: 13,
+        lng: 101,
+        altitude: 2.25,
       },
       1000,
     )
 
     const controls = globeRef.current.controls()
-    controls.autoRotate = true
-    controls.autoRotateSpeed = 0.18
+    controls.autoRotate = false
     controls.enableZoom = true
   }, [])
 
@@ -296,7 +330,7 @@ function App() {
         labelSize={(label) =>
           label.name === 'THEOS-2' ? 1.45 : 1.35
         }
-        labelDotRadius={0.18}
+        labelDotRadius={0}
         labelAltitude={(label) =>
           label.name === 'THEOS-2' ? 0.18 : 0.055
         }
@@ -311,27 +345,25 @@ function App() {
         pathDashGap={0.014}
         pathDashAnimateTime={3600}
 
-        arcsData={
-          linkActive
-            ? [
-                {
-                  startLat: GROUND_STATION.lat,
-                  startLng: GROUND_STATION.lng,
-                  endLat: satellite.lat,
-                  endLng: satellite.lng,
-                },
-              ]
-            : []
-        }
+        arcsData={linkArcs}
         arcStartLat="startLat"
         arcStartLng="startLng"
         arcEndLat="endLat"
         arcEndLng="endLng"
-        arcColor={() => ['#00eaff', '#ffb347']}
-        arcStroke={1.45}
-        arcDashLength={0.18}
-        arcDashGap={0.11}
-        arcDashAnimateTime={Math.max(500, 2200 / Math.sqrt(speed))}
+
+          arcColor={(arc) =>
+          arc.type === 'beam'
+            ? ['rgba(0, 234, 255, 0.28)', 'rgba(0, 234, 255, 0.08)']
+            : ['#ffb347', '#fff1a8']
+        }
+        arcStroke={(arc) => (arc.type === 'beam' ? 0.7 : 2.4)}
+        arcDashLength={(arc) => (arc.type === 'beam' ? 1 : 0.045)}
+        arcDashGap={(arc) => (arc.type === 'beam' ? 0 : 0.22)}
+        arcDashInitialGap={(arc) => arc.offset ?? 0}
+        arcDashAnimateTime={(arc) =>
+          arc.type === 'beam' ? 0 : Math.max(420, 1800 / Math.sqrt(speed))
+        }
+
 
         ringsData={[
           {
@@ -343,9 +375,9 @@ function App() {
         ringLat="lat"
         ringLng="lng"
         ringColor={(ring) => ring.color}
-        ringMaxRadius={linkActive ? 1.8 : 0.8}
-        ringPropagationSpeed={linkActive ? 0.9 : 0.35}
-        ringRepeatPeriod={linkActive ? 1200 : 2600}
+        ringMaxRadius={linkActive ? 0.75 : 0.25}
+        ringPropagationSpeed={linkActive ? 0.45 : 0.18}
+        ringRepeatPeriod={linkActive ? 1700 : 3200}
       />
 
       <header className="title-panel">
