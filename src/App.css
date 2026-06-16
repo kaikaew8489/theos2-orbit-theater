@@ -124,3 +124,55 @@
   font-size: 0.86rem;
   line-height: 1.7;
 }
+
+.control-panel {
+  position: absolute;
+  z-index: 10;
+  right: 34px;
+  top: 32px;
+  width: 360px;
+  padding: 15px 18px;
+  border: 1px solid rgba(35, 225, 255, 0.5);
+  border-radius: 12px;
+  background: rgba(2, 11, 24, 0.78);
+  box-shadow: 0 0 28px rgba(35, 225, 255, 0.18);
+  backdrop-filter: blur(10px);
+}
+
+.control-panel p {
+  margin: 0 0 12px;
+  color: #54eaff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+}
+
+.control-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.control-row button {
+  border: 1px solid rgba(35, 225, 255, 0.45);
+  border-radius: 8px;
+  background: rgba(3, 20, 36, 0.92);
+  color: #b7f7ff;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.control-row button:hover {
+  border-color: rgba(255, 179, 71, 0.85);
+  color: #ffb347;
+}
+
+.control-row button.active {
+  background: rgba(0, 234, 255, 0.22);
+  color: #ffffff;
+  border-color: #00eaff;
+  box-shadow: 0 0 16px rgba(0, 234, 255, 0.25);
+}
