@@ -9,8 +9,8 @@ import * as satelliteJs from 'satellite.js/dist/satellite.es.js'
 const GROUND_STATION = {
   lat: 13.16,
   lng: 100.93,
-  name: 'GISTDA Ground Station, Sriracha',
-  color: '#00eaff',
+  name: 'GISTDA',
+  color: '#ff8a8a',
 }
 
 const FALLBACK_TLE = {
@@ -320,6 +320,25 @@ function createGroundStationModel() {
   return group
 }
 
+function createGroundTrackPoints(centerDate: Date, satrec: any) {
+  const points: { lat: number; lng: number; alt: number }[] = []
+
+  for (let minute = -25; minute <= 25; minute += 1) {
+    const d = new Date(centerDate.getTime() + minute * 60 * 1000)
+    const pos = getTheos2PositionByDate(d, satrec)
+
+    if (!pos) continue
+
+    points.push({
+      lat: pos.lat,
+      lng: pos.lng,
+      alt: 0.012, // ยกเส้นขึ้นจากผิวโลกเล็กน้อย ให้มองเห็นชัด
+    })
+  }
+
+  return points
+}
+
 function App() {
   const globeRef = useRef<any>(null)
 
@@ -348,6 +367,39 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
     () => getTheos2PositionByDate(new Date(simulatedTimeMs), satrec),
     [simulatedTimeMs, satrec],
   )
+
+  const simulatedDate = useMemo(
+    () => new Date(simulatedTimeMs),
+    [simulatedTimeMs],
+  )
+  
+  const groundTrackPaths = useMemo(() => {
+    if (!satrec) return []
+  
+    const points = createGroundTrackPoints(simulatedDate, satrec)
+  
+    return [
+      {
+        type: 'glow',
+        color: 'rgba(255, 150, 0, 0.65)',
+        stroke: 3.2,
+        dashLength: 1,
+        dashGap: 0,
+        animateTime: 0,
+        points,
+      },
+      {
+        type: 'core',
+        color: 'rgba(255, 235, 90, 1)',
+        stroke: 1.6,
+        dashLength: 0.18,
+        dashGap: 0.08,
+        animateTime: 1800,
+        points,
+      },
+    ]
+  }, [simulatedDate, satrec])
+
 
   const lookAngles = useMemo(
     () => getTheos2LookAnglesByDate(new Date(simulatedTimeMs), satrec),
@@ -473,11 +525,6 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
   const objectsData = useMemo(
     () => [
       {
-        type: 'ground',
-        ...GROUND_STATION,
-        altitude: 0.035,
-      },
-      {
         type: 'satellite',
         ...satellite,
         altitude: 0.18,
@@ -556,24 +603,29 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
           label.name === 'THEOS-2' ? '#ffb347' : '#00eaff'
         }
         labelSize={(label) =>
-          label.name === 'THEOS-2' ? 1.45 : 1.35
+          label.name === 'THEOS-2' ? 1.45 : 0.55
         }
+
+
         labelDotRadius={0}
         labelAltitude={(label) =>
-          label.name === 'THEOS-2' ? 0.18 : 0.055
+        label.name === 'THEOS-2' ? 0.18 : 0.035
         }
 
-        pathsData={[orbitPath]}
-        pathPoints={(path) => path}
+        arcsData={linkArcs}
+
+        pathsData={groundTrackPaths}
+        pathPoints="points"
         pathPointLat="lat"
         pathPointLng="lng"
-        pathColor={() => '#00eaff'}
-        pathStroke={1.55}
-        pathDashLength={0.035}
-        pathDashGap={0.014}
-        pathDashAnimateTime={3600}
+        pathPointAlt="alt"
+        pathColor={(path: any) => path.color}
+        pathStroke={(path: any) => path.stroke}
+        pathDashLength={(path: any) => path.dashLength}
+        pathDashGap={(path: any) => path.dashGap}
+        pathDashInitialGap={() => 0}
+        pathDashAnimateTime={(path: any) => path.animateTime}
 
-        arcsData={linkArcs}
         arcStartLat="startLat"
         arcStartLng="startLng"
         arcEndLat="endLat"
