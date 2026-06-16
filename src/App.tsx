@@ -1,5 +1,10 @@
 import { useEffect, useRef } from 'react'
-import { Cartesian3, Color, Viewer } from 'cesium'
+import {
+  Cartesian3,
+  Color,
+  Math as CesiumMath,
+  Viewer,
+} from 'cesium'
 
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import './App.css'
@@ -32,9 +37,20 @@ function App() {
     viewer.scene.globe.enableLighting = false
     viewer.scene.globe.baseColor = Color.fromCssColorString('#168bd2')
 
+    viewer.scene.globe.show = true
+    viewer.scene.globe.enableLighting = false
+    viewer.scene.globe.baseColor = Color.CYAN
+    
     viewer.camera.setView({
       destination: Cartesian3.fromDegrees(105, 15, 22_000_000),
+      orientation: {
+        heading: CesiumMath.toRadians(0),
+        pitch: CesiumMath.toRadians(-90),
+        roll: 0,
+      },
     })
+    
+    viewer.scene.requestRender()
 
     return () => {
       if (!viewer.isDestroyed()) {
