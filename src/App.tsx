@@ -614,17 +614,17 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
 
         arcsData={linkArcs}
 
-        pathsData={groundTrackPaths}
-        pathPoints="points"
+        pathsData={[orbitPath]}
+        pathPoints={(path: any) => path}
         pathPointLat="lat"
         pathPointLng="lng"
-        pathPointAlt="alt"
-        pathColor={(path: any) => path.color}
-        pathStroke={(path: any) => path.stroke}
-        pathDashLength={(path: any) => path.dashLength}
-        pathDashGap={(path: any) => path.dashGap}
+        pathPointAlt={() => 0.014}
+        pathColor={() => 'rgba(255, 220, 80, 0.98)'}
+        pathStroke={1.9}
+        pathDashLength={0.09}
+        pathDashGap={0.045}
         pathDashInitialGap={() => 0}
-        pathDashAnimateTime={(path: any) => path.animateTime}
+        pathDashAnimateTime={2200}
 
         arcStartLat="startLat"
         arcStartLng="startLng"
@@ -697,16 +697,18 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
           <li>Signal link: {linkActive ? 'Active' : 'Standby'}</li>
 
           <li>TLE Source: {tle.source || 'Fallback'}</li>
+
+          
           <li>
-            TLE Updated:{' '}
-            {tle.fetchedAt
-              ? new Date(tle.fetchedAt).toLocaleString('en-GB', {
-                  timeZone: 'Asia/Bangkok',
-                  hour12: false,
-                })
-              : 'Fallback only'}
-          </li>
-          <li>{tleStatus}</li>
+          TLE Updated:{' '}
+          {tle.fetchedAt
+            ? new Date(tle.fetchedAt).toLocaleString('en-GB', {
+                timeZone: 'Asia/Bangkok',
+                hour12: false,
+              })
+            : 'Fallback only'}
+        </li>
+                  <li>{tleStatus}</li>
 
         </ul>
       </section>
