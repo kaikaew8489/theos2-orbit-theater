@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Globe from 'react-globe.gl'
 import * as THREE from 'three'
 import './App.css'
+import * as satelliteJs from 'satellite.js/dist/satellite.es.js'
 
 const GROUND_STATION = {
   lat: 13.16,
@@ -12,45 +13,112 @@ const GROUND_STATION = {
   color: '#00eaff',
 }
 
-const SPEED_OPTIONS = [1, 10, 50, 100]
-
-function createOrbitPath() {
-  return Array.from({ length: 260 }, (_, index) => {
-    const lng = -180 + index * (360 / 259)
-    const lat = 38 * Math.sin(((lng + 40) * Math.PI) / 180)
-
-    return { lat, lng }
-  })
+const THEOS2_TLE = {
+  name: 'THEOS-2',
+  line1: '1 58016U 23155A   26166.96487797  .00000718  00000-0  97744-4 0  9995',
+  line2: '2 58016  97.8882 237.9656 0001407  90.8603 269.2771 14.81738229145245',
 }
 
-function getSatellitePosition(progress: number) {
-  const lng = -180 + progress * 360
-  const lat = 38 * Math.sin(((lng + 40) * Math.PI) / 180)
+const THEOS2_SATREC = satelliteJs.twoline2satrec(
+  THEOS2_TLE.line1,
+  THEOS2_TLE.line2,
+)
+
+const SPEED_OPTIONS = [1, 10, 50, 100]
+const PASS_MIN_ELEVATION_DEG = 5
+const NEXT_PASS_LOOKAHEAD_HOURS = 24
+const NEXT_PASS_STEP_SECONDS = 60
+const NEXT_PASS_PRE_ROLL_MINUTES = 5
+
+function toRadians(degrees: number) {
+  return (degrees * Math.PI) / 180
+}
+
+function toDegrees(radians: number) {
+  return (radians * 180) / Math.PI
+}
+
+function getTheos2PositionByDate(date: Date) {
+  const positionAndVelocity = satelliteJs.propagate(THEOS2_SATREC, date)
+
+  if (
+    !positionAndVelocity ||
+    !positionAndVelocity.position ||
+    positionAndVelocity.position === true
+  ) {
+    return {
+      lat: GROUND_STATION.lat,
+      lng: GROUND_STATION.lng,
+      altitudeKm: 560,
+      name: 'THEOS-2',
+      color: '#ffb347',
+    }
+  }
+
+  const gmst = satelliteJs.gstime(date)
+
+  const geodetic = satelliteJs.eciToGeodetic(
+    positionAndVelocity.position as any,
+    gmst,
+  )
 
   return {
-    lat,
-    lng,
+    lat: satelliteJs.degreesLat(geodetic.latitude),
+    lng: satelliteJs.degreesLong(geodetic.longitude),
+    altitudeKm: geodetic.height,
     name: 'THEOS-2',
     color: '#ffb347',
   }
 }
 
-function distanceKm(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-) {
-  const earthRadiusKm = 6371
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180
-  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+function getTheos2LookAnglesByDate(date: Date) {
+  const positionAndVelocity = satelliteJs.propagate(THEOS2_SATREC, date)
 
-  const lat1 = (a.lat * Math.PI) / 180
-  const lat2 = (b.lat * Math.PI) / 180
+  if (
+    !positionAndVelocity ||
+    !positionAndVelocity.position ||
+    positionAndVelocity.position === true
+  ) {
+    return {
+      elevationDeg: -90,
+      azimuthDeg: 0,
+      rangeKm: Number.POSITIVE_INFINITY,
+    }
+  }
 
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  const gmst = satelliteJs.gstime(date)
 
-  return 2 * earthRadiusKm * Math.asin(Math.sqrt(h))
+  const positionEcf = satelliteJs.eciToEcf(
+    positionAndVelocity.position as any,
+    gmst,
+  )
+
+  const observerGd = {
+    latitude: toRadians(GROUND_STATION.lat),
+    longitude: toRadians(GROUND_STATION.lng),
+    height: 0.05,
+  }
+
+  const lookAngles = satelliteJs.ecfToLookAngles(observerGd, positionEcf)
+
+  return {
+    elevationDeg: toDegrees(lookAngles.elevation),
+    azimuthDeg: toDegrees(lookAngles.azimuth),
+    rangeKm: lookAngles.rangeSat,
+  }
+}
+
+function createTleOrbitPath(baseDate: Date, minutes = 100) {
+  return Array.from({ length: 220 }, (_, index) => {
+    const offsetMinutes = -minutes / 2 + (minutes * index) / 219
+    const date = new Date(baseDate.getTime() + offsetMinutes * 60 * 1000)
+    const pos = getTheos2PositionByDate(date)
+
+    return {
+      lat: pos.lat,
+      lng: pos.lng,
+    }
+  })
 }
 
 function createSatelliteModel() {
@@ -63,14 +131,12 @@ function createSatelliteModel() {
   const white = new THREE.MeshBasicMaterial({ color: '#f3f7ff' })
   const cyan = new THREE.MeshBasicMaterial({ color: '#00eaff' })
 
-  // ตัวบัสดาวเทียมสีทอง
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(1.1, 1.1, 1.45),
     gold,
   )
   group.add(body)
 
-  // แผง solar panel ซ้ายขวา
   const leftPanel = new THREE.Mesh(
     new THREE.BoxGeometry(2.4, 0.06, 0.95),
     bluePanel,
@@ -85,7 +151,6 @@ function createSatelliteModel() {
   rightPanel.position.x = 1.85
   group.add(rightPanel)
 
-  // เส้นบนแผงโซลาร์
   for (let i = -2; i <= 2; i += 1) {
     const lineLeft = new THREE.Mesh(
       new THREE.BoxGeometry(0.035, 0.075, 0.95),
@@ -102,7 +167,6 @@ function createSatelliteModel() {
     group.add(lineRight)
   }
 
-  // จาน/กล้องวงกลมด้านหน้า คล้ายรูปจริง
   const dish = new THREE.Mesh(
     new THREE.CylinderGeometry(0.48, 0.48, 0.12, 40),
     white,
@@ -118,7 +182,6 @@ function createSatelliteModel() {
   dishRing.position.z = 0.86
   group.add(dishRing)
 
-  // กล่อง payload ด้านล่าง
   const payload = new THREE.Mesh(
     new THREE.BoxGeometry(0.45, 0.38, 0.35),
     darkGold,
@@ -126,7 +189,6 @@ function createSatelliteModel() {
   payload.position.set(0, -0.72, -0.25)
   group.add(payload)
 
-  // จุดแสง THEOS-2
   const glow = new THREE.Mesh(
     new THREE.SphereGeometry(0.16, 24, 24),
     new THREE.MeshBasicMaterial({ color: '#ffb347' }),
@@ -135,10 +197,8 @@ function createSatelliteModel() {
   group.add(glow)
 
   group.rotation.z = -0.25
-  group.scale.set(1.5, 1.5, 1.5)
-
-return group
-
+  group.scale.set(2.2, 2.2, 2.2)
+  return group
 }
 
 function createGroundStationModel() {
@@ -162,7 +222,6 @@ function createGroundStationModel() {
   mast.position.y = 0.25
   group.add(mast)
 
-  // จานสายอากาศ
   const dish = new THREE.Mesh(
     new THREE.ConeGeometry(0.75, 0.38, 40, 1, true),
     white,
@@ -194,17 +253,65 @@ function App() {
 
   const [speed, setSpeed] = useState(10)
   const [isPlaying, setIsPlaying] = useState(true)
-  const [orbitProgress, setOrbitProgress] = useState(0.78)
+  const [simulatedTimeMs, setSimulatedTimeMs] = useState(() => Date.now())
 
-  const orbitPath = useMemo(() => createOrbitPath(), [])
-  const satellite = useMemo(
-    () => getSatellitePosition(orbitProgress),
-    [orbitProgress],
+  const orbitPathKey = Math.floor(simulatedTimeMs / (5 * 60 * 1000))
+
+  const orbitPath = useMemo(
+    () => createTleOrbitPath(new Date(simulatedTimeMs), 100),
+    [orbitPathKey],
   )
 
-  const satelliteDistanceKm = distanceKm(satellite, GROUND_STATION)
-  const linkActive = satelliteDistanceKm < 3500
+  const satellite = useMemo(
+    () => getTheos2PositionByDate(new Date(simulatedTimeMs)),
+    [simulatedTimeMs],
+  )
 
+  const lookAngles = useMemo(
+    () => getTheos2LookAnglesByDate(new Date(simulatedTimeMs)),
+    [simulatedTimeMs],
+  )
+
+  const satelliteDistanceKm = lookAngles.rangeKm
+  const linkActive = lookAngles.elevationDeg >= PASS_MIN_ELEVATION_DEG
+
+  function jumpToNextPass() {
+    const startTimeMs = simulatedTimeMs + 60 * 1000
+    const endTimeMs =
+      startTimeMs + NEXT_PASS_LOOKAHEAD_HOURS * 60 * 60 * 1000
+
+    let bestTimeMs = startTimeMs
+    let bestRangeKm = Number.POSITIVE_INFINITY
+    let firstActiveTimeMs: number | null = null
+
+    for (
+      let timeMs = startTimeMs;
+      timeMs <= endTimeMs;
+      timeMs += NEXT_PASS_STEP_SECONDS * 1000
+    ) {
+      const testLookAngles = getTheos2LookAnglesByDate(new Date(timeMs))
+      const testElevationDeg = testLookAngles.elevationDeg
+      const testRangeKm = testLookAngles.rangeKm
+
+      if (testRangeKm < bestRangeKm) {
+        bestRangeKm = testRangeKm
+        bestTimeMs = timeMs
+      }
+
+      if (testElevationDeg >= PASS_MIN_ELEVATION_DEG) {
+        firstActiveTimeMs = timeMs
+        break
+      }
+    }
+
+    const targetTimeMs =
+      (firstActiveTimeMs ?? bestTimeMs) -
+      NEXT_PASS_PRE_ROLL_MINUTES * 60 * 1000
+
+    setSimulatedTimeMs(targetTimeMs)
+    setSpeed(10)
+    setIsPlaying(true)
+  }
 
   const linkArcs = useMemo(() => {
     if (!linkActive) return []
@@ -289,10 +396,7 @@ function App() {
     if (!isPlaying) return
 
     const timer = window.setInterval(() => {
-      setOrbitProgress((current) => {
-        const next = current + 0.00008 * speed
-        return next > 1 ? next - 1 : next
-      })
+      setSimulatedTimeMs((current) => current + 50 * speed)
     }, 50)
 
     return () => window.clearInterval(timer)
@@ -350,8 +454,7 @@ function App() {
         arcStartLng="startLng"
         arcEndLat="endLat"
         arcEndLng="endLng"
-
-          arcColor={(arc) =>
+        arcColor={(arc) =>
           arc.type === 'beam'
             ? ['rgba(0, 234, 255, 0.28)', 'rgba(0, 234, 255, 0.08)']
             : ['#ffb347', '#fff1a8']
@@ -364,9 +467,9 @@ function App() {
           arc.type === 'beam' ? 0 : Math.max(420, 1800 / Math.sqrt(speed))
         }
 
-
         ringsData={[
           {
+            type: 'station',
             lat: GROUND_STATION.lat,
             lng: GROUND_STATION.lng,
             color: linkActive ? '#27ff9a' : '#00eaff',
@@ -374,10 +477,10 @@ function App() {
         ]}
         ringLat="lat"
         ringLng="lng"
-        ringColor={(ring) => ring.color}
-        ringMaxRadius={linkActive ? 0.75 : 0.25}
-        ringPropagationSpeed={linkActive ? 0.45 : 0.18}
-        ringRepeatPeriod={linkActive ? 1700 : 3200}
+        ringColor={(ring: any) => ring.color}
+        ringMaxRadius={() => (linkActive ? 0.75 : 0.25)}
+        ringPropagationSpeed={() => (linkActive ? 0.45 : 0.18)}
+        ringRepeatPeriod={() => (linkActive ? 1700 : 3200)}
       />
 
       <header className="title-panel">
@@ -393,6 +496,7 @@ function App() {
           <li>Orbit visualization: Active</li>
           <li>Ground station: Sriracha</li>
           <li>AOS: {linkActive ? 'TRACKING NOW' : 'Waiting next pass'}</li>
+          <li>Elevation: {lookAngles.elevationDeg.toFixed(1)}°</li>
           <li>Range: {Math.round(satelliteDistanceKm).toLocaleString()} km</li>
           <li>Speed: {speed}x Simulation</li>
           <li>Signal link: {linkActive ? 'Active' : 'Standby'}</li>
@@ -405,6 +509,10 @@ function App() {
         <div className="control-row">
           <button onClick={() => setIsPlaying((value) => !value)}>
             {isPlaying ? 'PAUSE' : 'PLAY'}
+          </button>
+
+          <button onClick={jumpToNextPass}>
+            NEXT PASS
           </button>
 
           {SPEED_OPTIONS.map((option) => (
