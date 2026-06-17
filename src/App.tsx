@@ -683,35 +683,41 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
   </div>
 </section>
 
+<section className="mission-panel">
+  <p>MISSION STATUS</p>
+  <h2>THEOS-2 PASS SIMULATION</h2>
 
-      <section className="mission-panel">
-        <p>MISSION STATUS</p>
-        <h2>THEOS-2 PASS SIMULATION</h2>
-        <ul>
-          <li>Orbit visualization: Active</li>
-          <li>Ground station: Sriracha</li>
-          <li>AOS: {linkActive ? 'TRACKING NOW' : 'Waiting next pass'}</li>
-          <li>Elevation: {lookAngles.elevationDeg.toFixed(1)}°</li>
-          <li>Range: {Math.round(satelliteDistanceKm).toLocaleString()} km</li>
-          <li>Speed: {speed}x Simulation</li>
-          <li>Signal link: {linkActive ? 'Active' : 'Standby'}</li>
+  <ul>
+    <li>Orbit visualization: Active</li>
+    <li>Ground station: Sriracha</li>
+    <li>AOS: {linkActive ? 'TRACKING NOW' : 'Waiting next pass'}</li>
+    <li>Elevation: {lookAngles.elevationDeg.toFixed(1)}°</li>
+    <li>Range: {Math.round(satelliteDistanceKm).toLocaleString()} km</li>
+    <li>Speed: {speed}x Simulation</li>
+    <li>Signal link: {linkActive ? 'Active' : 'Standby'}</li>
 
-          <li>TLE Source: {tle.source || 'Fallback'}</li>
+    <li>TLE Source: {tle.source || 'Fallback'}</li>
 
-          
-          <li>
-          TLE Updated:{' '}
-          {tle.fetchedAt
-            ? new Date(tle.fetchedAt).toLocaleString('en-GB', {
-                timeZone: 'Asia/Bangkok',
-                hour12: false,
-              })
-            : 'Fallback only'}
-        </li>
-                  <li>{tleStatus}</li>
+    <li>
+      TLE Updated:{' '}
+      {tle.fetchedAt
+        ? new Date(tle.fetchedAt).toLocaleString('en-GB', {
+            timeZone: 'Asia/Bangkok',
+            hour12: false,
+          })
+        : 'Fallback only'}
+    </li>
 
-        </ul>
-      </section>
+    <li>TLE Epoch: {tle.line1.substring(18, 32)}</li>
+
+    <li>
+      TLE Status:{' '}
+      {tle.source === 'CelesTrak'
+        ? 'updated from CelesTrak'
+        : 'using fallback TLE'}
+    </li>
+  </ul>
+</section>
 
       <section className="control-panel">
         <p>TIME CONTROL</p>
