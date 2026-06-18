@@ -917,20 +917,20 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
         }
 
         arcsData={linkArcs.filter((arc: any) => arc.type === 'beam')}
-arcStartLat="startLat"
-arcStartLng="startLng"
-arcEndLat="endLat"
-arcEndLng="endLng"
-arcAltitude={() => 0.055}
-arcColor={() => [
-  'rgba(210, 245, 255, 0.20)',
-  'rgba(255, 246, 204, 0.78)',
-]}
-arcStroke={() => 0.16}
-arcDashLength={() => 1}
-arcDashGap={() => 0}
-arcDashInitialGap={() => 0}
-arcDashAnimateTime={() => 0}
+        arcStartLat="startLat"
+        arcStartLng="startLng"
+        arcEndLat="endLat"
+        arcEndLng="endLng"
+        arcAltitude={() => 0.055}
+        arcColor={() => [
+          'rgba(255, 160, 30, 0.38)',
+          'rgba(255, 220, 110, 1)',
+        ]}
+        arcStroke={() => 0.22}
+        arcDashLength={() => 1}
+        arcDashGap={() => 0}
+        arcDashInitialGap={() => 0}
+        arcDashAnimateTime={() => 0}
 
         
         pathsData={[]}
@@ -1107,18 +1107,28 @@ arcDashAnimateTime={() => 0}
           </button>
 
           <button onClick={updateTle} disabled={tleUpdating}>
-          {tleUpdating ? 'UPDATING' : 'UPDATE TLE'}
+        {tleUpdating ? 'UPDATING' : 'UPDATE TLE'}
+      </button>
+
+        <button
+          onClick={() => {
+            setSimulatedTimeMs(Date.now())
+            setSpeed(1)
+            setIsPlaying(true)
+          }}
+        >
+          RESET NOW
         </button>
 
-          {SPEED_OPTIONS.map((option) => (
-            <button
-              key={option}
-              className={speed === option ? 'active' : ''}
-              onClick={() => setSpeed(option)}
-            >
-              {option}x
-            </button>
-          ))}
+        {SPEED_OPTIONS.map((option) => (
+          <button
+            key={option}
+            className={speed === option ? 'active' : ''}
+            onClick={() => setSpeed(option)}
+          >
+            {option}x
+          </button>
+        ))}
         </div>
       </section>
 
@@ -1132,5 +1142,6 @@ arcDashAnimateTime={() => 0}
     </main>
   )
 }
+
 
 export default App
