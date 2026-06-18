@@ -533,6 +533,81 @@ function getPassSummary(baseDate: Date, satrec: any) {
 }
 
 
+const EARTH_RADIUS_KM = 6371
+
+function createOrbitVisualPath(centerDate: Date, satrec: any) {
+  const points: { lat: number; lng: number; alt: number }[] = []
+
+  // ประมาณหนึ่งรอบของ THEOS-2 จาก TLE จริง
+  for (let minute = -55; minute <= 55; minute += 1) {
+    const d = new Date(centerDate.getTime() + minute * 60 * 1000)
+    const pos = getTheos2PositionByDate(d, satrec)
+
+    if (!pos) continue
+
+    points.push({
+      lat: pos.lat,
+      lng: pos.lng,
+      alt: Math.max(0.09, pos.altitudeKm / EARTH_RADIUS_KM),
+    })
+  }
+
+  return points
+}
+
+function createThinSignalArcs(
+  satellitePos: {
+    lat: number
+    lng: number
+    altitudeKm: number
+  },
+  active: boolean,
+) {
+  if (!active) return []
+
+  return [
+    {
+      type: 'signal-glow',
+      startLat: satellitePos.lat,
+      startLng: satellitePos.lng,
+      endLat: GROUND_STATION.lat,
+      endLng: GROUND_STATION.lng,
+      altitude: 0.16,
+      color: ['rgba(255, 179, 71, 0.05)', 'rgba(255, 179, 71, 0.42)'],
+      stroke: 0.75,
+      dashLength: 1,
+      dashGap: 0,
+      animateTime: 0,
+    },
+    {
+      type: 'signal-core',
+      startLat: satellitePos.lat,
+      startLng: satellitePos.lng,
+      endLat: GROUND_STATION.lat,
+      endLng: GROUND_STATION.lng,
+      altitude: 0.16,
+      color: ['rgba(255, 255, 255, 0.18)', 'rgba(255, 244, 190, 0.95)'],
+      stroke: 0.28,
+      dashLength: 1,
+      dashGap: 0,
+      animateTime: 0,
+    },
+    {
+      type: 'signal-pulse',
+      startLat: satellitePos.lat,
+      startLng: satellitePos.lng,
+      endLat: GROUND_STATION.lat,
+      endLng: GROUND_STATION.lng,
+      altitude: 0.16,
+      color: ['rgba(255, 198, 80, 0)', 'rgba(255, 235, 150, 1)'],
+      stroke: 0.48,
+      dashLength: 0.025,
+      dashGap: 0.16,
+      animateTime: 780,
+    },
+  ]
+}
+
 
 function App() {
   const globeRef = useRef<any>(null)
@@ -542,7 +617,7 @@ function App() {
     height: window.innerHeight,
   })
 
-  const [speed, setSpeed] = useState(10)
+  const [speed, setSpeed] = useState(1)
   const [tle, setTle] = useState(() => loadCachedTle())
   const [tleStatus, setTleStatus] = useState('TLE: cache/fallback ready')
   const [tleUpdating, setTleUpdating] = useState(false)
@@ -603,6 +678,23 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
 
   const satelliteDistanceKm = lookAngles.rangeKm
   const linkActive = lookAngles.elevationDeg >= PASS_MIN_ELEVATION_DEG
+
+
+  const orbitVisualPath = useMemo(
+    () => createOrbitVisualPath(new Date(simulatedTimeMs), satrec),
+    [simulatedTimeMs, satrec],
+  )
+  
+  const thinSignalArcs = useMemo(
+    () => createThinSignalArcs(satellite, linkActive),
+    [
+      satellite.lat,
+      satellite.lng,
+      satellite.altitudeKm,
+      linkActive,
+    ],
+  )
+
 
   const satelliteSpeedKmS = useMemo(
     () => getSatelliteSpeedKmS(new Date(simulatedTimeMs), satrec),
@@ -697,7 +789,7 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
       NEXT_PASS_PRE_ROLL_MINUTES * 60 * 1000
 
     setSimulatedTimeMs(targetTimeMs)
-    setSpeed(10)
+    setSpeed(1)
     setIsPlaying(true)
   }
 
@@ -824,19 +916,34 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
         label.name === 'THEOS-2' ? 0.18 : 0.035
         }
 
-        arcsData={linkArcs}
+        arcsData={linkArcs.filter((arc: any) => arc.type === 'beam')}
+arcStartLat="startLat"
+arcStartLng="startLng"
+arcEndLat="endLat"
+arcEndLng="endLng"
+arcAltitude={() => 0.055}
+arcColor={() => [
+  'rgba(210, 245, 255, 0.20)',
+  'rgba(255, 246, 204, 0.78)',
+]}
+arcStroke={() => 0.16}
+arcDashLength={() => 1}
+arcDashGap={() => 0}
+arcDashInitialGap={() => 0}
+arcDashAnimateTime={() => 0}
 
-        pathsData={[orbitPath]}
-        pathPoints={(path: any) => path}
+        
+        pathsData={[]}
+        pathPoints={(path: any) => path.points}
         pathPointLat="lat"
         pathPointLng="lng"
-        pathPointAlt={() => 0.014}
-        pathColor={() => 'rgba(255, 220, 80, 0.98)'}
-        pathStroke={1.9}
-        pathDashLength={0.09}
-        pathDashGap={0.045}
+        pathPointAlt="alt"
+        pathColor={(path: any) => path.color}
+        pathStroke={(path: any) => path.stroke}
+        pathDashLength={(path: any) => path.dashLength}
+        pathDashGap={(path: any) => path.dashGap}
         pathDashInitialGap={() => 0}
-        pathDashAnimateTime={2200}
+        pathDashAnimateTime={(path: any) => path.animateTime}
 
         arcStartLat="startLat"
         arcStartLng="startLng"
@@ -873,8 +980,8 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
 
       <header className="title-panel">
         <p>THAILAND SPACE EXPO</p>
-        <h1>THEOS-2 ORBIT THEATER</h1>
-        <span>Thailand Satellite Ground Station Experience</span>
+        <h1>THEOS-2 ORBIT</h1>
+        <span>Thailand Satellite Ground Station</span>
       </header>
 
 
@@ -897,7 +1004,7 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
 
 <section className="mission-panel">
   <p>MISSION STATUS</p>
-  <h2>THEOS-2 PASS SIMULATION</h2>
+  <h2>THEOS-2 PASS</h2>
 
   <ul>
     <li>Orbit visualization: Active</li>
