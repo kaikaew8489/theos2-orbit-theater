@@ -339,6 +339,201 @@ function createGroundTrackPoints(centerDate: Date, satrec: any) {
   return points
 }
 
+function getInclinationDeg(line2: string) {
+  const parts = line2.trim().split(/\s+/)
+  return Number(parts[2] || 0)
+}
+
+
+function formatUtcDateTime(date: Date | null) {
+  if (!date) return 'N/A'
+
+  return date.toLocaleString('en-GB', {
+    timeZone: 'UTC',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }) + ' UTC'
+}
+
+function formatThaiDateTime(date: Date | null) {
+  if (!date) return 'N/A'
+
+  return date.toLocaleString('en-GB', {
+    timeZone: 'Asia/Bangkok',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }) + ' THA'
+}
+
+function getSatelliteSpeedKmS(date: Date, satrec: any) {
+  const positionAndVelocity = satelliteJs.propagate(satrec, date)
+
+  if (!positionAndVelocity.velocity) {
+    return Number.NaN
+  }
+
+  const velocity = positionAndVelocity.velocity as {
+    x: number
+    y: number
+    z: number
+  }
+
+  return Math.sqrt(
+    velocity.x * velocity.x +
+      velocity.y * velocity.y +
+      velocity.z * velocity.z,
+  )
+}
+
+function getPassDirection(aos: Date | null, los: Date | null, satrec: any) {
+  if (!aos || !los) return 'N/A'
+
+  const aosPos = getTheos2PositionByDate(aos, satrec)
+  const losPos = getTheos2PositionByDate(los, satrec)
+
+  if (!aosPos || !losPos) return 'N/A'
+
+  if (losPos.lat > aosPos.lat) {
+    return 'Northbound / Ascending'
+  }
+
+  return 'Southbound / Descending'
+}
+
+function getPassSummary(baseDate: Date, satrec: any) {
+  const baseTimeMs = baseDate.getTime()
+  const stepMs = 10 * 1000
+  const thresholdDeg = PASS_MIN_ELEVATION_DEG
+  const searchBackMs = 40 * 60 * 1000
+  const searchForwardMs = NEXT_PASS_LOOKAHEAD_HOURS * 60 * 60 * 1000
+  const maxPassDurationMs = 35 * 60 * 1000
+
+  const baseLook = getTheos2LookAnglesByDate(baseDate, satrec)
+  const isCurrentPass = baseLook.elevationDeg >= thresholdDeg
+
+  let aosMs: number | null = null
+  let losMs: number | null = null
+
+  if (isCurrentPass) {
+    for (
+      let timeMs = baseTimeMs;
+      timeMs >= baseTimeMs - searchBackMs;
+      timeMs -= stepMs
+    ) {
+      const look = getTheos2LookAnglesByDate(new Date(timeMs), satrec)
+
+      if (look.elevationDeg < thresholdDeg) {
+        aosMs = timeMs + stepMs
+        break
+      }
+    }
+
+    if (!aosMs) {
+      aosMs = baseTimeMs
+    }
+
+    for (
+      let timeMs = baseTimeMs;
+      timeMs <= baseTimeMs + maxPassDurationMs;
+      timeMs += stepMs
+    ) {
+      const look = getTheos2LookAnglesByDate(new Date(timeMs), satrec)
+
+      if (look.elevationDeg < thresholdDeg) {
+        losMs = timeMs - stepMs
+        break
+      }
+    }
+  } else {
+    for (
+      let timeMs = baseTimeMs;
+      timeMs <= baseTimeMs + searchForwardMs;
+      timeMs += stepMs
+    ) {
+      const look = getTheos2LookAnglesByDate(new Date(timeMs), satrec)
+
+      if (look.elevationDeg >= thresholdDeg) {
+        aosMs = timeMs
+        break
+      }
+    }
+
+    if (aosMs) {
+      for (
+        let timeMs = aosMs;
+        timeMs <= aosMs + maxPassDurationMs;
+        timeMs += stepMs
+      ) {
+        const look = getTheos2LookAnglesByDate(new Date(timeMs), satrec)
+
+        if (timeMs > aosMs && look.elevationDeg < thresholdDeg) {
+          losMs = timeMs - stepMs
+          break
+        }
+      }
+    }
+  }
+
+  if (!aosMs) {
+    return {
+      passType: 'NO PASS FOUND',
+      aos: null,
+      los: null,
+      aosAzimuthDeg: Number.NaN,
+      losAzimuthDeg: Number.NaN,
+      maxElevationDeg: Number.NaN,
+      maxElevationTime: null,
+      durationMin: Number.NaN,
+      direction: 'N/A',
+    }
+  }
+
+  if (!losMs) {
+    losMs = aosMs + maxPassDurationMs
+  }
+
+  let maxElevationDeg = -90
+  let maxElevationTimeMs = aosMs
+
+  for (let timeMs = aosMs; timeMs <= losMs; timeMs += stepMs) {
+    const look = getTheos2LookAnglesByDate(new Date(timeMs), satrec)
+
+    if (look.elevationDeg > maxElevationDeg) {
+      maxElevationDeg = look.elevationDeg
+      maxElevationTimeMs = timeMs
+    }
+  }
+
+  const aos = new Date(aosMs)
+  const los = new Date(losMs)
+  const aosLook = getTheos2LookAnglesByDate(aos, satrec)
+  const losLook = getTheos2LookAnglesByDate(los, satrec)
+
+  return {
+    passType: isCurrentPass ? 'CURRENT PASS' : 'NEXT PASS',
+    aos,
+    los,
+    aosAzimuthDeg: aosLook.azimuthDeg,
+    losAzimuthDeg: losLook.azimuthDeg,
+    maxElevationDeg,
+    maxElevationTime: new Date(maxElevationTimeMs),
+    durationMin: (losMs - aosMs) / 60000,
+    direction: getPassDirection(aos, los, satrec),
+  }
+}
+
+
+
 function App() {
   const globeRef = useRef<any>(null)
 
@@ -408,6 +603,23 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
 
   const satelliteDistanceKm = lookAngles.rangeKm
   const linkActive = lookAngles.elevationDeg >= PASS_MIN_ELEVATION_DEG
+
+  const satelliteSpeedKmS = useMemo(
+    () => getSatelliteSpeedKmS(new Date(simulatedTimeMs), satrec),
+    [simulatedTimeMs, satrec],
+  )
+
+  const inclinationDeg = useMemo(
+    () => getInclinationDeg(tle.line2),
+    [tle.line2],
+  )
+  
+  const passSummaryKey = Math.floor(simulatedTimeMs / (30 * 1000))
+
+  const passSummary = useMemo(
+    () => getPassSummary(new Date(simulatedTimeMs), satrec),
+    [passSummaryKey, satrec],
+  )
 
   async function updateTle() {
     try {
@@ -690,9 +902,65 @@ const satrec = useMemo(() => createSatrec(tle), [tle.line1, tle.line2])
   <ul>
     <li>Orbit visualization: Active</li>
     <li>Ground station: Sriracha</li>
+
     <li>AOS: {linkActive ? 'TRACKING NOW' : 'Waiting next pass'}</li>
-    <li>Elevation: {lookAngles.elevationDeg.toFixed(1)}°</li>
-    <li>Range: {Math.round(satelliteDistanceKm).toLocaleString()} km</li>
+<li>Pass Window: {passSummary.passType}</li>
+<li>Mask Elevation: {PASS_MIN_ELEVATION_DEG.toFixed(1)}°</li>
+
+<li>AOS UTC: {formatUtcDateTime(passSummary.aos)}</li>
+<li>LOS UTC: {formatUtcDateTime(passSummary.los)}</li>
+<li>AOS THA: {formatThaiDateTime(passSummary.aos)}</li>
+<li>LOS THA: {formatThaiDateTime(passSummary.los)}</li>
+
+<li>
+  Max Elevation:{' '}
+  {Number.isFinite(passSummary.maxElevationDeg)
+    ? `${passSummary.maxElevationDeg.toFixed(1)}°`
+    : 'N/A'}
+</li>
+
+<li>Max EL UTC: {formatUtcDateTime(passSummary.maxElevationTime)}</li>
+
+<li>
+  Duration:{' '}
+  {Number.isFinite(passSummary.durationMin)
+    ? `${passSummary.durationMin.toFixed(1)} min`
+    : 'N/A'}
+</li>
+
+<li>
+  Pass Direction: {passSummary.direction}
+</li>
+
+<li>
+  AOS Azimuth:{' '}
+  {Number.isFinite(passSummary.aosAzimuthDeg)
+    ? `${passSummary.aosAzimuthDeg.toFixed(1)}°`
+    : 'N/A'}
+</li>
+
+<li>
+  LOS Azimuth:{' '}
+  {Number.isFinite(passSummary.losAzimuthDeg)
+    ? `${passSummary.losAzimuthDeg.toFixed(1)}°`
+    : 'N/A'}
+</li>
+
+<li>Elevation Now: {lookAngles.elevationDeg.toFixed(1)}°</li>
+<li>Azimuth Now: {lookAngles.azimuthDeg.toFixed(1)}°</li>
+<li>Range: {Math.round(satelliteDistanceKm).toLocaleString()} km</li>
+<li>Altitude: {satellite.altitudeKm.toFixed(0)} km</li>
+
+<li>
+  Sat Speed:{' '}
+  {Number.isFinite(satelliteSpeedKmS)
+    ? `${satelliteSpeedKmS.toFixed(2)} km/s`
+    : 'N/A'}
+</li>
+
+<li>Inclination: {inclinationDeg.toFixed(2)}°</li>
+
+
     <li>Speed: {speed}x Simulation</li>
     <li>Signal link: {linkActive ? 'Active' : 'Standby'}</li>
 
