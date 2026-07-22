@@ -74,7 +74,7 @@ const injectStyles = () => {
   style.id = 'scifi-theater-styles';
   style.innerHTML = `
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@500;600;700&display=swap');
-    :root { --cyan: #00eaff; --gold: #ffb347; --bg: #030712; --red: #ff3333; --dark-cyan: #005f73; }
+    :root { --cyan: #00eaff; --gold: #ffb347; --bg: #010408; --red: #ff3333; --dark-cyan: #005f73; --green: #00ff66; }
     body { margin: 0; overflow: hidden; background: var(--bg); color: #fff; font-family: 'Rajdhani', sans-serif; }
     
     .scanlines { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1)); background-size: 100% 4px; z-index: 100; opacity: 0.6; }
@@ -82,119 +82,122 @@ const injectStyles = () => {
     .ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; display: flex; justify-content: space-between; padding: 25px; box-sizing: border-box; z-index: 10; }
     
     .left-container { display: flex; flex-direction: column; align-items: flex-start; pointer-events: none; height: 100%; z-index: 20; }
-    .menu-toggle-btn-left { width: 42px; height: 42px; background: rgba(3, 11, 24, 0.85); border: 1px solid var(--cyan); color: var(--cyan); font-size: 22px; cursor: pointer; border-radius: 4px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); margin-bottom: 15px; flex-shrink: 0; box-shadow: 0 0 12px rgba(0,234,255,0.4), inset 0 0 8px rgba(0,234,255,0.2); text-shadow: 0 0 8px var(--cyan); }
-    .menu-toggle-btn-left:hover { background: var(--cyan); color: #000; box-shadow: 0 0 25px rgba(0,234,255,0.8), 0 0 45px rgba(0,234,255,0.5); transform: scale(1.05); text-shadow: none; }
+    .menu-toggle-btn-left { width: 42px; height: 42px; background: rgba(3, 11, 24, 0.85); border: 2px solid var(--cyan); color: var(--cyan); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); margin-bottom: 15px; flex-shrink: 0; box-shadow: 0 0 15px rgba(0,234,255,0.6), inset 0 0 10px rgba(0,234,255,0.3); text-shadow: 0 0 8px var(--cyan); }
+    .menu-toggle-btn-left:hover { background: var(--cyan); color: #000; box-shadow: 0 0 30px rgba(0,234,255,1), 0 0 60px rgba(0,234,255,0.5); transform: scale(1.05); text-shadow: none; }
     
     .left-panel { width: 380px; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.3s ease-out; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
     .left-panel::-webkit-scrollbar { display: none; }
     @keyframes slideInLeft { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
 
-    .panel-box { border: 1px solid var(--dark-cyan); border-radius: 4px; background: rgba(3, 11, 24, 0.75); padding: 15px 20px; box-shadow: 0 0 15px rgba(0, 234, 255, 0.05) inset; backdrop-filter: blur(8px); position: relative; }
-    .panel-box::before { content: ''; position: absolute; top: -1px; left: -1px; width: 20px; height: 20px; border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
-    .panel-box::after { content: ''; position: absolute; bottom: -1px; right: -1px; width: 20px; height: 20px; border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+    .panel-box { border: 1px solid var(--cyan); border-radius: 8px; background: rgba(3, 11, 24, 0.85); padding: 15px 20px; box-shadow: 0 0 20px rgba(0, 234, 255, 0.2), inset 0 0 10px rgba(0, 234, 255, 0.1); backdrop-filter: blur(8px); position: relative; }
     
     .main-title p { margin: 0; color: var(--cyan); font-size: 12px; letter-spacing: 3px; text-transform: uppercase; }
-    .main-title h1 { margin: 5px 0; font-family: 'Orbitron', sans-serif; font-size: 26px; font-weight: 900; color: #fff; text-shadow: 0 0 10px rgba(0,234,255,0.6); letter-spacing: 1px; }
+    .main-title h1 { margin: 5px 0; font-family: 'Orbitron', sans-serif; font-size: 26px; font-weight: 900; color: #fff; text-shadow: 0 0 15px rgba(0,234,255,0.8); letter-spacing: 1px; }
     .main-title span { font-size: 11px; color: #8892b0; letter-spacing: 1px; }
     
-    .clock-panel { display: flex; gap: 15px; justify-content: space-between; background: rgba(0, 0, 0, 0.6); border: 1px solid var(--dark-cyan); border-radius: 4px; padding: 12px 15px; box-shadow: 0 0 10px rgba(0, 234, 255, 0.1) inset; }
+    .clock-panel { display: flex; gap: 15px; justify-content: space-between; background: rgba(0, 0, 0, 0.6); border: 1px solid var(--cyan); border-radius: 8px; padding: 12px 15px; box-shadow: 0 0 15px rgba(0, 234, 255, 0.2) inset; }
     .clock-item { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 33%; }
-    .clock-item span { font-size: 10px; color: var(--cyan); font-weight: 700; letter-spacing: 2px; margin-bottom: 2px; }
-    .clock-item strong { font-family: 'Orbitron', sans-serif; font-size: 16px; color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; text-shadow: 0 0 8px rgba(255, 179, 71, 0.6); }
+    .clock-item span { font-size: 10px; color: var(--cyan); font-weight: 700; letter-spacing: 2px; margin-bottom: 2px; text-shadow: 0 0 5px var(--cyan); }
+    .clock-item strong { font-family: 'Orbitron', sans-serif; font-size: 16px; color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgba(255, 179, 71, 0.8); }
 
-    .target-header { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px dashed var(--dark-cyan); }
-    .target-header img { width: 40px; border-radius: 4px; border: 1px solid var(--cyan); }
-    .target-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: 24px; font-weight: 900; color: #fff; letter-spacing: 2px; }
+    .target-header { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px dashed var(--cyan); }
+    .target-header img { width: 40px; border-radius: 4px; border: 1px solid var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+    .target-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: 24px; font-weight: 900; color: #fff; letter-spacing: 2px; text-shadow: 0 0 10px rgba(0,234,255,0.5); }
     
-    .status-banner { text-align: center; font-family: 'Orbitron', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 2px; padding: 10px; margin-bottom: 15px; border-radius: 2px; transition: all 0.3s; }
-    .status-banner.standby { background: rgba(255, 51, 51, 0.1); border: 1px solid var(--red); color: var(--red); }
-    .status-banner.active { background: rgba(0, 234, 255, 0.15); border: 1px solid var(--cyan); color: var(--cyan); box-shadow: 0 0 15px rgba(0, 234, 255, 0.4); }
+    .status-banner { text-align: center; font-family: 'Orbitron', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 2px; padding: 10px; margin-bottom: 15px; border-radius: 4px; transition: all 0.3s; }
+    .status-banner.standby { background: rgba(255, 51, 51, 0.1); border: 1px solid var(--red); color: var(--red); box-shadow: 0 0 15px rgba(255, 51, 51, 0.4), inset 0 0 10px rgba(255, 51, 51, 0.2); text-shadow: 0 0 8px var(--red); }
+    .status-banner.active { background: rgba(0, 234, 255, 0.15); border: 1px solid var(--cyan); color: var(--cyan); box-shadow: 0 0 20px rgba(0, 234, 255, 0.6), inset 0 0 10px rgba(0, 234, 255, 0.3); text-shadow: 0 0 8px var(--cyan); }
 
     .telemetry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
-    .t-box { background: rgba(0, 0, 0, 0.4); border-left: 3px solid var(--dark-cyan); padding: 8px 12px; display: flex; flex-direction: column; }
-    .t-box.highlight { border-left-color: var(--cyan); background: rgba(0, 234, 255, 0.05); }
+    .t-box { background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(0, 234, 255, 0.3); border-radius: 4px; padding: 8px 12px; display: flex; flex-direction: column; }
+    .t-box.highlight { border-color: var(--cyan); background: rgba(0, 234, 255, 0.1); box-shadow: inset 0 0 10px rgba(0, 234, 255, 0.2); }
     .t-box span { font-size: 10px; color: #8892b0; text-transform: uppercase; letter-spacing: 1px; }
-    .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 15px; color: #fff; margin-top: 2px; }
-    .t-box strong.text-cyan { color: var(--cyan); }
-    .t-box strong.text-gold { color: var(--gold); }
+    /* ฟันธง 1: ข้อมูล Telemetry และ Info สีขาวล้วนเรืองแสง อ่านง่าย สบายตา */
+    .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 15px; color: #ffffff; margin-top: 2px; text-shadow: 0 0 8px rgba(255,255,255,0.6); }
 
-    .info-list { list-style: none; padding: 10px 0 0 0; margin: 15px 0 0 0; border-top: 1px dashed var(--dark-cyan); font-size: 13px; line-height: 2.2; color: #ddd; }
+    .info-list { list-style: none; padding: 10px 0 0 0; margin: 15px 0 0 0; border-top: 1px dashed var(--cyan); font-size: 13px; line-height: 2.2; color: #ddd; }
     .info-list li { display: flex; justify-content: space-between; }
     .info-list span { color: #8892b0; }
-    .info-list strong { color: var(--gold); font-weight: 600; }
+    .info-list strong { color: #ffffff; font-weight: 600; text-shadow: 0 0 5px rgba(255,255,255,0.5); }
 
+    /* ขวามือ */
     .right-container { display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; height: 100%; z-index: 20; }
-    
-    .menu-toggle-btn { width: 42px; height: 42px; background: rgba(3, 11, 24, 0.85); border: 1px solid var(--gold); color: var(--gold); font-size: 22px; cursor: pointer; border-radius: 4px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); margin-bottom: 15px; flex-shrink: 0; box-shadow: 0 0 12px rgba(255,179,71,0.4), inset 0 0 8px rgba(255,179,71,0.2); text-shadow: 0 0 8px var(--gold); }
-    .menu-toggle-btn:hover { background: var(--gold); color: #000; box-shadow: 0 0 25px rgba(255,179,71,0.8), 0 0 45px rgba(255,179,71,0.5); transform: scale(1.05); text-shadow: none; }
+    .menu-toggle-btn { width: 42px; height: 42px; background: rgba(3, 11, 24, 0.85); border: 2px solid var(--gold); color: var(--gold); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); margin-bottom: 15px; flex-shrink: 0; box-shadow: 0 0 15px rgba(255,179,71,0.6), inset 0 0 10px rgba(255,179,71,0.3); text-shadow: 0 0 8px var(--gold); }
+    .menu-toggle-btn:hover { background: var(--gold); color: #000; box-shadow: 0 0 30px rgba(255,179,71,1), 0 0 60px rgba(255,179,71,0.5); transform: scale(1.05); text-shadow: none; }
     
     .right-panel { width: 280px; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideIn 0.3s ease-out; }
     @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 
-    .control-group { background: rgba(3, 11, 24, 0.4); border: 1px solid transparent; border-radius: 8px; padding: 15px; margin-bottom: 15px; position: relative; transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
-    .control-group p { margin: 0 0 12px 0; font-size: 13px; font-weight: 900; letter-spacing: 3px; border-bottom: 1px solid; padding-bottom: 5px; position: relative; }
-    .control-group p::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 40px; height: 2px; }
-
-    .control-group:nth-child(1) { border-color: rgba(0, 234, 255, 0.2); }
-    .control-group:nth-child(1):hover { border-color: rgba(0, 234, 255, 0.8); background: rgba(0, 234, 255, 0.05); box-shadow: 0 0 35px rgba(0, 234, 255, 0.35), inset 0 0 15px rgba(0, 234, 255, 0.1); }
-    .control-group:nth-child(1) p { color: var(--cyan); border-bottom-color: rgba(0, 234, 255, 0.3); text-shadow: 0 0 10px rgba(0, 234, 255, 0.8); }
-    .control-group:nth-child(1) p::after { background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
-
-    .control-group:nth-child(2) { border-color: rgba(0, 255, 102, 0.2); }
-    .control-group:nth-child(2):hover { border-color: rgba(0, 255, 102, 0.8); background: rgba(0, 255, 102, 0.05); box-shadow: 0 0 35px rgba(0, 255, 102, 0.35), inset 0 0 15px rgba(0, 255, 102, 0.1); }
-    .control-group:nth-child(2) p { color: #00ff66; border-bottom-color: rgba(0, 255, 102, 0.3); text-shadow: 0 0 10px rgba(0, 255, 102, 0.8); }
-    .control-group:nth-child(2) p::after { background: #00ff66; box-shadow: 0 0 12px #00ff66; }
+    .control-group { background: rgba(3, 11, 24, 0.85); border: 1px solid var(--cyan); border-radius: 8px; padding: 15px; margin-bottom: 15px; position: relative; transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 0 20px rgba(0, 234, 255, 0.15), inset 0 0 10px rgba(0, 234, 255, 0.05); backdrop-filter: blur(8px); }
+    .control-group p { margin: 0 0 12px 0; font-size: 13px; font-weight: 900; letter-spacing: 3px; border-bottom: 1px dashed var(--cyan); padding-bottom: 5px; color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
     
-    .control-group:nth-child(2) .btn { border-color: rgba(0, 255, 102, 0.4); color: #00ff66; background: rgba(0, 255, 102, 0.05); text-shadow: 0 0 6px rgba(0, 255, 102, 0.6); box-shadow: inset 0 0 8px rgba(0, 255, 102, 0.15); }
-    .control-group:nth-child(2) .btn:hover { background: rgba(255, 255, 255, 0.15) !important; color: #fff !important; border-color: #fff !important; text-shadow: 0 0 10px #fff !important; box-shadow: 0 0 20px rgba(255, 255, 255, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.3) !important; transform: translateY(-1px); }
-    .control-group:nth-child(2) .btn.active { background: #00ff66 !important; color: #000 !important; border-color: #00ff66 !important; text-shadow: none !important; box-shadow: 0 0 20px rgba(0, 255, 102, 0.8), 0 0 40px rgba(0, 255, 102, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.6) !important; transform: translateY(-1px); }
-
-    .control-group:nth-child(3) { display: flex; flex-direction: column; flex: 1; min-height: 0; margin-bottom: 0; border-color: rgba(255, 179, 71, 0.2); }
-    .control-group:nth-child(3):hover { border-color: rgba(255, 179, 71, 0.8); background: rgba(255, 179, 71, 0.05); box-shadow: 0 0 35px rgba(255, 179, 71, 0.35), inset 0 0 15px rgba(255, 179, 71, 0.1); }
-    .control-group:nth-child(3) p { color: var(--gold); border-bottom-color: rgba(255, 179, 71, 0.3); text-shadow: 0 0 10px rgba(255, 179, 71, 0.8); }
-    .control-group:nth-child(3) p::after { background: var(--gold); box-shadow: 0 0 12px var(--gold); }
-
-    .btn { display: block; width: 100%; background: rgba(0, 234, 255, 0.05); border: 1px solid var(--dark-cyan); color: var(--cyan); padding: 10px; margin-bottom: 8px; font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; text-align: center; border-radius: 2px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); letter-spacing: 2px; text-transform: uppercase; text-shadow: 0 0 6px rgba(0, 234, 255, 0.6); box-shadow: inset 0 0 8px rgba(0, 234, 255, 0.15); position: relative; overflow: hidden; }
-    .btn:hover { background: rgba(255, 255, 255, 0.15) !important; color: #fff !important; border-color: #fff !important; text-shadow: 0 0 10px #fff !important; box-shadow: 0 0 20px rgba(255, 255, 255, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.3) !important; transform: translateY(-1px); }
-    .btn.active { background: var(--cyan) !important; color: #000 !important; border-color: var(--cyan) !important; text-shadow: none !important; box-shadow: 0 0 20px rgba(0, 234, 255, 0.8), 0 0 40px rgba(0, 234, 255, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.6) !important; transform: translateY(-1px); }
+    .btn { display: block; width: 100%; background: rgba(0, 0, 0, 0.5); border: 1px solid var(--cyan); color: var(--cyan); padding: 10px; margin-bottom: 8px; font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; text-align: center; border-radius: 4px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); letter-spacing: 1px; text-transform: uppercase; text-shadow: 0 0 8px var(--cyan); box-shadow: 0 0 10px rgba(0, 234, 255, 0.2), inset 0 0 8px rgba(0, 234, 255, 0.1); position: relative; overflow: hidden; }
+    .btn:hover { background: rgba(0, 234, 255, 0.15) !important; color: #fff !important; border-color: #fff !important; text-shadow: 0 0 10px #fff !important; box-shadow: 0 0 25px rgba(0, 234, 255, 0.8), inset 0 0 15px rgba(0, 234, 255, 0.4) !important; transform: translateY(-1px); }
+    .btn.active { background: var(--cyan) !important; color: #000 !important; border-color: var(--cyan) !important; text-shadow: none !important; box-shadow: 0 0 25px rgba(0, 234, 255, 0.9), 0 0 40px rgba(0, 234, 255, 0.5), inset 0 0 15px rgba(255, 255, 255, 0.6) !important; transform: translateY(-1px); }
     .btn:disabled { opacity: 0.3; pointer-events: none; border-color: #333; color: #555; text-shadow: none; box-shadow: none; }
     .speed-row { display: flex; gap: 5px; margin-bottom: 8px; }
 
+    /* ฟันธง 2: กรอบ SYSTEM CONTROL สีแดงเรืองแสง / เมาส์ชี้ปุ่มเป็นสีส้มทอง */
+    .control-group:nth-child(1) { border-color: rgba(255, 51, 51, 0.3); box-shadow: 0 0 20px rgba(255, 51, 51, 0.1), inset 0 0 10px rgba(255, 51, 51, 0.05); }
+    .control-group:nth-child(1) p { color: var(--red); border-bottom-color: rgba(255, 51, 51, 0.4); text-shadow: 0 0 8px var(--red); }
+    
+    .control-group:nth-child(1) .btn { border-color: var(--red); color: var(--red); text-shadow: 0 0 8px var(--red); box-shadow: 0 0 10px rgba(255, 51, 51, 0.2), inset 0 0 8px rgba(255, 51, 51, 0.1); }
+    .control-group:nth-child(1) .btn:hover { background: rgba(255, 179, 71, 0.2) !important; color: var(--gold) !important; border-color: var(--gold) !important; text-shadow: 0 0 10px var(--gold) !important; box-shadow: 0 0 25px rgba(255, 179, 71, 0.8), inset 0 0 15px rgba(255, 179, 71, 0.4) !important; }
+    .control-group:nth-child(1) .btn.active { background: var(--gold) !important; color: #000 !important; border-color: var(--gold) !important; text-shadow: none !important; box-shadow: 0 0 25px rgba(255, 179, 71, 0.9), 0 0 40px rgba(255, 179, 71, 0.5), inset 0 0 15px rgba(255, 255, 255, 0.6) !important; }
+
+    /* ฟันธง: สีเขียวและสีทองของปุ่ม กลับมาเหมือนเดิม 100% */
+    .control-group:nth-child(2) { border-color: rgba(0, 255, 102, 0.2); }
+    .control-group:nth-child(2) p { color: var(--green); border-bottom-color: rgba(0, 255, 102, 0.3); text-shadow: 0 0 8px var(--green); }
+    .control-group:nth-child(2) .speed-row .btn { border-color: rgba(0, 255, 102, 0.4); color: var(--green); background: rgba(0, 255, 102, 0.05); text-shadow: 0 0 6px rgba(0, 255, 102, 0.6); box-shadow: inset 0 0 8px rgba(0, 255, 102, 0.15); }
+    .control-group:nth-child(2) .speed-row .btn:hover { background: rgba(255, 255, 255, 0.15) !important; color: #fff !important; border-color: #fff !important; text-shadow: 0 0 10px #fff !important; box-shadow: 0 0 20px rgba(255, 255, 255, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.3) !important; transform: translateY(-1px); }
+    .control-group:nth-child(2) .speed-row .btn.active { background: var(--green) !important; color: #000 !important; border-color: var(--green) !important; text-shadow: none !important; box-shadow: 0 0 20px rgba(0, 255, 102, 0.8), 0 0 40px rgba(0, 255, 102, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.6) !important; transform: translateY(-1px); }
+
+    .control-group:nth-child(3) { border-color: rgba(255, 179, 71, 0.2); text-align: center; padding: 20px; }
+    .control-group:nth-child(3) p { color: var(--gold); border-bottom-color: rgba(255, 179, 71, 0.3); text-shadow: 0 0 8px var(--gold); }
+    .database-btn { border-color: var(--gold) !important; color: var(--gold) !important; font-size: 15px !important; padding: 15px !important; text-shadow: 0 0 8px var(--gold); }
+    .database-btn:hover { background: rgba(255, 179, 71, 0.15) !important; box-shadow: 0 0 20px rgba(255, 179, 71, 0.5), inset 0 0 10px rgba(255, 179, 71, 0.2) !important; color: #fff !important; border-color: #fff !important; }
+
     /* ==================================================
-       ฟันธง: CSS สำหรับ POPUP MODAL แบบมินิมอลสุดล้ำ!
+       ฟันธง: POPUP MODAL ให้เหมือนรูปเป๊ะ 100%
        ================================================== */
-    .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px); z-index: 1000; display: flex; align-items: center; justify-content: center; animation: fadeIn 0.3s ease; }
-    .modal-box { background: rgba(3, 11, 24, 0.95); border: 2px solid var(--cyan); border-radius: 12px; width: 90%; max-width: 800px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 0 40px rgba(0, 234, 255, 0.3), inset 0 0 20px rgba(0, 234, 255, 0.1); position: relative; overflow: hidden; }
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(10px); z-index: 1000; display: flex; align-items: center; justify-content: center; animation: fadeIn 0.3s ease; }
     
-    .modal-header { padding: 20px 25px; border-bottom: 1px solid rgba(0, 234, 255, 0.3); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(180deg, rgba(0, 234, 255, 0.1) 0%, transparent 100%); }
-    .modal-header h2 { margin: 0; font-family: 'Rajdhani', sans-serif; font-size: 22px; color: #fff; letter-spacing: 2px; display: flex; align-items: center; gap: 10px; text-shadow: 0 0 10px var(--cyan); }
+    .modal-box { background: #030a14; border: 2px solid var(--cyan); border-radius: 12px; width: 95%; max-width: 900px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 0 40px rgba(0, 234, 255, 0.5), inset 0 0 20px rgba(0, 234, 255, 0.2); position: relative; overflow: hidden; }
     
-    /* ปุ่มปิด Modal สีแดงเด่นชัด */
-    .modal-close-btn { background: transparent; border: 1px solid var(--red); color: var(--red); width: 36px; height: 36px; border-radius: 50%; font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; box-shadow: 0 0 10px rgba(255, 51, 51, 0.2), inset 0 0 5px rgba(255, 51, 51, 0.1); }
-    .modal-close-btn:hover { background: var(--red); color: #fff; box-shadow: 0 0 20px rgba(255, 51, 51, 0.8); transform: scale(1.1); }
+    .modal-header { padding: 20px 25px; border-bottom: 1px solid rgba(0, 234, 255, 0.4); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(180deg, rgba(0, 234, 255, 0.1) 0%, transparent 100%); }
+    .modal-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: 20px; color: #fff; letter-spacing: 2px; display: flex; align-items: center; gap: 10px; text-shadow: 0 0 10px var(--cyan); }
+    
+    .modal-close-btn { background: rgba(255, 51, 51, 0.05); border: 2px solid var(--red); color: var(--red); width: 40px; height: 40px; border-radius: 50%; font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; box-shadow: 0 0 15px rgba(255, 51, 51, 0.6), inset 0 0 10px rgba(255, 51, 51, 0.3); text-shadow: 0 0 5px var(--red); }
+    .modal-close-btn:hover { background: var(--red); color: #fff; box-shadow: 0 0 30px rgba(255, 51, 51, 1), 0 0 50px rgba(255, 51, 51, 0.6); transform: scale(1.1); text-shadow: none; }
 
     .modal-content { padding: 25px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; display: flex; flex-direction: column; gap: 20px; }
     .modal-content::-webkit-scrollbar { display: none; }
     
-    .modal-group-title { color: var(--cyan); font-size: 14px; font-weight: 700; letter-spacing: 2px; border-bottom: 1px dashed rgba(0, 234, 255, 0.3); padding-bottom: 8px; margin-bottom: 12px; text-transform: uppercase; }
-    .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+    .modal-group-title { color: var(--cyan); font-size: 13px; font-weight: 800; letter-spacing: 2px; border-bottom: 1px dashed rgba(0, 234, 255, 0.4); padding-bottom: 8px; margin-bottom: 12px; text-transform: uppercase; font-family: 'Orbitron', sans-serif; text-shadow: 0 0 8px rgba(0, 234, 255, 0.5); }
+    .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 15px; }
     
-    .modal-sat-btn { background: rgba(0, 234, 255, 0.05); border: 1px solid var(--dark-cyan); color: #a0aec0; padding: 12px 15px; border-radius: 6px; font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; text-align: left; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; }
-    .modal-sat-btn:hover { border-color: var(--cyan); color: #fff; background: rgba(0, 234, 255, 0.1); box-shadow: inset 5px 0 0 var(--cyan), 0 0 15px rgba(0, 234, 255, 0.3); padding-left: 20px; }
-    .modal-sat-btn.active { background: var(--cyan); color: #000; border-color: var(--cyan); box-shadow: 0 0 20px rgba(0, 234, 255, 0.6), inset 0 0 10px rgba(255,255,255,0.5); font-weight: 800; }
+    .modal-sat-btn { background: rgba(0, 255, 102, 0.05); border: 1px solid var(--green); color: #fff; padding: 14px 18px; border-radius: 6px; font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.3s; text-align: left; display: flex; align-items: center; justify-content: space-between; letter-spacing: 1px; }
+    .modal-sat-btn:hover { background: rgba(0, 255, 102, 0.15); box-shadow: 0 0 15px rgba(0, 255, 102, 0.3); }
     
+    .modal-sat-btn.secondary { background: var(--green) !important; color: #000 !important; border-color: var(--green) !important; box-shadow: 0 0 20px rgba(0, 255, 102, 0.6) !important; font-weight: 800; }
+    .modal-sat-btn.primary { background: rgba(255, 51, 51, 0.2) !important; color: #fff !important; border: 2px solid var(--red) !important; box-shadow: 0 0 25px rgba(255, 51, 51, 0.8), inset 0 0 10px rgba(255, 51, 51, 0.4) !important; text-shadow: 0 0 8px #fff !important; font-weight: 900; z-index: 10; }
+
+    /* ==================================================
+       ฟันธง: 2D MAP - เปลียนไปใช้ภาพแบบสะอาดตา 
+       ================================================== */
     .flat-map-wrap { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 5; padding: 25px 280px 25px 420px; box-sizing: border-box; transition: padding 0.3s ease-in-out; }
     .flat-map-wrap.panel-closed { padding-right: 25px; }
     .flat-map-wrap.left-panel-closed { padding-left: 25px; }
-    .flat-map-container { position: relative; width: 100%; aspect-ratio: 2 / 1; max-height: 100vh; max-width: 200vh; background: url('https://unpkg.com/three-globe/example/img/earth-dark.jpg') center/cover; box-shadow: 0 0 50px rgba(0, 234, 255, 0.1); border: 1px solid var(--dark-cyan); border-radius: 4px; overflow: hidden; }
-    .map-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-    .map-marker { position: absolute; transform: translate(-50%, -50%); cursor: pointer; pointer-events: auto; display: flex; flex-direction: column; align-items: center; transition: transform 0.2s; }
+    .flat-map-container { position: relative; width: 100%; aspect-ratio: 2 / 1; max-height: 100vh; max-width: 200vh; background-color: #000; box-shadow: 0 0 50px rgba(0, 234, 255, 0.2); border: 2px solid var(--cyan); border-radius: 8px; overflow: hidden; }
+    .map-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 2; }
+    
+    .map-marker { position: absolute; transform: translate(-50%, -50%); cursor: pointer; pointer-events: auto; display: flex; flex-direction: column; align-items: center; transition: transform 0.2s; z-index: 3; }
     .map-marker:hover { transform: translate(-50%, -50%) scale(1.5); z-index: 20 !important; }
     .map-marker span.dot { width: 5px; height: 5px; background: currentColor; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
     .map-marker span.target-dot { width: 10px; height: 10px; background: currentColor; border-radius: 2px; box-shadow: 0 0 15px currentColor; animation: pulse 2s infinite; }
     .map-marker span.label { margin-top: 4px; font-size: 10px; font-weight: 700; white-space: nowrap; font-family: 'Rajdhani', sans-serif; text-shadow: 0 0 4px #000, 0 0 6px #000; }
 
-    .map-marker .map-tooltip { display: none; position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%); background: rgba(0, 15, 30, 0.9); border: 1px solid var(--cyan); border-radius: 4px; padding: 6px 10px; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 13px; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 10px rgba(0,0,0,0.6); z-index: 30; }
+    .map-marker .map-tooltip { display: none; position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%); background: rgba(0, 15, 30, 0.95); border: 1px solid var(--cyan); border-radius: 4px; padding: 8px 12px; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 13px; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 15px rgba(0,234,255,0.4); z-index: 30; }
     .map-marker:hover .map-tooltip { display: block; }
     .map-tooltip img { vertical-align: middle; border-radius: 2px; margin-right: 6px; width: 18px; }
     .map-tooltip span.norad { display: block; color: var(--cyan); font-size: 11px; margin-top: 3px; }
@@ -336,8 +339,18 @@ export default function App() {
   const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true); 
   const [cameraMode, setCameraMode] = useState('FREE LOOK');
 
-  // ฟันธง: เพิ่ม State สำหรับควบคุมการเปิด/ปิดหน้าต่าง Popup (Modal) ดาวเทียม
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // คำนวณตำแหน่งดวงอาทิตย์
+  const currentSunPos = useMemo(() => {
+    const d = new Date(simulatedTimeMs);
+    const doy = getUtcDayOfYear(d);
+    const dec = -23.44 * Math.cos((2 * Math.PI / 365.24) * (doy + 10));
+    const hrs = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+    let lon = 180 - (hrs * 15);
+    lon = ((lon + 180) % 360 + 360) % 360 - 180;
+    return { lat: dec, lng: lon };
+  }, [Math.floor(simulatedTimeMs / 60000)]);
 
   const satrecs = useMemo(() => {
     const recs = {};
@@ -408,44 +421,24 @@ export default function App() {
     if (camLight) camLight.intensity = realtimeSun ? 0 : 1;
 
     const ambient = scene.children.find(c => c.type === 'AmbientLight');
-    if (ambient) ambient.intensity = realtimeSun ? 0.01 : 0.6; 
+    if (ambient) ambient.intensity = realtimeSun ? 0.02 : 0.6; 
 
     let sunLight = scene.children.find(c => c.name === 'SunLight');
-    let sunMesh = scene.children.find(c => c.name === 'SunMesh'); 
-
+    
     if (!sunLight) {
-      sunLight = new THREE.DirectionalLight(0xffffff, 4.5); 
+      sunLight = new THREE.DirectionalLight(0xffffff, 5.0); 
       sunLight.name = 'SunLight';
       scene.add(sunLight);
     }
 
-    if (!sunMesh) {
-      const sunGeo = new THREE.SphereGeometry(15, 32, 32); 
-      const sunMat = new THREE.MeshBasicMaterial({ color: 0xffffee }); 
-      sunMesh = new THREE.Mesh(sunGeo, sunMat);
-      sunMesh.name = 'SunMesh';
-      scene.add(sunMesh);
-    }
-
     if (realtimeSun) {
-      const date = new Date(simulatedTimeMs);
-      const dayOfYear = getUtcDayOfYear(date);
-      const declination = -23.44 * Math.cos((2 * Math.PI / 365.24) * (dayOfYear + 10)); 
-      const hours = date.getUTCHours() + date.getUTCMinutes() / 60;
-      const longitude = 180 - (hours * 15); 
-      
-      const sunPos = globe.getCoords(declination, longitude, 100); 
+      const sunPos = globe.getCoords(currentSunPos.lat, currentSunPos.lng, 100); 
       sunLight.position.set(sunPos.x, sunPos.y, sunPos.z);
       sunLight.visible = true;
-
-      const sunVisualPos = globe.getCoords(declination, longitude, 15); 
-      sunMesh.position.set(sunVisualPos.x, sunVisualPos.y, sunVisualPos.z);
-      sunMesh.visible = true;
     } else {
       sunLight.visible = false;
-      if (sunMesh) sunMesh.visible = false;
     }
-  }, [realtimeSun, Math.floor(simulatedTimeMs / 60000)]);
+  }, [realtimeSun, currentSunPos]);
 
   const currentDate = new Date(simulatedTimeMs);
   const targetSatrec = selectedCatnr ? satrecs[selectedCatnr] : null;
@@ -672,9 +665,10 @@ export default function App() {
           <div 
             className="flat-map-container"
             style={{
+              /* ฟันธง: 2D MAP สลับกลางวันกลางคืนด้วยภาพคมชัดจาก NASA 100% ตรงสเปค ไม่เละแน่นอน */
               backgroundImage: realtimeSun 
-                ? "url('https://unpkg.com/three-globe/example/img/earth-dark.jpg')" 
-                : "url('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')",
+                ? "url('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')" 
+                : "url('//unpkg.com/three-globe/example/img/earth-night.jpg')",
               backgroundSize: 'cover',
               backgroundPosition: 'center'
             }}
@@ -741,12 +735,17 @@ export default function App() {
             </svg>
 
             <div className="map-marker" style={{ left: `${(GROUND_STATION.lng + 180) / 360 * 100}%`, top: `${(90 - GROUND_STATION.lat) / 180 * 100}%`, color: '#00eaff', zIndex: 5 }}>
-              <span className="target-dot" style={{ background: 'none', border: '2px solid #00eaff', borderRadius: '50%' }}></span>
-              <span className="label">GISTDA</span>
+              {/* ฟันธง: เปลี่ยนเป็นไอคอนจานดาวเทียม GS พร้อมปรับขนาดและแสงเฟลอร์ให้เด่นขึ้น */}
+              <span style={{ fontSize: '20px', textShadow: '0 0 15px #00eaff', marginBottom: '2px' }}>📡</span>
+              <span className="label" style={{ fontSize: '13px', fontWeight: '900', textShadow: '0 0 8px #00eaff', color: '#00eaff' }}>GISTDA</span>
             </div>
 
             {allSatObjects.map(sat => {
               const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === sat.catnr);
+              
+              // ฟันธง: เช็คสถานะดวงรอง (ดวงที่ถูกเลือก แต่ไม่ใช่ดวงหลัก)
+              const isSecondary = selectedCatnrs.includes(sat.catnr) && !sat.isTarget;
+
               return (
               <div
                 key={sat.catnr}
@@ -754,8 +753,9 @@ export default function App() {
                 style={{
                   left: `${(sat.lng + 180) / 360 * 100}%`,
                   top: `${(90 - sat.lat) / 180 * 100}%`,
-                  color: sat.isTarget ? '#ffb347' : 'rgba(0, 234, 255, 0.6)',
-                  zIndex: sat.isTarget ? 10 : 2
+                  // ฟันธง: แยกสี 3 ระดับ แดง(หลัก) / ส้มทอง(รอง) / เขียว(ทั่วไป)
+                  color: sat.isTarget ? '#ff3333' : isSecondary ? '#ffb347' : '#00ff66',
+                  zIndex: sat.isTarget ? 10 : isSecondary ? 8 : 2
                 }}
                 onClick={() => {
                   setSelectedCatnr(sat.catnr);
@@ -765,12 +765,18 @@ export default function App() {
                   setIsFlatMap(false); 
                 }}
                 >
-                <span className={sat.isTarget ? 'target-dot' : 'dot'}></span>
+                <span 
+                  className={sat.isTarget ? 'target-dot' : 'dot'} 
+                  style={{ 
+                    boxShadow: sat.isTarget ? '0 0 15px #ff3333' : isSecondary ? '0 0 10px #ffb347' : '0 0 8px #00ff66' 
+                  }}>
+                </span>
                 <span className="label" style={{ 
-                  color: sat.isTarget ? '#fff' : '#00eaff',
-                  fontSize: sat.isTarget ? '10px' : '8px', 
-                  opacity: sat.isTarget ? 1 : 0.9,
-                  fontWeight: sat.isTarget ? '700' : '600'
+                  color: sat.isTarget ? '#ffffff' : isSecondary ? '#ffb347' : '#00ff66', 
+                  fontSize: sat.isTarget ? '12px' : isSecondary ? '11px' : '9.5px', // ปรับขนาดดวงรองให้ใหญ่กว่าดวงปกตินิดนึง
+                  opacity: 1, 
+                  fontWeight: '800',
+                  textShadow: sat.isTarget ? '0 0 8px #ff3333, 0 0 15px #ff3333' : isSecondary ? '0 0 6px #ffb347, 0 0 12px #000' : '0 0 6px #00ff66, 0 0 12px #000' 
                 }}>
                   {sat.name}
                 </span>
@@ -810,15 +816,18 @@ export default function App() {
               <section className="clock-panel">
                 <div className="clock-item">
                   <span>THA LOCAL</span>
-                  <strong>{formatTime(thaiTime)}</strong>
+                  {/* ฟันธง 3: เวลาเป็นสีแดง */}
+                  <strong style={{ color: 'var(--red)', textShadow: '0 0 10px rgba(255, 51, 51, 0.8)' }}>{formatTime(thaiTime)}</strong>
                 </div>
                 <div className="clock-item">
                   <span>DOY</span>
+                  {/* ฟันธง 3: DOY เป็นสีส้มคงไว้ */}
                   <strong>{pad3(getUtcDayOfYear(currentDate))}</strong>
                 </div>
                 <div className="clock-item">
                   <span>UTC</span>
-                  <strong>{formatTime(currentDate)}</strong>
+                  {/* ฟันธง 3: เวลาเป็นสีแดง */}
+                  <strong style={{ color: 'var(--red)', textShadow: '0 0 10px rgba(255, 51, 51, 0.8)' }}>{formatTime(currentDate)}</strong>
                 </div>
               </section>
 
@@ -832,6 +841,7 @@ export default function App() {
                   {linkActive ? 'SIGNAL ACQUIRED' : 'WAITING FOR AOS'}
                 </div>
 
+                {/* ฟันธง 1: ลบคลาสสีที่ปนกันออกให้หมด CSS จะจัดการให้เป็นสีขาวล้วนเรืองแสงเอง */}
                 <div className="telemetry-grid">
                   <div className="t-box">
                     <span>LATITUDE</span>
@@ -843,7 +853,7 @@ export default function App() {
                   </div>
                   <div className={`t-box ${linkActive ? 'highlight' : ''}`}>
                     <span>ELEVATION</span>
-                    <strong className={linkActive ? 'text-cyan' : ''}>{targetData && !isNaN(targetData.elevationDeg) ? targetData.elevationDeg.toFixed(2) : '---'}°</strong>
+                    <strong>{targetData && !isNaN(targetData.elevationDeg) ? targetData.elevationDeg.toFixed(2) : '---'}°</strong>
                   </div>
                   <div className="t-box">
                     <span>AZIMUTH</span>
@@ -851,7 +861,7 @@ export default function App() {
                   </div>
                   <div className="t-box">
                     <span>SLANT RANGE</span>
-                    <strong className="text-gold">{targetData && !isNaN(targetData.rangeKm) ? Math.round(targetData.rangeKm).toLocaleString() : '---'} km</strong>
+                    <strong>{targetData && !isNaN(targetData.rangeKm) ? Math.round(targetData.rangeKm).toLocaleString() : '---'} km</strong>
                   </div>
                   <div className="t-box">
                     <span>ALTITUDE</span>
@@ -867,14 +877,15 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* ฟันธง 1: ลบสไตล์สีมั่วๆ ออกให้หมด */}
                 <ul className="info-list">
-                  <li><span>Operator / Agency:</span> <strong style={{color: '#fff'}}>{targetConfig.operator || 'Unknown'}</strong></li>
-                  <li><span>Mission Type:</span> <strong style={{color: '#fff'}}>{targetConfig.mission || 'Various'}</strong></li>
+                  <li><span>Operator / Agency:</span> <strong>{targetConfig.operator || 'Unknown'}</strong></li>
+                  <li><span>Mission Type:</span> <strong>{targetConfig.mission || 'Various'}</strong></li>
                   <li><span>Orbit Class:</span> <strong>LEO (Sun-Synchronous)</strong></li>
                   
                   <li><span>Station Mask:</span> <strong>{PASS_MIN_ELEVATION_DEG.toFixed(1)}°</strong></li>
-                  <li><span>Telemetry (TT&C):</span> <strong style={{color: '#00eaff'}}>{targetConfig.telemetry || 'N/A'}</strong></li>
-                  <li><span>Payload Downlink:</span> <strong style={{color: '#00eaff'}}>{targetConfig.payload || 'N/A'}</strong></li>
+                  <li><span>Telemetry (TT&C):</span> <strong>{targetConfig.telemetry || 'N/A'}</strong></li>
+                  <li><span>Payload Downlink:</span> <strong>{targetConfig.payload || 'N/A'}</strong></li>
                   
                   <li><span>TLE Epoch:</span> <strong>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
                   <li><span>TLE Source:</span> <strong>{tleSource}</strong></li>
@@ -925,7 +936,6 @@ export default function App() {
                   {isUpdatingTle ? 'READING FILE...' : 'UPDATE TLE MANUAL'}
                 </button>
                 
-                {/* ฟันธง: เปลี่ยนข้อความปุ่มให้คงที่ และใช้แสงสว่างบ่งบอกการ Active */}
                 <button 
                   className={`btn ${realtimeSun ? 'active' : ''}`} 
                   onClick={() => setRealtimeSun(!realtimeSun)}
@@ -979,24 +989,16 @@ export default function App() {
               <div className="control-group">
                 <p>SPEED</p>
                 <div className="speed-row">
-                  {[1, 10, 100, 600].map(s => (
-                    <button key={s} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0}} onClick={() => setSpeedMult(s)}>{s}x</button>
+                  {[1, 100, 300, 500].map(s => (
+                    <button key={s} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0}} onClick={() => setSpeedMult(s)}>{s}X</button>
                   ))}
                 </div>
               </div>
 
               <div className="control-group" style={{ padding: '20px', textAlign: 'center' }}>
                 <p>SATELLITE DATABASE</p>
-                {/* ฟันธง: เปลี่ยนกล่องยาวๆ เป็นปุ่มเรียก Popup Modal มินิมอลแทน */}
                 <button 
-                  className="btn" 
-                  style={{ 
-                    borderColor: 'var(--gold)', 
-                    color: 'var(--gold)', 
-                    textShadow: '0 0 8px var(--gold)',
-                    fontSize: '15px',
-                    padding: '15px'
-                  }} 
+                  className="btn database-btn" 
                   onClick={() => setIsModalOpen(true)}
                 >
                   🛰️ OPEN DATABASE
@@ -1007,7 +1009,6 @@ export default function App() {
         </div>
       </div>
       
-      {/* ฟันธง: โครงสร้าง POPUP MODAL เรียบหรู ตามแบบที่คุณส่งมาเป๊ะๆ */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-box">
@@ -1024,16 +1025,21 @@ export default function App() {
                     {SATELLITE_OPTIONS.filter(sat => sat.group === groupName).map(sat => (
                       <button 
                         key={sat.catnr} 
-                        className={`modal-sat-btn ${selectedCatnrs.includes(sat.catnr) ? 'active' : ''}`} 
+                        className={`modal-sat-btn ${sat.catnr === selectedCatnr ? 'primary' : selectedCatnrs.includes(sat.catnr) ? 'secondary' : ''}`} 
                         onClick={() => {
                           let newSelected = [...selectedCatnrs];
+                          
+                          // ฟันธง: แก้ไขการกดยกเลิกดาวเทียมให้ตรงจุด!
+                          // ถ้าคลิกดาวเทียมที่เลือกไว้แล้ว (ซ้ำดวงเดิม) ระบบจะลบมันออกทันที ปิด Footprint ฟ้าทิ้งไปเลย
                           if (newSelected.includes(sat.catnr)) {
                             newSelected = newSelected.filter(c => c !== sat.catnr);
                           } else {
+                            // ถ้ายังไม่เลือก ก็เลือกเข้ามาใหม่
                             newSelected.push(sat.catnr);
                           }
                           setSelectedCatnrs(newSelected);
                           
+                          // ดึงดวงล่าสุดที่เหลืออยู่ในรายการให้ขึ้นแท่นเป็นพระเอก (MAIN)
                           const nextTarget = newSelected.length > 0 ? newSelected[newSelected.length - 1] : null;
                           setSelectedCatnr(nextTarget);
 
@@ -1056,7 +1062,11 @@ export default function App() {
                         }}
                       >
                         {sat.displayName}
-                        {selectedCatnrs.includes(sat.catnr) && <span style={{ color: '#000', fontSize: '12px' }}>●</span>}
+                        {sat.catnr === selectedCatnr ? (
+                          <span style={{ color: '#fff', textShadow: '0 0 8px #fff', fontSize: '14px', letterSpacing: '1px' }}>🎯 MAIN</span>
+                        ) : selectedCatnrs.includes(sat.catnr) ? (
+                          <span style={{ color: '#000', fontSize: '12px' }}>●</span>
+                        ) : null}
                       </button>
                     ))}
                   </div>
