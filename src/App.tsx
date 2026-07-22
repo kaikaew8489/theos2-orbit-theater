@@ -81,7 +81,14 @@ const injectStyles = () => {
     
     .ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; display: flex; justify-content: space-between; padding: 25px; box-sizing: border-box; z-index: 10; }
     
-    .left-panel { width: 380px; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; }
+    .left-container { display: flex; flex-direction: column; align-items: flex-start; pointer-events: none; height: 100%; z-index: 20; }
+    .menu-toggle-btn-left { width: 42px; height: 42px; background: rgba(3, 11, 24, 0.85); border: 1px solid var(--cyan); color: var(--cyan); font-size: 22px; cursor: pointer; border-radius: 4px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); margin-bottom: 15px; flex-shrink: 0; box-shadow: 0 0 12px rgba(0,234,255,0.4), inset 0 0 8px rgba(0,234,255,0.2); text-shadow: 0 0 8px var(--cyan); }
+    .menu-toggle-btn-left:hover { background: var(--cyan); color: #000; box-shadow: 0 0 25px rgba(0,234,255,0.8), 0 0 45px rgba(0,234,255,0.5); transform: scale(1.05); text-shadow: none; }
+    
+    .left-panel { width: 380px; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.3s ease-out; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+    .left-panel::-webkit-scrollbar { display: none; }
+    @keyframes slideInLeft { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+
     .panel-box { border: 1px solid var(--dark-cyan); border-radius: 4px; background: rgba(3, 11, 24, 0.75); padding: 15px 20px; box-shadow: 0 0 15px rgba(0, 234, 255, 0.05) inset; backdrop-filter: blur(8px); position: relative; }
     .panel-box::before { content: ''; position: absolute; top: -1px; left: -1px; width: 20px; height: 20px; border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
     .panel-box::after { content: ''; position: absolute; bottom: -1px; right: -1px; width: 20px; height: 20px; border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
@@ -116,53 +123,72 @@ const injectStyles = () => {
     .info-list span { color: #8892b0; }
     .info-list strong { color: var(--gold); font-weight: 600; }
 
-    /* โครงสร้างเมนูด้านขวา (อัปเกรดเป็น SCI-FI TACTICAL HUD เต็มรูปแบบ) */
     .right-container { display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; height: 100%; z-index: 20; }
     
-    /* ปุ่ม Hamburger โคตร Sci-Fi */
     .menu-toggle-btn { width: 42px; height: 42px; background: rgba(3, 11, 24, 0.85); border: 1px solid var(--gold); color: var(--gold); font-size: 22px; cursor: pointer; border-radius: 4px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); margin-bottom: 15px; flex-shrink: 0; box-shadow: 0 0 12px rgba(255,179,71,0.4), inset 0 0 8px rgba(255,179,71,0.2); text-shadow: 0 0 8px var(--gold); }
     .menu-toggle-btn:hover { background: var(--gold); color: #000; box-shadow: 0 0 25px rgba(255,179,71,0.8), 0 0 45px rgba(255,179,71,0.5); transform: scale(1.05); text-shadow: none; }
     
     .right-panel { width: 280px; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideIn 0.3s ease-out; }
     @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 
-    /* หัวข้อหมวดหมู่ เรืองแสง */
-    .control-group p { margin: 0 0 10px 0; color: var(--cyan); font-size: 13px; font-weight: 900; letter-spacing: 3px; border-bottom: 1px solid rgba(0, 234, 255, 0.3); padding-bottom: 5px; text-shadow: 0 0 10px rgba(0, 234, 255, 0.8); position: relative; }
-    .control-group p::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 40px; height: 2px; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
+    .control-group { background: rgba(3, 11, 24, 0.4); border: 1px solid transparent; border-radius: 8px; padding: 15px; margin-bottom: 15px; position: relative; transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
+    .control-group p { margin: 0 0 12px 0; font-size: 13px; font-weight: 900; letter-spacing: 3px; border-bottom: 1px solid; padding-bottom: 5px; position: relative; }
+    .control-group p::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 40px; height: 2px; }
 
-    /* ปุ่มกดหลัก เรืองแสงขอบและตัวหนังสือ (Flare Effect) */
+    .control-group:nth-child(1) { border-color: rgba(0, 234, 255, 0.2); }
+    .control-group:nth-child(1):hover { border-color: rgba(0, 234, 255, 0.8); background: rgba(0, 234, 255, 0.05); box-shadow: 0 0 35px rgba(0, 234, 255, 0.35), inset 0 0 15px rgba(0, 234, 255, 0.1); }
+    .control-group:nth-child(1) p { color: var(--cyan); border-bottom-color: rgba(0, 234, 255, 0.3); text-shadow: 0 0 10px rgba(0, 234, 255, 0.8); }
+    .control-group:nth-child(1) p::after { background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
+
+    .control-group:nth-child(2) { border-color: rgba(0, 255, 102, 0.2); }
+    .control-group:nth-child(2):hover { border-color: rgba(0, 255, 102, 0.8); background: rgba(0, 255, 102, 0.05); box-shadow: 0 0 35px rgba(0, 255, 102, 0.35), inset 0 0 15px rgba(0, 255, 102, 0.1); }
+    .control-group:nth-child(2) p { color: #00ff66; border-bottom-color: rgba(0, 255, 102, 0.3); text-shadow: 0 0 10px rgba(0, 255, 102, 0.8); }
+    .control-group:nth-child(2) p::after { background: #00ff66; box-shadow: 0 0 12px #00ff66; }
+    
+    .control-group:nth-child(2) .btn { border-color: rgba(0, 255, 102, 0.4); color: #00ff66; background: rgba(0, 255, 102, 0.05); text-shadow: 0 0 6px rgba(0, 255, 102, 0.6); box-shadow: inset 0 0 8px rgba(0, 255, 102, 0.15); }
+    .control-group:nth-child(2) .btn:hover { background: rgba(255, 255, 255, 0.15) !important; color: #fff !important; border-color: #fff !important; text-shadow: 0 0 10px #fff !important; box-shadow: 0 0 20px rgba(255, 255, 255, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.3) !important; transform: translateY(-1px); }
+    .control-group:nth-child(2) .btn.active { background: #00ff66 !important; color: #000 !important; border-color: #00ff66 !important; text-shadow: none !important; box-shadow: 0 0 20px rgba(0, 255, 102, 0.8), 0 0 40px rgba(0, 255, 102, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.6) !important; transform: translateY(-1px); }
+
+    .control-group:nth-child(3) { display: flex; flex-direction: column; flex: 1; min-height: 0; margin-bottom: 0; border-color: rgba(255, 179, 71, 0.2); }
+    .control-group:nth-child(3):hover { border-color: rgba(255, 179, 71, 0.8); background: rgba(255, 179, 71, 0.05); box-shadow: 0 0 35px rgba(255, 179, 71, 0.35), inset 0 0 15px rgba(255, 179, 71, 0.1); }
+    .control-group:nth-child(3) p { color: var(--gold); border-bottom-color: rgba(255, 179, 71, 0.3); text-shadow: 0 0 10px rgba(255, 179, 71, 0.8); }
+    .control-group:nth-child(3) p::after { background: var(--gold); box-shadow: 0 0 12px var(--gold); }
+
     .btn { display: block; width: 100%; background: rgba(0, 234, 255, 0.05); border: 1px solid var(--dark-cyan); color: var(--cyan); padding: 10px; margin-bottom: 8px; font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; text-align: center; border-radius: 2px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); letter-spacing: 2px; text-transform: uppercase; text-shadow: 0 0 6px rgba(0, 234, 255, 0.6); box-shadow: inset 0 0 8px rgba(0, 234, 255, 0.15); position: relative; overflow: hidden; }
-    .btn:hover, .btn.active { background: var(--cyan) !important; color: #000 !important; border-color: var(--cyan) !important; text-shadow: none !important; box-shadow: 0 0 20px rgba(0, 234, 255, 0.8), 0 0 40px rgba(0, 234, 255, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.6) !important; transform: translateY(-1px); }
+    .btn:hover { background: rgba(255, 255, 255, 0.15) !important; color: #fff !important; border-color: #fff !important; text-shadow: 0 0 10px #fff !important; box-shadow: 0 0 20px rgba(255, 255, 255, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.3) !important; transform: translateY(-1px); }
+    .btn.active { background: var(--cyan) !important; color: #000 !important; border-color: var(--cyan) !important; text-shadow: none !important; box-shadow: 0 0 20px rgba(0, 234, 255, 0.8), 0 0 40px rgba(0, 234, 255, 0.4), inset 0 0 15px rgba(255, 255, 255, 0.6) !important; transform: translateY(-1px); }
     .btn:disabled { opacity: 0.3; pointer-events: none; border-color: #333; color: #555; text-shadow: none; box-shadow: none; }
     .speed-row { display: flex; gap: 5px; margin-bottom: 8px; }
+
+    /* ==================================================
+       ฟันธง: CSS สำหรับ POPUP MODAL แบบมินิมอลสุดล้ำ!
+       ================================================== */
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px); z-index: 1000; display: flex; align-items: center; justify-content: center; animation: fadeIn 0.3s ease; }
+    .modal-box { background: rgba(3, 11, 24, 0.95); border: 2px solid var(--cyan); border-radius: 12px; width: 90%; max-width: 800px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 0 40px rgba(0, 234, 255, 0.3), inset 0 0 20px rgba(0, 234, 255, 0.1); position: relative; overflow: hidden; }
     
-    /* กรอบรายชื่อดาวเทียม Scrollbar สว่างๆ */
-    .control-group:last-child { display: flex; flex-direction: column; flex: 1; min-height: 0; margin-bottom: 0; }
-    .sat-selector { flex: 1; overflow-y: auto; padding-right: 5px; }
-    .sat-selector::-webkit-scrollbar { width: 4px; }
-    .sat-selector::-webkit-scrollbar-thumb { background: var(--gold); box-shadow: 0 0 8px var(--gold); border-radius: 2px; }
+    .modal-header { padding: 20px 25px; border-bottom: 1px solid rgba(0, 234, 255, 0.3); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(180deg, rgba(0, 234, 255, 0.1) 0%, transparent 100%); }
+    .modal-header h2 { margin: 0; font-family: 'Rajdhani', sans-serif; font-size: 22px; color: #fff; letter-spacing: 2px; display: flex; align-items: center; gap: 10px; text-shadow: 0 0 10px var(--cyan); }
     
-    /* กล่องหมวดหมู่ดาวเทียม แบบ Tactical HUD */
-    .group-header { background: linear-gradient(90deg, rgba(0, 30, 50, 0.7) 0%, rgba(0, 15, 30, 0.3) 100%); border: 1px solid var(--dark-cyan); border-left: 3px solid var(--dark-cyan); color: #a0aec0; padding: 10px 12px; font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; transition: all 0.3s; border-radius: 2px; }
-    .group-header:hover { color: #fff; border-color: var(--cyan); border-left-color: var(--cyan); background: rgba(0, 234, 255, 0.15); text-shadow: 0 0 10px var(--cyan); box-shadow: inset 15px 0 20px rgba(0, 234, 255, 0.2); }
-    .group-header.active { color: var(--gold); border-color: var(--gold); border-left-color: var(--gold); background: rgba(255, 179, 71, 0.15); text-shadow: 0 0 10px var(--gold); box-shadow: inset 15px 0 20px rgba(255, 179, 71, 0.2), 0 0 12px rgba(255, 179, 71, 0.3); }
+    /* ปุ่มปิด Modal สีแดงเด่นชัด */
+    .modal-close-btn { background: transparent; border: 1px solid var(--red); color: var(--red); width: 36px; height: 36px; border-radius: 50%; font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; box-shadow: 0 0 10px rgba(255, 51, 51, 0.2), inset 0 0 5px rgba(255, 51, 51, 0.1); }
+    .modal-close-btn:hover { background: var(--red); color: #fff; box-shadow: 0 0 20px rgba(255, 51, 51, 0.8); transform: scale(1.1); }
+
+    .modal-content { padding: 25px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; display: flex; flex-direction: column; gap: 20px; }
+    .modal-content::-webkit-scrollbar { display: none; }
     
-    /* แอนิเมชั่นตกลงมาเวลาเปิดเมนู */
-    .group-content { display: none; flex-direction: column; padding-left: 12px; margin-bottom: 12px; border-left: 2px dashed rgba(0, 234, 255, 0.3); margin-left: 6px; gap: 6px; }
-    .group-content.open { display: flex; animation: fadeIn 0.4s; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+    .modal-group-title { color: var(--cyan); font-size: 14px; font-weight: 700; letter-spacing: 2px; border-bottom: 1px dashed rgba(0, 234, 255, 0.3); padding-bottom: 8px; margin-bottom: 12px; text-transform: uppercase; }
+    .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
     
-    /* ปุ่มเลือกดาวเทียมสีทอง เรืองแสงแบบ Cyberpunk มี Accent Line ซ้ายมือ */
-    .sat-btn { border: 1px solid rgba(255, 179, 71, 0.3); color: var(--gold); background: rgba(255, 179, 71, 0.05); margin-bottom: 0; width: 100%; text-align: left; padding-left: 15px; text-shadow: 0 0 6px rgba(255, 179, 71, 0.5); position: relative; transition: all 0.3s; }
-    .sat-btn::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 3px; background: var(--gold); opacity: 0; transition: all 0.3s; box-shadow: 0 0 10px var(--gold); }
-    .sat-btn:hover, .sat-btn.active { background: var(--gold); color: #000; text-shadow: none; box-shadow: 0 0 20px rgba(255, 179, 71, 0.8), 0 0 40px rgba(255, 179, 71, 0.4); border-color: var(--gold); transform: translateX(3px); }
-    .sat-btn:hover::before, .sat-btn.active::before { opacity: 1; }
+    .modal-sat-btn { background: rgba(0, 234, 255, 0.05); border: 1px solid var(--dark-cyan); color: #a0aec0; padding: 12px 15px; border-radius: 6px; font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; text-align: left; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; }
+    .modal-sat-btn:hover { border-color: var(--cyan); color: #fff; background: rgba(0, 234, 255, 0.1); box-shadow: inset 5px 0 0 var(--cyan), 0 0 15px rgba(0, 234, 255, 0.3); padding-left: 20px; }
+    .modal-sat-btn.active { background: var(--cyan); color: #000; border-color: var(--cyan); box-shadow: 0 0 20px rgba(0, 234, 255, 0.6), inset 0 0 10px rgba(255,255,255,0.5); font-weight: 800; }
     
     .flat-map-wrap { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 5; padding: 25px 280px 25px 420px; box-sizing: border-box; transition: padding 0.3s ease-in-out; }
     .flat-map-wrap.panel-closed { padding-right: 25px; }
+    .flat-map-wrap.left-panel-closed { padding-left: 25px; }
     .flat-map-container { position: relative; width: 100%; aspect-ratio: 2 / 1; max-height: 100vh; max-width: 200vh; background: url('https://unpkg.com/three-globe/example/img/earth-dark.jpg') center/cover; box-shadow: 0 0 50px rgba(0, 234, 255, 0.1); border: 1px solid var(--dark-cyan); border-radius: 4px; overflow: hidden; }
     .map-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-    .map-marker { position: absolute; transform: translate(-50%, -50%); cursor: pointer; pointer-events: auto; display: flex; flex-direction: column; align-items: center; transition: all 0.2s; }
+    .map-marker { position: absolute; transform: translate(-50%, -50%); cursor: pointer; pointer-events: auto; display: flex; flex-direction: column; align-items: center; transition: transform 0.2s; }
     .map-marker:hover { transform: translate(-50%, -50%) scale(1.5); z-index: 20 !important; }
     .map-marker span.dot { width: 5px; height: 5px; background: currentColor; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
     .map-marker span.target-dot { width: 10px; height: 10px; background: currentColor; border-radius: 2px; box-shadow: 0 0 15px currentColor; animation: pulse 2s infinite; }
@@ -177,8 +203,7 @@ const injectStyles = () => {
     @media (max-width: 900px) {
       .ui-layer { flex-direction: column; padding: 10px; height: 100vh; overflow-y: auto; justify-content: flex-start; gap: 15px; pointer-events: none; }
       .ui-layer::-webkit-scrollbar { display: none; }
-      .left-panel, .right-panel { width: 100%; pointer-events: auto; }
-      .sat-selector { max-height: 250px; }
+      .left-container, .right-panel { width: 100%; pointer-events: auto; }
       .flat-map-wrap { padding: 10px; }
     }
   `;
@@ -215,10 +240,15 @@ function calculateSatData(date, satrec) {
     let rawLng = satelliteJs.degreesLong(geodetic.longitude);
     const normalizedLng = ((rawLng + 180) % 360 + 360) % 360 - 180;
 
+    const lat = satelliteJs.degreesLat(geodetic.latitude);
+    const altKm = geodetic.height;
+
+    if (isNaN(lat) || isNaN(normalizedLng) || isNaN(altKm)) return null;
+
     return {
-      lat: satelliteJs.degreesLat(geodetic.latitude),
+      lat: lat,
       lng: normalizedLng,
-      altKm: geodetic.height,
+      altKm: altKm,
       elevationDeg: toDegrees(lookAngles.elevation),
       azimuthDeg: toDegrees(lookAngles.azimuth),
       rangeKm: lookAngles.rangeSat,
@@ -231,9 +261,13 @@ function getInclinationDeg(line2) { return Number(line2.trim().split(/\s+/)[2] |
 
 function getFootprintRadiusDeg(altKm, minElevDeg = 5) {
   const re = EARTH_RADIUS_KM;
-  const r = re + altKm;
+  const r = re + Math.max(0, altKm);
   const elevRad = toRadians(minElevDeg);
-  const nadirAngleRad = Math.asin((re / r) * Math.cos(elevRad));
+  
+  const ratio = (re / r) * Math.cos(elevRad);
+  const clampedRatio = Math.max(-1, Math.min(1, ratio)); 
+  
+  const nadirAngleRad = Math.asin(clampedRatio);
   const earthCentralAngleRad = (Math.PI / 2) - elevRad - nadirAngleRad;
   return toDegrees(earthCentralAngleRad);
 }
@@ -272,41 +306,64 @@ function createSatelliteModel(isTarget = false) {
 export default function App() {
   const globeRef = useRef(null);
   const fileInputRef = useRef(null); 
-  const isTrackingRef = useRef(false); // ฟันธง: ตัวแปรสวิตช์ควบคุมกล้องบินตาม
+  const isTrackingRef = useRef(false);
 
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
-  const [tles, setTles] = useState(FALLBACK_TLES);
-  const [tleSource, setTleSource] = useState('Fallback / Built-in');
+  
+  const [tles, setTles] = useState(() => {
+    try {
+      const saved = localStorage.getItem('gistda_tles');
+      return saved ? JSON.parse(saved) : FALLBACK_TLES;
+    } catch(e) { return FALLBACK_TLES; }
+  });
+  const [tleSource, setTleSource] = useState(() => {
+    return localStorage.getItem('gistda_tles') ? 'Restored from Memory' : 'Fallback / Built-in';
+  });
+
   const [isUpdatingTle, setIsUpdatingTle] = useState(false);
   const [selectedCatnr, setSelectedCatnr] = useState(SATELLITE_OPTIONS[0].catnr);
+  const [selectedCatnrs, setSelectedCatnrs] = useState([SATELLITE_OPTIONS[0].catnr]); 
   
   const [simulatedTimeMs, setSimulatedTimeMs] = useState(Date.now());
   const [isPlaying, setIsPlaying] = useState(true);
   const [speedMult, setSpeedMult] = useState(1);
   const [realtimeSun, setRealtimeSun] = useState(false);
-  const [openGroup, setOpenGroup] = useState('GISTDA EARTH OBSERVATION');
+  
+  const [showGroundTrack, setShowGroundTrack] = useState(false);
+  
   const [isFlatMap, setIsFlatMap] = useState(false);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
-  
-  // ฟันธง: เพิ่ม State ใหม่สำหรับโชว์/ซ่อน Groundtrack 24H
-  const [showGroundTrack, setShowGroundTrack] = useState(false);
+  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true); 
+  const [cameraMode, setCameraMode] = useState('FREE LOOK');
+
+  // ฟันธง: เพิ่ม State สำหรับควบคุมการเปิด/ปิดหน้าต่าง Popup (Modal) ดาวเทียม
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const satrecs = useMemo(() => {
+    const recs = {};
+    Object.keys(tles).forEach(cat => {
+      if (tles[cat].line1 && tles[cat].line2) {
+        recs[cat] = satelliteJs.twoline2satrec(tles[cat].line1, tles[cat].line2);
+      }
+    });
+    return recs;
+  }, [tles]);
 
   useEffect(() => {
     injectStyles();
     const handleResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', handleResize);
     
-    // หน่วงเวลาเล็กน้อยให้ Globe สร้างตัวคุมกล้องเสร็จสมบูรณ์
     setTimeout(() => {
       if (globeRef.current) {
         globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
         const controls = globeRef.current.controls();
         controls.autoRotate = false;
         
-        // ฟันธง: ดักจับการใช้เมาส์! ทันทีที่ผู้ใช้คลิกลากลูกโลก ให้ "ปิด" โหมดบินตามดาวเทียมทันที
         controls.addEventListener('start', () => {
           if (typeof isTrackingRef !== 'undefined' && isTrackingRef.current) {
             isTrackingRef.current = false;
+            setCameraMode('FREE LOOK');
           }
         });
       }
@@ -321,47 +378,50 @@ export default function App() {
     return () => clearInterval(timer);
   }, [isPlaying, speedMult]);
 
- // ฟันธง: ระบบ Auto-Tracking บังคับกล้องบินตามดาวเทียมที่เป้าหมายล็อกไว้
- useEffect(() => {
-  if (isPlaying && globeRef.current && selectedCatnr && !isFlatMap && isTrackingRef.current) {
-      const rec = satrecs[selectedCatnr];
-      if (rec) {
-        const pos = calculateSatData(currentDate, rec);
-        if (pos) {
-          // ดึงระยะซูมเดิมของผู้ใช้ไว้ แล้วอัปเดตแค่ Lat/Lng ให้กล้องวิ่งตามแบบ Smooth (0 ms)
-          const currentPov = globeRef.current.pointOfView();
-          globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: currentPov.altitude }, 0);
+  useEffect(() => {
+    if (isPlaying && globeRef.current && selectedCatnr && !isFlatMap && isTrackingRef.current) {
+      try {
+        const rec = satrecs[selectedCatnr];
+        if (rec) {
+          const pos = calculateSatData(new Date(simulatedTimeMs), rec);
+          if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+            const currentPov = globeRef.current.pointOfView();
+            const safeAltitude = (currentPov && !isNaN(currentPov.altitude)) ? currentPov.altitude : 2.2;
+            globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: safeAltitude }, 0);
+          }
         }
-      }
+      } catch (err) { }
     }
-  }, [simulatedTimeMs, selectedCatnr, isFlatMap, isPlaying]);
+  }, [simulatedTimeMs, selectedCatnr, isFlatMap, isPlaying, satrecs]);
 
   // REAL-TIME DAY/NIGHT ENGINE
   useEffect(() => {
     if (!globeRef.current) return;
     const globe = globeRef.current;
+    
+    if (!globe.scene || !globe.camera) return;
     const scene = globe.scene();
     const camera = globe.camera();
+    if (!scene || !camera || !scene.children || !camera.children) return;
 
     const camLight = camera.children.find(c => c.type === 'DirectionalLight');
     if (camLight) camLight.intensity = realtimeSun ? 0 : 1;
 
     const ambient = scene.children.find(c => c.type === 'AmbientLight');
-    if (ambient) ambient.intensity = realtimeSun ? 0.01 : 0.6; // ฟันธง: ปรับให้กลางคืนมืดสนิทสมจริงขึ้น
+    if (ambient) ambient.intensity = realtimeSun ? 0.01 : 0.6; 
 
     let sunLight = scene.children.find(c => c.name === 'SunLight');
-    let sunMesh = scene.children.find(c => c.name === 'SunMesh'); // ค้นหาดวงอาทิตย์จำลอง
+    let sunMesh = scene.children.find(c => c.name === 'SunMesh'); 
 
     if (!sunLight) {
-      sunLight = new THREE.DirectionalLight(0xffffff, 4.5); // ฟันธง: เพิ่มค่าจาก 2.5 เป็น 4.5 ให้กลางวันสว่างจ้า
+      sunLight = new THREE.DirectionalLight(0xffffff, 4.5); 
       sunLight.name = 'SunLight';
       scene.add(sunLight);
     }
 
     if (!sunMesh) {
-      // ฟันธง: สร้างรูปทรงกลมสีเหลืองสว่างจ้า (ดวงอาทิตย์) ลอยอยู่ในอวกาศ
       const sunGeo = new THREE.SphereGeometry(15, 32, 32); 
-      const sunMat = new THREE.MeshBasicMaterial({ color: 0xffffee }); // ใช้ BasicMaterial เพื่อให้สว่างด้วยตัวเอง
+      const sunMat = new THREE.MeshBasicMaterial({ color: 0xffffee }); 
       sunMesh = new THREE.Mesh(sunGeo, sunMat);
       sunMesh.name = 'SunMesh';
       scene.add(sunMesh);
@@ -374,12 +434,10 @@ export default function App() {
       const hours = date.getUTCHours() + date.getUTCMinutes() / 60;
       const longitude = 180 - (hours * 15); 
       
-      // ทิศทางแสงสาดเข้าหาโลก
       const sunPos = globe.getCoords(declination, longitude, 100); 
       sunLight.position.set(sunPos.x, sunPos.y, sunPos.z);
       sunLight.visible = true;
 
-      // ฟันธง: วางลูกพระอาทิตย์จำลองให้อยู่ห่างออกไป 15 เท่าของรัศมีโลก เพื่อให้ซูมเห็นได้ชัดเจน
       const sunVisualPos = globe.getCoords(declination, longitude, 15); 
       sunMesh.position.set(sunVisualPos.x, sunVisualPos.y, sunVisualPos.z);
       sunMesh.visible = true;
@@ -389,26 +447,15 @@ export default function App() {
     }
   }, [realtimeSun, Math.floor(simulatedTimeMs / 60000)]);
 
-  const satrecs = useMemo(() => {
-    const recs = {};
-    Object.keys(tles).forEach(cat => {
-      if (tles[cat].line1 && tles[cat].line2) {
-        recs[cat] = satelliteJs.twoline2satrec(tles[cat].line1, tles[cat].line2);
-      }
-    });
-    return recs;
-  }, [tles]);
-
   const currentDate = new Date(simulatedTimeMs);
-  const targetSatrec = satrecs[selectedCatnr];
-  const targetData = calculateSatData(currentDate, targetSatrec);
+  const targetSatrec = selectedCatnr ? satrecs[selectedCatnr] : null;
+  const targetData = targetSatrec ? calculateSatData(currentDate, targetSatrec) : null;
   const targetConfig = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr) || SATELLITE_OPTIONS[0];
   const linkActive = targetData && targetData.elevationDeg >= PASS_MIN_ELEVATION_DEG;
 
   const allSatObjects = useMemo(() => {
     return SATELLITE_OPTIONS.map(sat => {
       if (!satrecs[sat.catnr]) return null;
-      
       const data = calculateSatData(currentDate, satrecs[sat.catnr]);
       if (!data) return null;
       return {
@@ -428,37 +475,41 @@ export default function App() {
     for (let m = -60; m <= 60; m += 0.5) {
       const d = new Date(currentDate.getTime() + m * 60 * 1000);
       const pos = calculateSatData(d, targetSatrec);
-      if (pos) points.push({ lat: pos.lat, lng: pos.lng, alt: Math.max(0.01, pos.altKm / EARTH_RADIUS_KM) });
+      if (pos && !isNaN(pos.lat) && !isNaN(pos.lng) && !isNaN(pos.altKm)) {
+        points.push({ lat: pos.lat, lng: pos.lng, alt: Math.max(0.01, pos.altKm / EARTH_RADIUS_KM) });
+      }
     }
+    if (points.length < 2) return [];
     return [{ points, color: 'rgba(255, 179, 71, 0.8)', stroke: 1.0 }]; 
   }, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000)]);
 
-  
-  // ฟันธง: คำนวณเส้น 24H Groundtrack (Sine wave สีเหลือง) โดยจำลองเวลาไปข้างหน้า 1440 นาที
   const groundTrackPath = useMemo(() => {
     if (!targetSatrec || !showGroundTrack) return [];
     const points = [];
-    // ฟันธง: ปรับความถี่จาก m += 3 เป็น m += 1 เพื่อให้วาดจุดทุกๆ 1 นาที เส้นจะโค้งมนเป็น Sine Wave สมบูรณ์แบบ
     for (let m = 0; m <= 1440; m += 1) {
       const d = new Date(currentDate.getTime() + m * 60 * 1000);
       const pos = calculateSatData(d, targetSatrec);
-      if (pos) points.push({ lat: pos.lat, lng: pos.lng, alt: Math.max(0.01, pos.altKm / EARTH_RADIUS_KM) });
+      if (pos && !isNaN(pos.lat) && !isNaN(pos.lng) && !isNaN(pos.altKm)) {
+        points.push({ lat: pos.lat, lng: pos.lng, alt: Math.max(0.01, pos.altKm / EARTH_RADIUS_KM) });
+      }
     }
+    if (points.length < 2) return [];
     return [{ points, color: 'rgba(255, 255, 0, 0.8)', stroke: 0.1 }];
   }, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000), showGroundTrack]);
   
-
   const footprintBoundaryPath = useMemo(() => {
     if (!targetData || targetData.altKm <= 0) return [];
     const radiusDeg = getFootprintRadiusDeg(targetData.altKm, PASS_MIN_ELEVATION_DEG);
+    if (isNaN(radiusDeg)) return [];
     const pts = getCirclePolygon(targetData.lat, targetData.lng, radiusDeg, 64).map(c => ({ lng: c[0], lat: c[1], alt: 0.001 }));
+    if (pts.length < 3) return [];
     return [{ points: pts, color: 'rgba(255, 51, 51, 0.8)', stroke: 0.5 }];
   }, [targetData]);
 
   const signalVisualPath = useMemo(() => {
-    if (!linkActive || !targetData) return [];
+    if (!linkActive || !targetData || isNaN(targetData.lat) || isNaN(targetData.lng)) return [];
     const gsPoint = { lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, alt: 0 };
-    const satPoint = { lat: targetData.lat, lng: targetData.lng, alt: targetData.altKm / EARTH_RADIUS_KM };
+    const satPoint = { lat: targetData.lat, lng: targetData.lng, alt: Math.max(0, targetData.altKm) / EARTH_RADIUS_KM };
     return [
       { points: [gsPoint, satPoint], color: 'rgba(255, 255, 255, 0.9)', stroke: 0.4 },
       { points: [gsPoint, satPoint], color: 'rgba(0, 234, 255, 0.3)', stroke: 1.8 }
@@ -468,6 +519,7 @@ export default function App() {
   const footprintPolygonData = useMemo(() => {
     if (!targetData || targetData.altKm <= 0) return [];
     const radiusDeg = getFootprintRadiusDeg(targetData.altKm, PASS_MIN_ELEVATION_DEG);
+    if (isNaN(radiusDeg)) return [];
     const circleCoords = getCirclePolygon(targetData.lat, targetData.lng, radiusDeg, 64);
     return [{
       coords: circleCoords,
@@ -507,6 +559,9 @@ export default function App() {
 
         if (successCount > 0) {
           setTles(newTles);
+          try {
+            localStorage.setItem('gistda_tles', JSON.stringify(newTles)); 
+          } catch(e) {}
           const now = new Date();
           setTleSource(`Manual Upload (${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())})`);
         } else {
@@ -526,7 +581,6 @@ export default function App() {
   const thaiTime = new Date(currentDate.getTime() + 7 * 3600000);
   const formatTime = (d) => `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`;
 
-  // รวมเส้นทางทั้งหมดที่จะวาดใน 3D (รวม Groundtrack ถ้ากดเปิด)
   const pathsToDraw3D = [...orbitVisualPath, ...signalVisualPath, ...footprintBoundaryPath];
   if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
 
@@ -563,17 +617,33 @@ export default function App() {
         onObjectClick={(d) => {
           if (d.type === 'satellite') {
             setSelectedCatnr(d.catnr);
-            isTrackingRef.current = true; // ฟันธง: เปิดกล้องบินตาม
+            if (!selectedCatnrs.includes(d.catnr)) setSelectedCatnrs([...selectedCatnrs, d.catnr]);
+            isTrackingRef.current = true;
+            setCameraMode('TRACKING');
             if (globeRef.current) globeRef.current.pointOfView({ lat: d.lat, lng: d.lng, altitude: 2.2 }, 1000);
           }
         }}
 
-        labelsData={[GROUND_STATION, ...allSatObjects]}
+        labelsData={[GROUND_STATION]} 
         labelLat="lat" labelLng="lng" labelText="name"
-        labelColor={d => d.isTarget ? '#ffb347' : '#00eaff'}
-        labelSize={d => d.type === 'station' ? 0.4 : (d.isTarget ? 1.5 : 0.8)}
+        labelColor={() => '#00eaff'}
+        labelSize={0.4}
         labelDotRadius={0}
-        labelAltitude={d => d.altitude ? d.altitude + 0.05 : 0.02}
+        labelAltitude={0.02}
+
+        htmlElementsData={allSatObjects.filter(sat => sat.isTarget)}
+        htmlLat="lat" htmlLng="lng" htmlAltitude="altitude"
+        htmlElement={d => {
+          const el = document.createElement('div');
+          const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
+          const flagUrl = satInfo?.flag ? `https://flagcdn.com/w20/${satInfo.flag}.png` : '';
+          el.innerHTML = `
+            <div style="display: flex; align-items: center; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 14px; font-weight: bold; letter-spacing: 1px; text-shadow: 0 0 5px #000, 0 0 10px #000; transform: translate(15px, -15px); pointer-events: none; white-space: nowrap;">
+              ${flagUrl ? `<img src="${flagUrl}" style="width:18px; margin-right:6px; border-radius:2px; box-shadow: 0 0 4px rgba(0,0,0,0.8);" />` : ''}
+              ${d.name}
+            </div>`;
+          return el;
+        }}
 
         pathsData={pathsToDraw3D}
         pathPoints="points"
@@ -593,12 +663,12 @@ export default function App() {
         polygonCapColor={d => d.fillColor}
         polygonSideColor={() => 'transparent'}
         polygonStrokeColor={() => 'transparent'} 
-        polygonAltitude={0.015} // ฟันธง: ดันให้ลอยพ้นภูเขา 3D (Bump Map) สีโปร่งแสง 15% จะโชว์ขึ้นมาทันทีครับ
+        polygonAltitude={0.015}
         polygonTransitionDuration={0}
       />
 
       {isFlatMap && (
-        <div className={`flat-map-wrap ${!isRightPanelOpen ? 'panel-closed' : ''}`}>
+        <div className={`flat-map-wrap ${!isRightPanelOpen ? 'panel-closed' : ''} ${!isLeftPanelOpen ? 'left-panel-closed' : ''}`}>
           <div 
             className="flat-map-container"
             style={{
@@ -610,7 +680,6 @@ export default function App() {
             }}
           >
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="map-svg">
-              {/* วาดเส้นทางวงโคจรปกติสีส้ม */}
               {orbitVisualPath.map((pathObj, i) => {
                 const segments = [];
                 let currentPoints = [];
@@ -627,7 +696,6 @@ export default function App() {
                 ));
               })}
 
-              {/* ฟันธง: วาดเส้น 24H Groundtrack คลื่นไซน์สีเหลืองใน Flat Map (ถ้าเปิด) */}
               {showGroundTrack && groundTrackPath.map((pathObj, i) => {
                 const segments = [];
                 let currentPoints = [];
@@ -644,7 +712,7 @@ export default function App() {
                 ));
               })}
               
-              {linkActive && targetData && (
+              {linkActive && targetData && !isNaN(targetData.lat) && !isNaN(targetData.lng) && (
                 <line
                   x1={`${(GROUND_STATION.lng + 180) / 360 * 100}`} y1={`${(90 - GROUND_STATION.lat) / 180 * 100}`}
                   x2={`${(targetData.lng + 180) / 360 * 100}`} y2={`${(90 - targetData.lat) / 180 * 100}`}
@@ -652,17 +720,24 @@ export default function App() {
                 />
               )}
 
-              {targetData && (
-                <ellipse 
-                  cx={`${(targetData.lng + 180) / 360 * 100}`} 
-                  cy={`${(90 - targetData.lat) / 180 * 100}`} 
-                  rx={`${getFootprintRadiusDeg(targetData.altKm, PASS_MIN_ELEVATION_DEG) / 360 * 100}`}
-                  ry={`${getFootprintRadiusDeg(targetData.altKm, PASS_MIN_ELEVATION_DEG) / 180 * 100}`}
-                  fill="rgba(255, 51, 51, 0.15)"
-                  stroke="rgba(255, 51, 51, 0.8)"
-                  strokeWidth="0.2"
-                />
-              )}
+              {allSatObjects.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
+                const isPrimary = sat.catnr === selectedCatnr;
+                const radiusDeg = getFootprintRadiusDeg(sat.altKm, PASS_MIN_ELEVATION_DEG);
+                if (isNaN(radiusDeg)) return null;
+                
+                return (
+                  <ellipse 
+                    key={`fp-${sat.catnr}`}
+                    cx={`${(sat.lng + 180) / 360 * 100}`} 
+                    cy={`${(90 - sat.lat) / 180 * 100}`} 
+                    rx={`${radiusDeg / 360 * 100}`}
+                    ry={`${radiusDeg / 180 * 100}`}
+                    fill={isPrimary ? "rgba(255, 51, 51, 0.15)" : "rgba(0, 234, 255, 0.1)"}
+                    stroke={isPrimary ? "rgba(255, 51, 51, 0.8)" : "rgba(0, 234, 255, 0.5)"}
+                    strokeWidth="0.2"
+                  />
+                );
+              })}
             </svg>
 
             <div className="map-marker" style={{ left: `${(GROUND_STATION.lng + 180) / 360 * 100}%`, top: `${(90 - GROUND_STATION.lat) / 180 * 100}%`, color: '#00eaff', zIndex: 5 }}>
@@ -684,12 +759,21 @@ export default function App() {
                 }}
                 onClick={() => {
                   setSelectedCatnr(sat.catnr);
-                  isTrackingRef.current = true; // ฟันธง: เปิดกล้องบินตาม
+                  if (!selectedCatnrs.includes(sat.catnr)) setSelectedCatnrs([...selectedCatnrs, sat.catnr]);
+                  isTrackingRef.current = true; 
+                  setCameraMode('TRACKING');
                   setIsFlatMap(false); 
                 }}
-              >
+                >
                 <span className={sat.isTarget ? 'target-dot' : 'dot'}></span>
-                <span className="label" style={{ color: sat.isTarget ? '#fff' : '#8892b0' }}>{sat.name}</span>
+                <span className="label" style={{ 
+                  color: sat.isTarget ? '#fff' : '#00eaff',
+                  fontSize: sat.isTarget ? '10px' : '8px', 
+                  opacity: sat.isTarget ? 1 : 0.9,
+                  fontWeight: sat.isTarget ? '700' : '600'
+                }}>
+                  {sat.name}
+                </span>
                 
                 <div className="map-tooltip">
                   <strong style={{ display: 'flex', alignItems: 'center' }}>
@@ -707,86 +791,97 @@ export default function App() {
 
       <div className="ui-layer">
         
-        <div className="left-panel">
-          <div className="panel-box main-title">
-            <p>THAILAND SPACE EXPO</p>
-            <h1>SATELLITE ORBIT</h1>
-            <span>{targetConfig.displayName} • Thailand Satellite Ground Station</span>
-          </div>
+        <div className="left-container">
+          <button 
+            className="menu-toggle-btn-left"
+            onClick={() => setIsLeftPanelOpen(!isLeftPanelOpen)}
+          >
+            {isLeftPanelOpen ? '✕' : '☰'}
+          </button>
+          
+          {isLeftPanelOpen && (
+            <div className="left-panel">
+              <div className="panel-box main-title">
+                <p>THAILAND SPACE EXPO</p>
+                <h1>SATELLITE ORBIT</h1>
+                <span>{targetConfig.displayName} • Thailand Satellite Ground Station</span>
+              </div>
 
-          <section className="clock-panel">
-            <div className="clock-item">
-              <span>THA LOCAL</span>
-              <strong>{formatTime(thaiTime)}</strong>
-            </div>
-            <div className="clock-item">
-              <span>DOY</span>
-              <strong>{pad3(getUtcDayOfYear(currentDate))}</strong>
-            </div>
-            <div className="clock-item">
-              <span>UTC</span>
-              <strong>{formatTime(currentDate)}</strong>
-            </div>
-          </section>
+              <section className="clock-panel">
+                <div className="clock-item">
+                  <span>THA LOCAL</span>
+                  <strong>{formatTime(thaiTime)}</strong>
+                </div>
+                <div className="clock-item">
+                  <span>DOY</span>
+                  <strong>{pad3(getUtcDayOfYear(currentDate))}</strong>
+                </div>
+                <div className="clock-item">
+                  <span>UTC</span>
+                  <strong>{formatTime(currentDate)}</strong>
+                </div>
+              </section>
 
-          <div className="panel-box mission-status">
-            <div className="target-header">
-              {targetConfig.flag ? <img src={`https://flagcdn.com/w40/${targetConfig.flag}.png`} alt="flag" /> : <span style={{fontSize: '30px'}}>🛰️</span>}
-              <h2>{targetConfig.displayName}</h2>
-            </div>
+              <div className="panel-box mission-status">
+                <div className="target-header">
+                  {targetConfig.flag ? <img src={`https://flagcdn.com/w40/${targetConfig.flag}.png`} alt="flag" /> : <span style={{fontSize: '30px'}}>🛰️</span>}
+                  <h2>{targetConfig.displayName}</h2>
+                </div>
 
-            <div className={`status-banner ${linkActive ? 'active' : 'standby'}`}>
-              {linkActive ? 'SIGNAL ACQUIRED' : 'WAITING FOR AOS'}
-            </div>
+                <div className={`status-banner ${linkActive ? 'active' : 'standby'}`}>
+                  {linkActive ? 'SIGNAL ACQUIRED' : 'WAITING FOR AOS'}
+                </div>
 
-            <div className="telemetry-grid">
-              <div className="t-box">
-                <span>LATITUDE</span>
-                <strong>{targetData ? targetData.lat.toFixed(4) : '---'}°</strong>
-              </div>
-              <div className="t-box">
-                <span>LONGITUDE</span>
-                <strong>{targetData ? targetData.lng.toFixed(4) : '---'}°</strong>
-              </div>
-              <div className={`t-box ${linkActive ? 'highlight' : ''}`}>
-                <span>ELEVATION</span>
-                <strong className={linkActive ? 'text-cyan' : ''}>{targetData?.elevationDeg.toFixed(2)}°</strong>
-              </div>
-              <div className="t-box">
-                <span>AZIMUTH</span>
-                <strong>{targetData?.azimuthDeg.toFixed(2)}°</strong>
-              </div>
-              <div className="t-box">
-                <span>SLANT RANGE</span>
-                <strong className="text-gold">{targetData ? Math.round(targetData.rangeKm).toLocaleString() : '---'} km</strong>
-              </div>
-              <div className="t-box">
-                <span>ALTITUDE</span>
-                <strong>{targetData ? targetData.altKm.toFixed(0) : '---'} km</strong>
-              </div>
-              <div className="t-box">
-                <span>ORBITAL SPEED</span>
-                <strong>{targetData ? targetData.speedKmS.toFixed(2) : '---'} km/s</strong>
-              </div>
-              <div className="t-box">
-                <span>INCLINATION</span>
-                <strong>{tles[selectedCatnr] ? getInclinationDeg(tles[selectedCatnr].line2).toFixed(2) : '---'}°</strong>
+                <div className="telemetry-grid">
+                  <div className="t-box">
+                    <span>LATITUDE</span>
+                    <strong>{targetData && !isNaN(targetData.lat) ? targetData.lat.toFixed(4) : '---'}°</strong>
+                  </div>
+                  <div className="t-box">
+                    <span>LONGITUDE</span>
+                    <strong>{targetData && !isNaN(targetData.lng) ? targetData.lng.toFixed(4) : '---'}°</strong>
+                  </div>
+                  <div className={`t-box ${linkActive ? 'highlight' : ''}`}>
+                    <span>ELEVATION</span>
+                    <strong className={linkActive ? 'text-cyan' : ''}>{targetData && !isNaN(targetData.elevationDeg) ? targetData.elevationDeg.toFixed(2) : '---'}°</strong>
+                  </div>
+                  <div className="t-box">
+                    <span>AZIMUTH</span>
+                    <strong>{targetData && !isNaN(targetData.azimuthDeg) ? targetData.azimuthDeg.toFixed(2) : '---'}°</strong>
+                  </div>
+                  <div className="t-box">
+                    <span>SLANT RANGE</span>
+                    <strong className="text-gold">{targetData && !isNaN(targetData.rangeKm) ? Math.round(targetData.rangeKm).toLocaleString() : '---'} km</strong>
+                  </div>
+                  <div className="t-box">
+                    <span>ALTITUDE</span>
+                    <strong>{targetData && !isNaN(targetData.altKm) ? targetData.altKm.toFixed(0) : '---'} km</strong>
+                  </div>
+                  <div className="t-box">
+                    <span>ORBITAL SPEED</span>
+                    <strong>{targetData && !isNaN(targetData.speedKmS) ? targetData.speedKmS.toFixed(2) : '---'} km/s</strong>
+                  </div>
+                  <div className="t-box">
+                    <span>INCLINATION</span>
+                    <strong>{tles[selectedCatnr] ? getInclinationDeg(tles[selectedCatnr].line2).toFixed(2) : '---'}°</strong>
+                  </div>
+                </div>
+
+                <ul className="info-list">
+                  <li><span>Operator / Agency:</span> <strong style={{color: '#fff'}}>{targetConfig.operator || 'Unknown'}</strong></li>
+                  <li><span>Mission Type:</span> <strong style={{color: '#fff'}}>{targetConfig.mission || 'Various'}</strong></li>
+                  <li><span>Orbit Class:</span> <strong>LEO (Sun-Synchronous)</strong></li>
+                  
+                  <li><span>Station Mask:</span> <strong>{PASS_MIN_ELEVATION_DEG.toFixed(1)}°</strong></li>
+                  <li><span>Telemetry (TT&C):</span> <strong style={{color: '#00eaff'}}>{targetConfig.telemetry || 'N/A'}</strong></li>
+                  <li><span>Payload Downlink:</span> <strong style={{color: '#00eaff'}}>{targetConfig.payload || 'N/A'}</strong></li>
+                  
+                  <li><span>TLE Epoch:</span> <strong>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
+                  <li><span>TLE Source:</span> <strong>{tleSource}</strong></li>
+                </ul>
               </div>
             </div>
-
-            <ul className="info-list">
-              <li><span>Operator / Agency:</span> <strong style={{color: '#fff'}}>{targetConfig.operator || 'Unknown'}</strong></li>
-              <li><span>Mission Type:</span> <strong style={{color: '#fff'}}>{targetConfig.mission || 'Various'}</strong></li>
-              <li><span>Orbit Class:</span> <strong>LEO (Sun-Synchronous)</strong></li>
-              
-              <li><span>Station Mask:</span> <strong>{PASS_MIN_ELEVATION_DEG.toFixed(1)}°</strong></li>
-              <li><span>Telemetry (TT&C):</span> <strong style={{color: '#00eaff'}}>{targetConfig.telemetry || 'N/A'}</strong></li>
-              <li><span>Payload Downlink:</span> <strong style={{color: '#00eaff'}}>{targetConfig.payload || 'N/A'}</strong></li>
-              
-              <li><span>TLE Epoch:</span> <strong>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
-              <li><span>TLE Source:</span> <strong>{tleSource}</strong></li>
-            </ul>
-          </div>
+          )}
         </div>
 
         <div className="right-container">
@@ -808,8 +903,10 @@ export default function App() {
                   setSpeedMult(1); 
                   setIsPlaying(true); 
                   isTrackingRef.current = false;
-                  setSelectedCatnr(null); // ฟันธง: เคลียร์การเลือกดาวเทียม (ลบแถบสีเหลืองและเส้นวงโคจรทั้งหมด)
-                  setShowGroundTrack(false); // ฟันธง: ปิดเส้น 24H คลื่นไซน์ กลับสู่ค่าเริ่มต้นหน้าจอโล่งๆ
+                  setCameraMode('FREE LOOK');
+                  setSelectedCatnr(null);
+                  setSelectedCatnrs([]); 
+                  setShowGroundTrack(false);
                   if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
                 }}>RESET NOW</button>
                 
@@ -828,86 +925,148 @@ export default function App() {
                   {isUpdatingTle ? 'READING FILE...' : 'UPDATE TLE MANUAL'}
                 </button>
                 
+                {/* ฟันธง: เปลี่ยนข้อความปุ่มให้คงที่ และใช้แสงสว่างบ่งบอกการ Active */}
                 <button 
                   className={`btn ${realtimeSun ? 'active' : ''}`} 
                   onClick={() => setRealtimeSun(!realtimeSun)}
-                  style={{ borderColor: realtimeSun ? '#ffb347' : '', color: realtimeSun ? '#000' : '#ffb347', backgroundColor: realtimeSun ? '#ffb347' : 'rgba(255, 179, 71, 0.05)' }}
                 >
-                  {realtimeSun ? 'SUNLIGHT: REAL-TIME' : 'SUNLIGHT: FULLY LIT'}
+                  REAL-TIME SUNLIGHT
                 </button>
                 
                 <button 
                   className={`btn ${isFlatMap ? 'active' : ''}`} 
                   onClick={() => setIsFlatMap(!isFlatMap)}
-                  style={{ marginTop: '10px', borderColor: '#fff', color: isFlatMap ? '#000' : '#fff', backgroundColor: isFlatMap ? '#fff' : 'rgba(255, 255, 255, 0.05)' }}
+                  style={{ marginTop: '8px' }}
                 >
-                  {isFlatMap ? 'VIEW: 3D GLOBE' : 'VIEW: 2D TACTICAL MAP'}
+                  2D TACTICAL MAP
                 </button>
 
-                {/* ฟันธง: ปุ่มเปิด-ปิด 24H Groundtrack สีเหลืองทอง */}
                 <button 
                   className={`btn ${showGroundTrack ? 'active' : ''}`} 
                   onClick={() => setShowGroundTrack(!showGroundTrack)}
-                  style={{ marginTop: '10px', borderColor: '#ffb347', color: showGroundTrack ? '#000' : '#ffb347', backgroundColor: showGroundTrack ? '#ffb347' : 'rgba(255, 179, 71, 0.05)' }}
+                  style={{ marginTop: '8px' }}
                 >
-                  {showGroundTrack ? 'HIDE 24H GROUNDTRACK' : 'SHOW 24H GROUNDTRACK'}
+                  24H GROUNDTRACK
+                </button>
+
+                <button 
+                  className={`btn ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
+                  onClick={() => {
+                    const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
+                    setCameraMode(newMode);
+                    isTrackingRef.current = (newMode === 'TRACKING');
+                    
+                    if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
+                      try {
+                        const rec = satrecs[selectedCatnr];
+                        if (rec) {
+                            const pos = calculateSatData(new Date(simulatedTimeMs), rec);
+                            if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+                              const currentPov = globeRef.current.pointOfView();
+                              const safeAltitude = (currentPov && !isNaN(currentPov.altitude)) ? currentPov.altitude : 2.2;
+                              globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: safeAltitude }, 1000);
+                            }
+                        }
+                      } catch (err) {}
+                    }
+                  }}
+                  style={{ marginTop: '8px' }}
+                >
+                  CAMERA TRACKING
                 </button>
               </div>
 
               <div className="control-group">
                 <p>SPEED</p>
                 <div className="speed-row">
-                  {[1, 10, 100, 600, 800].map(s => (
+                  {[1, 10, 100, 600].map(s => (
                     <button key={s} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0}} onClick={() => setSpeedMult(s)}>{s}x</button>
                   ))}
                 </div>
               </div>
 
-              <div className="control-group">
-                <p>SATELLITE SELECTOR</p>
-                <div className="sat-selector">
-                  {Array.from(new Set(SATELLITE_OPTIONS.map(s => s.group))).map(groupName => (
-                    <div key={groupName}>
-                      
-                      <div 
-                        className={`group-header ${openGroup === groupName ? 'active' : ''}`}
-                        onClick={() => setOpenGroup(openGroup === groupName ? null : groupName)}
-                      >
-                        <span>{groupName}</span>
-                        <span>{openGroup === groupName ? '▼' : '▶'}</span>
-                      </div>
-
-                      <div className={`group-content ${openGroup === groupName ? 'open' : ''}`}>
-                        {SATELLITE_OPTIONS.filter(sat => sat.group === groupName).map(sat => (
-                          <button 
-                          key={sat.catnr} 
-                          className={`btn sat-btn ${selectedCatnr === sat.catnr ? 'active' : ''}`} 
-                          onClick={() => {
-                            setSelectedCatnr(sat.catnr);
-                            isTrackingRef.current = true; // ฟันธง: เปิดกล้องบินตาม เมื่อกดเลือกดาวเทียม
-                            if (globeRef.current) {
-                                const rec = satrecs[sat.catnr];
-                                if (rec) {
-                                    const pos = calculateSatData(currentDate, rec);
-                                    if (pos) globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: 2.2 }, 1000);
-                                }
-                              }
-                            }}
-                          >
-                            {sat.displayName}
-                          </button>
-                        ))}
-                      </div>
-
-                    </div>
-                  ))}
-                </div>
+              <div className="control-group" style={{ padding: '20px', textAlign: 'center' }}>
+                <p>SATELLITE DATABASE</p>
+                {/* ฟันธง: เปลี่ยนกล่องยาวๆ เป็นปุ่มเรียก Popup Modal มินิมอลแทน */}
+                <button 
+                  className="btn" 
+                  style={{ 
+                    borderColor: 'var(--gold)', 
+                    color: 'var(--gold)', 
+                    textShadow: '0 0 8px var(--gold)',
+                    fontSize: '15px',
+                    padding: '15px'
+                  }} 
+                  onClick={() => setIsModalOpen(true)}
+                >
+                  🛰️ OPEN DATABASE
+                </button>
               </div>
             </div>
           )}
         </div>
       </div>
       
+      {/* ฟันธง: โครงสร้าง POPUP MODAL เรียบหรู ตามแบบที่คุณส่งมาเป๊ะๆ */}
+      {isModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <div className="modal-header">
+              <h2><span style={{fontSize:'24px', marginRight:'5px'}}>🛰️</span> SATELLITE DATABASE</h2>
+              <button className="modal-close-btn" onClick={() => setIsModalOpen(false)}>✕</button>
+            </div>
+            
+            <div className="modal-content">
+              {Array.from(new Set(SATELLITE_OPTIONS.map(s => s.group))).map(groupName => (
+                <div key={groupName}>
+                  <div className="modal-group-title">{groupName}</div>
+                  <div className="modal-grid">
+                    {SATELLITE_OPTIONS.filter(sat => sat.group === groupName).map(sat => (
+                      <button 
+                        key={sat.catnr} 
+                        className={`modal-sat-btn ${selectedCatnrs.includes(sat.catnr) ? 'active' : ''}`} 
+                        onClick={() => {
+                          let newSelected = [...selectedCatnrs];
+                          if (newSelected.includes(sat.catnr)) {
+                            newSelected = newSelected.filter(c => c !== sat.catnr);
+                          } else {
+                            newSelected.push(sat.catnr);
+                          }
+                          setSelectedCatnrs(newSelected);
+                          
+                          const nextTarget = newSelected.length > 0 ? newSelected[newSelected.length - 1] : null;
+                          setSelectedCatnr(nextTarget);
+
+                          isTrackingRef.current = true; 
+                          setCameraMode('TRACKING');
+
+                          if (globeRef.current && nextTarget) {
+                            try {
+                              const rec = satrecs[nextTarget];
+                              if (rec) {
+                                  const pos = calculateSatData(currentDate, rec);
+                                  if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+                                    const currentPov = globeRef.current.pointOfView();
+                                    const safeAltitude = (currentPov && !isNaN(currentPov.altitude)) ? currentPov.altitude : 2.2;
+                                    globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: safeAltitude }, 1000);
+                                  }
+                              }
+                            } catch (err) {}
+                          }
+                        }}
+                      >
+                        {sat.displayName}
+                        {selectedCatnrs.includes(sat.catnr) && <span style={{ color: '#000', fontSize: '12px' }}>●</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="scanlines"></div>
     </>
   );
