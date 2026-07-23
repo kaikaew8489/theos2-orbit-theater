@@ -488,18 +488,31 @@ export default function App() {
     }
     if (points.length < 2) return [];
    // ฟันธง 1: เส้น 3D Ground Track สีเหลืองทอง ความหนา 0.2 (สำหรับลูกโลก)
-   return [{ points, color: 'rgba(255, 215, 0, 0.8)', stroke: 0.3 }];
+   return [{ points, color: 'rgba(255, 215, 0, 0.8)', stroke: 0.5 }];
   }, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000), showGroundTrack]);
   
   const footprintBoundaryPath = useMemo(() => {
-    if (!targetData || targetData.altKm <= 0) return [];
-    const radiusDeg = getFootprintRadiusDeg(targetData.altKm, PASS_MIN_ELEVATION_DEG);
-    if (isNaN(radiusDeg)) return [];
-    const pts = getCirclePolygon(targetData.lat, targetData.lng, radiusDeg, 64).map(c => ({ lng: c[0], lat: c[1], alt: 0.001 }));
-    if (pts.length < 3) return [];
-    // ฟันธง 2: เส้นขอบ Foot Print สีแดงสด 100% และเพิ่มความหนาให้คมกริบ (stroke: 1.5)
-    return [{ points: pts, color: 'rgba(255, 51, 51, 1)', stroke: 1.5 }];
-  }, [targetData]);
+    const paths = [];
+    allSatObjects.forEach(sat => {
+      // ฟันธง: วนลูปเช็คดาวเทียมทุกดวงที่ถูกเลือก (ทั้งหลักและรอง)
+      if (selectedCatnrs.includes(sat.catnr)) {
+        const isPrimary = sat.catnr === selectedCatnr;
+        const radiusDeg = getFootprintRadiusDeg(sat.altKm, PASS_MIN_ELEVATION_DEG);
+        if (!isNaN(radiusDeg)) {
+          const pts = getCirclePolygon(sat.lat, sat.lng, radiusDeg, 64).map(c => ({ lng: c[0], lat: c[1], alt: 0.001 }));
+          if (pts.length >= 3) {
+            paths.push({
+              points: pts,
+              // ฟันธง: ดวงหลักเส้นแดงหนา / ดวงรองเส้นฟ้าบาง
+              color: isPrimary ? 'rgba(255, 51, 51, 1)' : 'rgba(0, 234, 255, 0.8)',
+              stroke: isPrimary ? 1.5 : 0.8
+            });
+          }
+        }
+      }
+    });
+    return paths;
+  }, [allSatObjects, selectedCatnrs, selectedCatnr]);
 
   const signalVisualPath = useMemo(() => {
     if (!linkActive || !targetData || isNaN(targetData.lat) || isNaN(targetData.lng)) return [];
@@ -512,15 +525,24 @@ export default function App() {
   }, [linkActive, targetData]);
 
   const footprintPolygonData = useMemo(() => {
-    if (!targetData || targetData.altKm <= 0) return [];
-    const radiusDeg = getFootprintRadiusDeg(targetData.altKm, PASS_MIN_ELEVATION_DEG);
-    if (isNaN(radiusDeg)) return [];
-    const circleCoords = getCirclePolygon(targetData.lat, targetData.lng, radiusDeg, 64);
-    return [{
-      coords: circleCoords,
-      fillColor: 'rgba(255, 51, 51, 0.15)'
-    }];
-  }, [targetData]);
+    const polygons = [];
+    allSatObjects.forEach(sat => {
+      // ฟันธง: วนลูปถมสีพื้นให้ดาวเทียมทุกดวงที่ถูกเลือก
+      if (selectedCatnrs.includes(sat.catnr)) {
+        const isPrimary = sat.catnr === selectedCatnr;
+        const radiusDeg = getFootprintRadiusDeg(sat.altKm, PASS_MIN_ELEVATION_DEG);
+        if (!isNaN(radiusDeg)) {
+          const circleCoords = getCirclePolygon(sat.lat, sat.lng, radiusDeg, 64);
+          polygons.push({
+            coords: circleCoords,
+            // ฟันธง: ดวงหลักถมสีแดง / ดวงรองถมสีฟ้า
+            fillColor: isPrimary ? 'rgba(255, 51, 51, 0.15)' : 'rgba(0, 234, 255, 0.1)'
+          });
+        }
+      }
+    });
+    return polygons;
+  }, [allSatObjects, selectedCatnrs, selectedCatnr]);
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -689,7 +711,7 @@ export default function App() {
                 if (currentPoints.length > 0) segments.push(currentPoints);
                 return segments.map((seg, j) => (
                   // ฟันธง 2: แยกสเกล 2D ออกมา บังคับเส้นให้บางเฉียบที่ 0.05 เพื่อให้สัมพันธ์กับแผนที่ SVG
-                  <polyline key={`gt-${i}-${j}`} points={seg.join(' ')} fill="none" stroke={pathObj.color} strokeWidth="0.02" />
+                  <polyline key={`gt-${i}-${j}`} points={seg.join(' ')} fill="none" stroke={pathObj.color} strokeWidth="0.2" />
                 ));
               })}
 
@@ -705,7 +727,8 @@ export default function App() {
                 });
                 if (currentPoints.length > 0) segments.push(currentPoints);
                 return segments.map((seg, j) => (
-                  <polyline key={`gt-${i}-${j}`} points={seg.join(' ')} fill="none" stroke={pathObj.color} strokeWidth={pathObj.stroke} />
+                  // ฟันธง: แก้ตรงนี้ครับ! บังคับความหนาเส้น 24H Groundtrack ใน 2D ให้บางลง
+                  <polyline key={`gt-${i}-${j}`} points={seg.join(' ')} fill="none" stroke={pathObj.color} strokeWidth="0.15" />
                 ));
               })}
               
