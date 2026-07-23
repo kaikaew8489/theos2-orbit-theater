@@ -487,7 +487,8 @@ export default function App() {
       }
     }
     if (points.length < 2) return [];
-    return [{ points, color: 'rgba(255, 255, 0, 0.8)', stroke: 0.1 }];
+   // ฟันธง 1: เส้น 3D Ground Track สีเหลืองทอง ความหนา 0.2 (สำหรับลูกโลก)
+   return [{ points, color: 'rgba(255, 215, 0, 0.8)', stroke: 0.3 }];
   }, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000), showGroundTrack]);
   
   const footprintBoundaryPath = useMemo(() => {
@@ -496,7 +497,8 @@ export default function App() {
     if (isNaN(radiusDeg)) return [];
     const pts = getCirclePolygon(targetData.lat, targetData.lng, radiusDeg, 64).map(c => ({ lng: c[0], lat: c[1], alt: 0.001 }));
     if (pts.length < 3) return [];
-    return [{ points: pts, color: 'rgba(255, 51, 51, 0.8)', stroke: 0.5 }];
+    // ฟันธง 2: เส้นขอบ Foot Print สีแดงสด 100% และเพิ่มความหนาให้คมกริบ (stroke: 1.5)
+    return [{ points: pts, color: 'rgba(255, 51, 51, 1)', stroke: 1.5 }];
   }, [targetData]);
 
   const signalVisualPath = useMemo(() => {
@@ -686,7 +688,8 @@ export default function App() {
                 });
                 if (currentPoints.length > 0) segments.push(currentPoints);
                 return segments.map((seg, j) => (
-                  <polyline key={`orb-${i}-${j}`} points={seg.join(' ')} fill="none" stroke="rgba(255, 179, 71, 0.4)" strokeWidth="0.2" strokeDasharray="0.5 0.5" />
+                  // ฟันธง 2: แยกสเกล 2D ออกมา บังคับเส้นให้บางเฉียบที่ 0.05 เพื่อให้สัมพันธ์กับแผนที่ SVG
+                  <polyline key={`gt-${i}-${j}`} points={seg.join(' ')} fill="none" stroke={pathObj.color} strokeWidth="0.02" />
                 ));
               })}
 
@@ -940,7 +943,8 @@ export default function App() {
                   className={`btn ${realtimeSun ? 'active' : ''}`} 
                   onClick={() => setRealtimeSun(!realtimeSun)}
                 >
-                  REAL-TIME SUNLIGHT
+                  {/* ฟันธง: เปลี่ยนข้อความสลับไปมาให้รู้สถานะเหมือนปุ่ม 2D/3D */}
+                  {realtimeSun ? 'SUNLIGHT: REAL-TIME' : 'SUNLIGHT: FULLY LIT'}
                 </button>
                 
                 <button 
@@ -948,7 +952,8 @@ export default function App() {
                   onClick={() => setIsFlatMap(!isFlatMap)}
                   style={{ marginTop: '8px' }}
                 >
-                  2D TACTICAL MAP
+                  {/* ฟันธง 3: ถ้าเป็นโหมด 2D อยู่ ให้ปุ่มขึ้นคำว่า VIEW: 3D GLOBE เพื่อให้รู้ว่ากดเพื่อกลับไปลูกโลก */}
+                  {isFlatMap ? 'VIEW: 3D GLOBE' : 'VIEW: 2D TACTICAL MAP'}
                 </button>
 
                 <button 
