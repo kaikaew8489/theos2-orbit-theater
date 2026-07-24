@@ -486,6 +486,39 @@ export default function App() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+ // ฟันธง: ตัวแปรควบคุมการเปิดปิดหน้าจอ Radar Skyplot
+ const [isRadarOpen, setIsRadarOpen] = useState(false);
+
+ // ฟันธง: ระบบลากและขยายหน้าจอ Radar อย่างอิสระ (Draggable)
+ const [radarPos, setRadarPos] = useState({ x: 380, y: 400 }); // ตำแหน่งเริ่มต้นตอนเปิด
+ const [isDraggingRadar, setIsDraggingRadar] = useState(false);
+ const dragRadarRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
+
+ const handleRadarMouseDown = (e) => {
+   setIsDraggingRadar(true);
+   dragRadarRef.current = { startX: e.clientX, startY: e.clientY, initX: radarPos.x, initY: radarPos.y };
+ };
+
+ useEffect(() => {
+   const handleMouseMove = (e) => {
+     if (!isDraggingRadar) return;
+     setRadarPos({
+       x: dragRadarRef.current.initX + (e.clientX - dragRadarRef.current.startX),
+       y: dragRadarRef.current.initY + (e.clientY - dragRadarRef.current.startY)
+     });
+   };
+   const handleMouseUp = () => setIsDraggingRadar(false);
+   
+   if (isDraggingRadar) {
+     window.addEventListener('mousemove', handleMouseMove);
+     window.addEventListener('mouseup', handleMouseUp);
+   }
+   return () => {
+     window.removeEventListener('mousemove', handleMouseMove);
+     window.removeEventListener('mouseup', handleMouseUp);
+   };
+ }, [isDraggingRadar]);
+
   // ฟันธง: ปลดล็อกให้เมนูซ้าย-ขวา เปิดอิสระพร้อมกันได้เลย!
   const toggleLeftPanel = () => {
     setIsLeftPanelOpen(!isLeftPanelOpen);
@@ -571,10 +604,10 @@ export default function App() {
     if (!scene || !camera || !scene.children || !camera.children) return;
 
     const camLight = camera.children.find(c => c.type === 'DirectionalLight');
-    if (camLight) camLight.intensity = realtimeSun ? 0 : 1.2;
+    if (camLight) camLight.intensity = realtimeSun ? 0 : 2.5;
 
     const ambient = scene.children.find(c => c.type === 'AmbientLight');
-    if (ambient) ambient.intensity = realtimeSun ? 0.02 : 0.8; 
+    if (ambient) ambient.intensity = realtimeSun ? 0.02 : 0.05; 
 
     let sunLight = scene.children.find(c => c.name === 'SunLight');
     
@@ -750,6 +783,89 @@ export default function App() {
   const pathsToDraw3D = [...orbitVisualPath, ...signalVisualPath, ...footprintBoundaryPath];
   if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
 
+ // ฟันธง 1: ฝังเซนเซอร์ ResizeObserver จับขนาดหน้าต่างแบบ Real-time
+ const radarContainerRef = useRef(null);
+ const [radarDim, setRadarDim] = useState({ w: 360, h: 420 }); // ขนาดเริ่มต้น
+
+ useEffect(() => {
+   if (!radarContainerRef.current) return;
+   const observer = new ResizeObserver(entries => {
+     if (entries[0]) setRadarDim({ w: entries[0].contentRect.width, h: entries[0].contentRect.height });
+   });
+   observer.observe(radarContainerRef.current);
+   return () => observer.disconnect();
+ }, [isRadarOpen]);
+
+ // ฟันธง 1: คำนวณรัศมีและเพิ่มตัวแปร uiScale เพื่อให้ตัวหนังสือ/UI ขยายตามสัดส่วนจออย่างสมมาตร
+ const radarLayout = useMemo(() => {
+  // สมองกลคำนวณขนาดตัวหนังสือ (ยิ่งจอกว้าง ตัวหนังสือยิ่งใหญ่ แต่ตันสูงสุดที่ 1.8 เท่า)
+  const uiScale = Math.max(1, Math.min(1.8, radarDim.w / 360)); 
+  
+  // เผื่อขอบด้านข้างและบนล่างให้กว้างขึ้น เพื่อไม่ให้ตัวหนังสือ AZ ที่ขยาย ถูกตัดขาด
+  const topMargin = 70 * uiScale; 
+  const bottomMargin = 45 * uiScale;
+  const sideMargin = 45 * uiScale;
+  
+  const R = Math.max(50, Math.min(radarDim.w - sideMargin * 2, radarDim.h - topMargin - bottomMargin) / 2);
+  const cx = radarDim.w / 2;
+  const cy = (radarDim.h - topMargin - bottomMargin) / 2 + topMargin - 10; 
+  
+  return { R, cx, cy, uiScale };
+}, [radarDim]);
+
+ const radarData = useMemo(() => {
+   if (!targetSatrec) return { segments: [], maxEl: 0 };
+   const segments = [];
+   let prevPoint = null;
+   let maxEl = -90;
+   const { R, cx, cy } = radarLayout;
+
+   for (let m = -30; m <= 30; m += 0.5) { 
+     const d = new Date(currentDate.getTime() + m * 60000);
+     const pos = calculateSatData(d, targetSatrec);
+     
+     if (pos && !isNaN(pos.elevationDeg) && !isNaN(pos.azimuthDeg)) {
+       if (pos.elevationDeg > maxEl) maxEl = pos.elevationDeg; 
+       if (pos.elevationDeg < -15) { prevPoint = null; continue; }
+       
+       const r = R * ((90 - pos.elevationDeg) / 90);
+       const x = cx + r * Math.sin((pos.azimuthDeg * Math.PI) / 180);
+       const y = cy - r * Math.cos((pos.azimuthDeg * Math.PI) / 180);
+       
+       const isVis = pos.elevationDeg >= PASS_MIN_ELEVATION_DEG;
+       const isPast = m <= 0; 
+
+       if (prevPoint) {
+         let lineColor, strokeWidth, strokeDash;
+         if (isPast) {
+           if (isVis || prevPoint.isVis) {
+             lineColor = 'var(--cyan)'; strokeWidth = "3"; strokeDash = "none";
+           } else {
+             lineColor = 'rgba(0, 234, 255, 0.3)'; strokeWidth = "1.5"; strokeDash = "3 3";
+           }
+         } else {
+           lineColor = 'var(--gold)'; strokeWidth = "1.5"; strokeDash = "3 3";
+         }
+         segments.push({ x1: prevPoint.x, y1: prevPoint.y, x2: x, y2: y, color: lineColor, width: strokeWidth, dash: strokeDash });
+       }
+       prevPoint = { x, y, isVis, isPast };
+     }
+   }
+   return { segments, maxEl: maxEl > -15 ? maxEl.toFixed(1) : 'N/A' };
+ }, [targetSatrec, Math.floor(simulatedTimeMs / 60000), radarLayout]);
+
+ const radarCurrentPos = useMemo(() => {
+   if (!targetData || isNaN(targetData.elevationDeg) || isNaN(targetData.azimuthDeg)) return null;
+   if (targetData.elevationDeg < -15) return null;
+   
+   const { R, cx, cy } = radarLayout;
+   const r = R * ((90 - targetData.elevationDeg) / 90);
+   const x = cx + r * Math.sin((targetData.azimuthDeg * Math.PI) / 180);
+   const y = cy - r * Math.cos((targetData.azimuthDeg * Math.PI) / 180);
+   
+   return { x, y, isVis: targetData.elevationDeg >= PASS_MIN_ELEVATION_DEG, el: targetData.elevationDeg };
+ }, [targetData, radarLayout]);
+
   return (
     <>
       <Globe
@@ -821,7 +937,7 @@ export default function App() {
         pathTransitionDuration={0}
         
         ringsData={[{ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng }]}
-        ringColor={() => linkActive ? t => `rgba(0, 234, 255, ${1-t})` : t => `rgba(255, 51, 51, ${1-t})`}
+        ringColor={() => linkActive ? t => `rgba(0, 255, 102, ${1-t})` : t => `rgba(255, 51, 51, ${1-t})`}
         ringMaxRadius={linkActive ? 8 : 4}
         ringPropagationSpeed={1.5}
         ringRepeatPeriod={800}
@@ -1137,7 +1253,7 @@ export default function App() {
                   className={`btn ${realtimeSun ? 'active' : ''}`} 
                   onClick={() => setRealtimeSun(!realtimeSun)}
                 >
-                  {realtimeSun ? 'SUNLIGHT: REAL-TIME' : 'SUNLIGHT: FULLY LIT'}
+                 {realtimeSun ? 'DAY/NIGHT: REAL-TIME' : 'DAY/NIGHT: DISABLED'}
                 </button>
                 
                 <button 
@@ -1181,6 +1297,26 @@ export default function App() {
                 </button>
               </div>
 
+                {/* ฟันธง: ปุ่มเรียกดูหน้าจอจานเรดาร์ ขยายกรอบให้กว้างและจัดกึ่งกลางเป๊ะๆ */}
+                <button 
+                  className={`btn ${isRadarOpen ? 'active' : ''}`} 
+                  onClick={() => setIsRadarOpen(!isRadarOpen)}
+                  style={{ 
+                    marginTop: '10px', 
+                    padding: '12px 10px', /* เพิ่มพื้นที่บน-ล่างให้หายใจ */
+                    minHeight: '48px',    /* บังคับความสูงขั้นต่ำ ไม่ให้กรอบบีบตัวหนังสือ */
+                    display: 'flex',      /* ใช้ Flex จัดระเบียบไอคอนและข้อความ */
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    gap: '8px',           /* เว้นช่องไฟระหว่างเสาอากาศกับตัวหนังสือ */
+                    borderColor: 'var(--green)', 
+                    color: 'var(--green)', 
+                    textShadow: '0 0 8px var(--green)' 
+                  }}
+                >
+                  📡 GISTDA RADAR SKYPLOT
+                </button>
+
               <div className="control-group">
                 <p>SPEED</p>
                 <div className="speed-row">
@@ -1205,7 +1341,7 @@ export default function App() {
       </div>
       
       {isModalOpen && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" style={{ zIndex: 99999 }}>
           <div className="modal-box">
             <div className="modal-header">
               <h2><span style={{fontSize:'26px', marginRight:'8px'}}>🛰️</span> SATELLITE DATABASE</h2>
@@ -1303,6 +1439,159 @@ export default function App() {
               )})}
             </div>
           </div>
+        </div>
+      )}
+
+{/* ฟันธง: หน้าจอ RADAR แบบ Dynamic Grid (ขยายจอแล้ววงกลม+เส้นจะงอกขึ้นมาเองอัตโนมัติ ตัวอักษรเท่าเดิม) */}
+{isRadarOpen && (
+        <div ref={radarContainerRef} className="radar-perfect-scale" style={{
+          position: 'fixed',
+          top: `${radarPos.y}px`,
+          left: `${radarPos.x}px`,
+          zIndex: 9999,
+          background: 'rgba(0, 10, 20, 0.75)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid var(--green)',
+          borderRadius: '8px',
+          boxShadow: '0 0 30px rgba(0, 255, 102, 0.3)',
+          width: '360px', 
+          height: '420px', 
+          minWidth: '300px',
+          minHeight: '350px',
+          overflow: 'hidden',
+          resize: 'both' // ให้ลากขยายได้อิสระ
+        }}>
+          
+          {/* เอา viewBox ออกทิ้งไปเลยครับ! จบปัญหาอาการแว่นขยาย */}
+          {/* เอา viewBox ออกทิ้งไปเลยครับ! จบปัญหาอาการแว่นขยาย */}
+          <svg width="100%" height="100%" style={{ display: 'block' }}>
+            
+            {/* Header: ปรับความกว้างและสัดส่วนตัวหนังสือให้ยืดตาม uiScale */}
+            <rect x="0" y="0" width={radarDim.w - 40} height={40 * radarLayout.uiScale} fill="transparent" cursor={isDraggingRadar ? 'grabbing' : 'grab'} onMouseDown={handleRadarMouseDown} />
+            <line x1="10" y1={40 * radarLayout.uiScale} x2={radarDim.w - 10} y2={40 * radarLayout.uiScale} stroke="var(--green)" strokeDasharray="3 3" opacity="0.5" />
+            <text x="15" y={28 * radarLayout.uiScale} fill="var(--green)" fontSize={14 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron">📡 AZ/EL</text>
+            
+            {(() => {
+              const sat = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr);
+              if (!sat) return null;
+              const s = radarLayout.uiScale; // ดึงค่าตัวคูณมาใช้ให้โค้ดสั้นลง
+              return (
+                <g style={{ pointerEvents: 'none' }} transform={`translate(${radarDim.w / 2}, ${20 * s})`}>
+                  <rect x={-70 * s} y={-14 * s} width={140 * s} height={28 * s} rx={4 * s} fill="rgba(0,255,102,0.2)" stroke="rgba(0,255,102,0.5)" />
+                  {sat.flag && <image href={`https://flagcdn.com/w20/${sat.flag.toLowerCase()}.png`} x={-60 * s} y={-8 * s} width={16 * s} height={16 * s} />}
+                  <text x={sat.flag ? -35 * s : 0} y={4 * s} fill="#fff" fontSize={12 * s} fontWeight="bold" fontFamily="Orbitron" textAnchor={sat.flag ? "start" : "middle"}>{sat.displayName}</text>
+                </g>
+              );
+            })()}
+
+            <g onClick={() => setIsRadarOpen(false)} cursor="pointer">
+              <rect x={radarDim.w - (35 * radarLayout.uiScale)} y={10 * radarLayout.uiScale} width={24 * radarLayout.uiScale} height={24 * radarLayout.uiScale} rx={4 * radarLayout.uiScale} fill="transparent" stroke="var(--green)" />
+              <text x={radarDim.w - (23 * radarLayout.uiScale)} y={27 * radarLayout.uiScale} fill="var(--green)" fontSize={14 * radarLayout.uiScale} textAnchor="middle" fontWeight="bold">✕</text>
+            </g>
+
+            <text x="15" y={65 * radarLayout.uiScale} fill="var(--cyan)" fontSize={11 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron" textAnchor="start">
+              EL: {radarCurrentPos && radarCurrentPos.el ? Math.max(0, radarCurrentPos.el).toFixed(1) : '0.0'}°
+            </text>
+            <text x={radarDim.w - 15} y={65 * radarLayout.uiScale} fill="var(--cyan)" fontSize={11 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron" textAnchor="end">
+              MAX EL: {radarData.maxEl !== 'N/A' ? `${radarData.maxEl}°` : 'N/A'}
+            </text>
+
+            <g style={{ pointerEvents: 'none' }}>
+              {(() => {
+                const { R, cx, cy, uiScale } = radarLayout;
+                
+                // ระบบวงกลมด้านในคงไว้เหมือนเดิม 100% ตามสั่ง
+                const elStep = R > 250 ? 10 : (R > 150 ? 15 : 30);
+                const rings = [];
+                for (let e = elStep; e < 90; e += elStep) rings.push(e);
+
+                const azStep = R > 200 ? 15 : 45;
+                const azLines = [];
+                for (let a = 0; a < 360; a += azStep) azLines.push(a);
+
+                return (
+                  <>
+                    {azLines.map(az => {
+                       const x2 = cx + R * Math.sin((az * Math.PI) / 180);
+                       const y2 = cy - R * Math.cos((az * Math.PI) / 180);
+                       const isMain = az % 90 === 0;
+                       return <line key={`az-${az}`} x1={cx} y1={cy} x2={x2} y2={y2} stroke="rgba(0, 255, 102, 0.3)" strokeWidth={isMain ? "1" : "0.5"} strokeDasharray={isMain ? "none" : "3 3"} />
+                    })}
+
+                    {rings.map(el => {
+                      const r = R * ((90 - el) / 90);
+                      return (
+                        <React.Fragment key={`el-${el}`}>
+                          <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(0, 255, 102, 0.4)" strokeWidth="1" strokeDasharray="4 4" />
+                          {R > 120 && el % 30 === 0 && (
+                            <text x={cx + 2} y={cy - r + (9 * uiScale)} fill="rgba(0,255,102,0.6)" fontSize={9 * uiScale}>{el}°</text>
+                          )}
+                        </React.Fragment>
+                      )
+                    })}
+                    
+                    <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(0, 255, 102, 0.6)" strokeWidth="1.5" />
+                    
+                    {/* ฟันธง 2: เพิ่มข้อความมุมกวาด (Azimuth) มาตรฐาน 8 ทิศทาง และปรับขนาดตาม uiScale */}
+                    {[0, 45, 90, 135, 180, 225, 270, 315].map(az => {
+                      const isMain = az % 90 === 0;
+                      // เผื่อระยะห่างข้อความจากขอบวงกลม ให้สมส่วนตามขนาดหน้าจอ
+                      const padding = isMain ? 15 * uiScale : 12 * uiScale; 
+                      const lx = cx + (R + padding) * Math.sin((az * Math.PI) / 180);
+                      const ly = cy - (R + padding) * Math.cos((az * Math.PI) / 180);
+                      
+                      let label = az + '°';
+                      if (az === 0) label = "N (0°)";
+                      if (az === 90) label = "E (90°)";
+                      if (az === 180) label = "S (180°)";
+                      if (az === 270) label = "W (270°)";
+
+                      // จัดตำแหน่งข้อความให้ไม่ทับวงกลม
+                      let anchor = "middle";
+                      if (az > 0 && az < 180) anchor = "start";
+                      if (az > 180 && az < 360) anchor = "end";
+
+                      let dy = "0.3em"; 
+                      if (az === 0) dy = "0em"; 
+                      if (az === 180) dy = "0.8em";
+
+                      return (
+                        <text 
+                          key={`az-label-${az}`} 
+                          x={lx} 
+                          y={ly} 
+                          dy={dy}
+                          fill={isMain ? "var(--green)" : "rgba(0,255,102,0.6)"} 
+                          fontSize={isMain ? 12 * uiScale : 10 * uiScale} 
+                          fontWeight={isMain ? "bold" : "normal"} 
+                          textAnchor={anchor}
+                        >
+                          {label}
+                        </text>
+                      );
+                    })}
+                  </>
+                );
+              })()}
+
+              {radarData.segments.map((seg, i) => (
+                <line key={i} x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke={seg.color} strokeWidth={seg.width} strokeDasharray={seg.dash} />
+              ))}
+              
+              {/* จุดดาวเทียม ขยายตามสัดส่วนหน้าจอ */}
+              {radarCurrentPos && (
+                <circle cx={radarCurrentPos.x} cy={radarCurrentPos.y} r={6 * radarLayout.uiScale} fill="#ff9900" stroke="#ffffff" strokeWidth={1.5 * radarLayout.uiScale} style={{ filter: `drop-shadow(0 0 ${10 * radarLayout.uiScale}px #ff9900)` }} />
+              )}
+              <circle cx={radarLayout.cx} cy={radarLayout.cy} r={3 * radarLayout.uiScale} fill="var(--red)" />
+            </g>
+
+            {/* Legend ด้านล่างขยายสมมาตร */}
+            <text x={radarDim.w / 2} y={radarDim.h - (12 * radarLayout.uiScale)} fontSize={10 * radarLayout.uiScale} fontFamily="Orbitron" textAnchor="middle">
+              <tspan fill="rgba(0, 234, 255, 0.4)">- - DEPARTED</tspan>
+              <tspan dx={15 * radarLayout.uiScale} fill="var(--gold)">- - APPROACH</tspan>
+              <tspan dx={15 * radarLayout.uiScale} fill="var(--cyan)">━━ VISIBLE</tspan>
+            </text>
+          </svg>
         </div>
       )}
 

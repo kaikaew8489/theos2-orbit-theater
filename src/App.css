@@ -562,3 +562,26 @@
     color: rgba(226, 246, 255, 0.82);
     font-size: 0.78rem;
   }
+
+  /* ฟันธง 3: ระบบ Responsive Auto-Scale ป้องกันเมนูล้นจอ ในโน๊ตบุ๊ค และทีวีต่างๆ */
+.left-panel, .right-panel {
+  max-height: 95vh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none !important; /* ซ่อน Scrollbar Firefox */
+  -ms-overflow-style: none !important; /* ซ่อน Scrollbar IE/Edge */
+}
+.left-panel::-webkit-scrollbar, .right-panel::-webkit-scrollbar {
+  display: none !important; /* ซ่อน Scrollbar Chrome/Safari ให้ดูคลีน */
+}
+
+/* ถ้าความสูงจอน้อยกว่า 900px (เช่น โน๊ตบุ๊ค) ให้ย่อเมนูลง 15% อัตโนมัติ */
+@media (max-height: 900px) {
+  .left-panel { transform: scale(0.85) !important; transform-origin: top left !important; }
+  .right-panel { transform: scale(0.85) !important; transform-origin: top right !important; }
+}
+/* ถ้าจอเล็กมาก (ต่ำกว่า 768px) ให้ย่อเมนูลง 25% อัตโนมัติ */
+@media (max-height: 768px) {
+  .left-panel { transform: scale(0.75) !important; transform-origin: top left !important; }
+  .right-panel { transform: scale(0.75) !important; transform-origin: top right !important; }
+}
