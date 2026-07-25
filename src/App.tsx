@@ -5,22 +5,22 @@ import * as THREE from 'three';
 import * as satelliteJs from 'satellite.js';
 
 // ==========================================
-// 1. DATA & CONFIGURATION (ชุดสมบูรณ์ ของเก่าอยู่ครบ + ของใหม่จัดเต็ม)
+// 1. DATA & CONFIGURATION
 // ==========================================
 const GROUND_STATION = { lat: 13.16, lng: 100.93, name: 'GISTDA', color: '#00eaff' };
 const PASS_MIN_ELEVATION_DEG = 5;
 const EARTH_RADIUS_KM = 6371;
 
 const SATELLITE_OPTIONS = [
-  // GISTDA EARTH OBSERVATION (ของเดิม)
+  // GISTDA EARTH OBSERVATION 
   { catnr: '58016', name: 'THEOS-2', displayName: 'THEOS-2', flag: 'th', group: 'GISTDA EARTH OBSERVATION', operator: 'GISTDA', mission: 'High-Res Optical', telemetry: '2066.56 UP / 2244.228 DN MHz (S-Band)', payload: '8150 MHz (X-Band)' },
   { catnr: '33396', name: 'THEOS', displayName: 'THEOS', flag: 'th', group: 'GISTDA EARTH OBSERVATION', operator: 'GISTDA', mission: 'Earth Observation', telemetry: '2036 UP / 2211 DN MHz (S-Band)', payload: '8140 MHz (X-Band)' },
   
-  // SPACE STATIONS (ของเดิม)
+  // SPACE STATIONS 
   { catnr: '25544', name: 'ISS (ZARYA)', displayName: 'ISS (Space Station)', flag: 'us', group: 'SPACE STATIONS', operator: 'International', mission: 'Space Station', telemetry: '2.216 GHz (S-Band)', payload: '15.003 GHz (Ku-Band)' },
   { catnr: '48274', name: 'CSS (TIANGONG)', displayName: 'TIANGONG (CSS)', flag: 'cn', group: 'SPACE STATIONS', operator: 'CMSA', mission: 'Space Station', telemetry: 'S-Band', payload: 'Ka-Band' },
 
-  // THAI CUBESAT & MICROSAT (เอากลับมาให้ครบ)
+  // THAI CUBESAT & MICROSAT 
   { catnr: '43720', name: 'KNACKSAT-1', displayName: 'KNACKSAT-1', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'KMUTNB', mission: 'Tech Demo', telemetry: 'UHF/VHF', payload: 'N/A' },
   { catnr: '46292', name: 'NAPA-1', displayName: 'NAPA-1 / RTAF-SAT-1', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'RTAF', mission: 'Earth Observation', telemetry: 'UHF/VHF', payload: 'S-Band' },
   { catnr: '48008', name: 'BCCSAT-1', displayName: 'BCCSAT-1', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'BCC', mission: 'Educational', telemetry: 'UHF/VHF', payload: 'N/A' },
@@ -28,7 +28,7 @@ const SATELLITE_OPTIONS = [
   { catnr: '62689', name: 'LOGSATS-2', displayName: 'LOGSATS-2', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'EOS Orbit', mission: 'IoT Tech Demo', telemetry: 'UHF/VHF', payload: 'N/A' },
   { catnr: '67683', name: 'KNACKSAT-2', displayName: 'KNACKSAT-2', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'KMUTNB', mission: 'Tech Demo', telemetry: '435.590 MHz (UHF)', payload: '435.590 MHz (UHF)' },
 
-  // INTERNATIONAL RADAR (SAR) (เอากลับมาให้ครบ)
+  // INTERNATIONAL RADAR (SAR) 
   { catnr: '32382', name: 'RADARSAT-2', displayName: 'RADARSAT-2', flag: 'ca', group: 'INTERNATIONAL RADAR (SAR)', operator: 'MDA', mission: 'SAR Imaging', telemetry: '2.215 GHz (S-Band)', payload: '8.250 GHz (X-Band)' },
   { catnr: '31598', name: 'COSMO-SKYMED-1', displayName: 'COSMO-1', flag: 'it', group: 'INTERNATIONAL RADAR (SAR)', operator: 'ASI / e-GEOS', mission: 'SAR Imaging', telemetry: '2.025 - 2.110 GHz (S-Band)', payload: '8.0 - 8.4 GHz (X-Band)' },
   { catnr: '32376', name: 'COSMO-SKYMED-2', displayName: 'COSMO-2', flag: 'it', group: 'INTERNATIONAL RADAR (SAR)', operator: 'ASI / e-GEOS', mission: 'SAR Imaging', telemetry: '2.025 - 2.110 GHz (S-Band)', payload: '8.0 - 8.4 GHz (X-Band)' },
@@ -38,7 +38,7 @@ const SATELLITE_OPTIONS = [
   { catnr: '31698', name: 'TERRASAR-X', displayName: 'TERRASAR-X', flag: 'de', group: 'INTERNATIONAL RADAR (SAR)', operator: 'DLR', mission: 'SAR Imaging', telemetry: 'S-Band', payload: 'X-Band' },
   { catnr: '36605', name: 'TANDEM-X', displayName: 'TANDEM-X', flag: 'de', group: 'INTERNATIONAL RADAR (SAR)', operator: 'DLR', mission: 'SAR Imaging', telemetry: 'S-Band', payload: 'X-Band' },
 
-  // EARTH RESOURCES & WEATHER (ของเดิมที่โดนลบไป เอากลับมาแล้ว!)
+  // EARTH RESOURCES & WEATHER
   { catnr: '49260', name: 'LANDSAT-9', displayName: 'LANDSAT-9', flag: 'us', group: 'EARTH RESOURCES & WEATHER', operator: 'NASA / USGS', mission: 'Earth Resources', telemetry: '2.206 GHz (S-Band)', payload: '8.212 GHz (X-Band)' },
   { catnr: '39084', name: 'LANDSAT-8', displayName: 'LANDSAT-8', flag: 'us', group: 'EARTH RESOURCES & WEATHER', operator: 'NASA / USGS', mission: 'Earth Resources', telemetry: '2.206 GHz (S-Band)', payload: '8.212 GHz (X-Band)' },
   { catnr: '25994', name: 'TERRA', displayName: 'TERRA', flag: 'us', group: 'EARTH RESOURCES & WEATHER', operator: 'NASA', mission: 'Earth Resources', telemetry: '2.106 GHz (S-Band)', payload: '8.212 GHz (X-Band)' },
@@ -49,16 +49,12 @@ const SATELLITE_OPTIONS = [
   { catnr: '40697', name: 'SENTINEL-2A', displayName: 'SENTINEL-2A', flag: 'eu', group: 'EARTH RESOURCES & WEATHER', operator: 'ESA', mission: 'Earth Resources', telemetry: '2.025 GHz (S-Band)', payload: '8.025 - 8.400 GHz (X-Band)' },
   { catnr: '32783', name: 'CARTOSAT-2A', displayName: 'CARTOSAT-2A', flag: 'in', group: 'EARTH RESOURCES & WEATHER', operator: 'ISRO', mission: 'Earth Resources', telemetry: 'S-Band', payload: 'X-Band' },
 
-  // GLOBAL EESS & SCIENCE (ของเดิม)
+  // GLOBAL EESS & SCIENCE 
   { catnr: '39150', name: 'GAOFEN-1', displayName: 'GAOFEN-1', flag: 'cn', group: 'GLOBAL EESS & SCIENCE', operator: 'CNSA', mission: 'Earth Observation', telemetry: 'S-Band', payload: 'X-Band' },
   { catnr: '40376', name: 'SMAP', displayName: 'SMAP', flag: 'us', group: 'GLOBAL EESS & SCIENCE', operator: 'NASA', mission: 'Soil Moisture', telemetry: 'S-Band', payload: 'X-Band' },
   { catnr: '54754', name: 'SWOT', displayName: 'SWOT', flag: 'us', group: 'GLOBAL EESS & SCIENCE', operator: 'NASA/CNES', mission: 'Water Topography', telemetry: 'S-Band', payload: 'X-Band' },
   { catnr: '43613', name: 'ICESAT-2', displayName: 'ICESAT-2', flag: 'us', group: 'GLOBAL EESS & SCIENCE', operator: 'NASA', mission: 'Ice Elevation', telemetry: 'S-Band', payload: 'X-Band' },
 
-  // ==========================================
-  // ของใหม่ที่เพิ่มเข้าไป (MEGA CONSTELLATIONS & GNSS & GLOBALSTAR)
-  // ==========================================
-  
   // MEGA CONSTELLATIONS (STARLINK)
   { catnr: '44714', name: 'STARLINK-1008', displayName: 'STARLINK-1008', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'SpaceX', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
   { catnr: '44718', name: 'STARLINK-1012', displayName: 'STARLINK-1012', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'SpaceX', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
@@ -474,7 +470,6 @@ export default function App() {
   const [simulatedTimeMs, setSimulatedTimeMs] = useState(Date.now());
   const [isPlaying, setIsPlaying] = useState(true);
   const [speedMult, setSpeedMult] = useState(1);
-  // ฟันธง 1: เปิดระบบเงากลางวัน-กลางคืน เป็นค่าเริ่มต้นตั้งแต่เปิดแอป
   const [realtimeSun, setRealtimeSun] = useState(true);
   
   const [showGroundTrack, setShowGroundTrack] = useState(false);
@@ -486,40 +481,39 @@ export default function App() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
- // ฟันธง: ตัวแปรควบคุมการเปิดปิดหน้าจอ Radar Skyplot
- const [isRadarOpen, setIsRadarOpen] = useState(false);
+  // ฟันธง: ตัวแปรควบคุมการเปิดปิดหน้าจอ Radar Skyplot
+  const [isRadarOpen, setIsRadarOpen] = useState(false);
 
- // ฟันธง: ระบบลากและขยายหน้าจอ Radar อย่างอิสระ (Draggable)
- const [radarPos, setRadarPos] = useState({ x: 380, y: 400 }); // ตำแหน่งเริ่มต้นตอนเปิด
- const [isDraggingRadar, setIsDraggingRadar] = useState(false);
- const dragRadarRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
+  // ฟันธง: ระบบลากและขยายหน้าจอ Radar อย่างอิสระ (Draggable)
+  const [radarPos, setRadarPos] = useState({ x: 380, y: 400 }); // ตำแหน่งเริ่มต้นตอนเปิด
+  const [isDraggingRadar, setIsDraggingRadar] = useState(false);
+  const dragRadarRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
- const handleRadarMouseDown = (e) => {
-   setIsDraggingRadar(true);
-   dragRadarRef.current = { startX: e.clientX, startY: e.clientY, initX: radarPos.x, initY: radarPos.y };
- };
+  const handleRadarMouseDown = (e) => {
+    setIsDraggingRadar(true);
+    dragRadarRef.current = { startX: e.clientX, startY: e.clientY, initX: radarPos.x, initY: radarPos.y };
+  };
 
- useEffect(() => {
-   const handleMouseMove = (e) => {
-     if (!isDraggingRadar) return;
-     setRadarPos({
-       x: dragRadarRef.current.initX + (e.clientX - dragRadarRef.current.startX),
-       y: dragRadarRef.current.initY + (e.clientY - dragRadarRef.current.startY)
-     });
-   };
-   const handleMouseUp = () => setIsDraggingRadar(false);
-   
-   if (isDraggingRadar) {
-     window.addEventListener('mousemove', handleMouseMove);
-     window.addEventListener('mouseup', handleMouseUp);
-   }
-   return () => {
-     window.removeEventListener('mousemove', handleMouseMove);
-     window.removeEventListener('mouseup', handleMouseUp);
-   };
- }, [isDraggingRadar]);
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDraggingRadar) return;
+      setRadarPos({
+        x: dragRadarRef.current.initX + (e.clientX - dragRadarRef.current.startX),
+        y: dragRadarRef.current.initY + (e.clientY - dragRadarRef.current.startY)
+      });
+    };
+    const handleMouseUp = () => setIsDraggingRadar(false);
+    
+    if (isDraggingRadar) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingRadar]);
 
-  // ฟันธง: ปลดล็อกให้เมนูซ้าย-ขวา เปิดอิสระพร้อมกันได้เลย!
   const toggleLeftPanel = () => {
     setIsLeftPanelOpen(!isLeftPanelOpen);
   };
@@ -543,7 +537,12 @@ export default function App() {
     const recs = {};
     Object.keys(tles).forEach(cat => {
       if (tles[cat].line1 && tles[cat].line2) {
-        recs[cat] = satelliteJs.twoline2satrec(tles[cat].line1, tles[cat].line2);
+        // ฟันธง: ใส่เกราะป้องกัน ถ้า TLE ดวงไหนพัง ให้ข้ามไปดวงอื่น แอปจะได้ไม่แครช
+        try {
+          recs[cat] = satelliteJs.twoline2satrec(tles[cat].line1, tles[cat].line2);
+        } catch (error) {
+          console.warn(`[TLE ERROR] สแกนข้อมูลดาวเทียม NORAD: ${cat} ล้มเหลว โปรดตรวจสอบไฟล์`, error);
+        }
       }
     });
     return recs;
@@ -559,11 +558,6 @@ export default function App() {
         globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
         const controls = globeRef.current.controls();
         controls.autoRotate = false;
-        
-        controls.addEventListener('start', () => {
-          // ฟันธง 1: เอาคำสั่งปิด Tracking อัตโนมัติออก 
-          // เพื่อให้ผู้ใช้ซูมเข้า-ออกดูโลกมุมกว้างได้อิสระ โดยปุ่มยัง Active อยู่!
-        });
       }
     }, 500);
 
@@ -583,10 +577,7 @@ export default function App() {
         if (rec) {
           const pos = calculateSatData(new Date(simulatedTimeMs), rec);
           if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-            // ฟันธง: ซูมเข้าไปใกล้ๆ ให้รู้สึกเหมือน "นั่งไปบนดาวเทียม"
-            // ฟันธง 2: อัปเดตพิกัดตามดาวเทียม แต่ "ถอดการบังคับ altitude ออก"
-                  // ทำให้กล้องลอยตามดาวเทียมแบบเนียนๆ ส่วนผู้ใช้จะซูมเข้า/ซูมออกดูโลกกว้างๆ เองได้เลย
-                  globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng }, 0);
+            globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng }, 0);
           }
         }
       } catch (err) { }
@@ -607,7 +598,8 @@ export default function App() {
     if (camLight) camLight.intensity = realtimeSun ? 0 : 2.5;
 
     const ambient = scene.children.find(c => c.type === 'AmbientLight');
-    if (ambient) ambient.intensity = realtimeSun ? 0.02 : 0.05; 
+    // ฟันธง: ปิดโหมด Real-time แสงรอบทิศทางต้องสว่างขึ้นเป็น 0.8
+    if (ambient) ambient.intensity = realtimeSun ? 0.02 : 0.8;
 
     let sunLight = scene.children.find(c => c.name === 'SunLight');
     
@@ -633,7 +625,6 @@ export default function App() {
   const linkActive = targetData && targetData.elevationDeg >= PASS_MIN_ELEVATION_DEG;
 
   const allSatObjects = useMemo(() => {
-    // ฟันธง: กรองเอาเฉพาะดาวเทียมที่ถูก "เลือก" เท่านั้นมาคำนวณและแสดงผลบนจอ เพื่อแก้ปัญหากระตุกและลดความรก
     return SATELLITE_OPTIONS.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
       if (!satrecs[sat.catnr]) return null;
       const data = calculateSatData(currentDate, satrecs[sat.catnr]);
@@ -647,7 +638,7 @@ export default function App() {
         altitude: Math.max(0.05, data.altKm / EARTH_RADIUS_KM)
       };
     }).filter(Boolean);
-  }, [currentDate, satrecs, selectedCatnr, selectedCatnrs]); // เพิ่ม selectedCatnrs ใน dependency ด้วย
+  }, [currentDate, satrecs, selectedCatnr, selectedCatnrs]); 
 
   const orbitVisualPath = useMemo(() => {
     if (!targetSatrec) return [];
@@ -777,109 +768,155 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  // ฟันธง: ฟังก์ชันดึง TLE อัตโนมัติจาก Server ตัวกลาง 
+  const handleAutoUpdateTle = async () => {
+    setIsUpdatingTle(true);
+    setTleSource('Fetching Live TLE...');
+
+    try {
+     // เอา URL จาก Apps Script มาวางตรงนี้ครับ!!!
+     const proxyUrl = "https://script.google.com/macros/s/AKfycbyv1ZA8fPvSlK3KhblBbkGTB4UC86nlpFES63jGvRlBiHSbuChYMs2BQgqsSXBQjDRf/exec";
+      
+      const response = await fetch(proxyUrl);
+      if (!response.ok) throw new Error("Network response was not ok");
+      
+      const text = await response.text();
+      const lines = text.trim().split(/\r?\n/);
+      const newTles = { ...tles };
+      let successCount = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith('1 ')) {
+          const line1 = line;
+          const line2 = lines[i + 1] ? lines[i + 1].trim() : '';
+          if (line2.startsWith('2 ')) {
+            const catnr = line1.substring(2, 7).trim();
+            if (SATELLITE_OPTIONS.find(s => s.catnr === catnr)) {
+              newTles[catnr] = { line1, line2 };
+              successCount++;
+            }
+          }
+        }
+      }
+
+      if (successCount > 0) {
+        setTles(newTles);
+        try { localStorage.setItem('gistda_tles', JSON.stringify(newTles)); } catch(e) {}
+        const now = new Date();
+        setTleSource(`Live Update (${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())})`);
+      } else {
+        setTleSource('Update Failed (Bad Data)');
+      }
+    } catch (err) {
+      console.error(err);
+      setTleSource('Update Failed (Network Error)');
+    } finally {
+      setIsUpdatingTle(false);
+    }
+  };
+
   const thaiTime = new Date(currentDate.getTime() + 7 * 3600000);
   const formatTime = (d) => `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`;
 
   const pathsToDraw3D = [...orbitVisualPath, ...signalVisualPath, ...footprintBoundaryPath];
   if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
 
- // ฟันธง 1: ฝังเซนเซอร์ ResizeObserver จับขนาดหน้าต่างแบบ Real-time
- const radarContainerRef = useRef(null);
- const [radarDim, setRadarDim] = useState({ w: 360, h: 420 }); // ขนาดเริ่มต้น
+  const radarContainerRef = useRef(null);
+  const [radarDim, setRadarDim] = useState({ w: 360, h: 420 });
 
- useEffect(() => {
-   if (!radarContainerRef.current) return;
-   const observer = new ResizeObserver(entries => {
-     if (entries[0]) setRadarDim({ w: entries[0].contentRect.width, h: entries[0].contentRect.height });
-   });
-   observer.observe(radarContainerRef.current);
-   return () => observer.disconnect();
- }, [isRadarOpen]);
+  useEffect(() => {
+    if (!radarContainerRef.current) return;
+    const observer = new ResizeObserver(entries => {
+      if (entries[0]) setRadarDim({ w: entries[0].contentRect.width, h: entries[0].contentRect.height });
+    });
+    observer.observe(radarContainerRef.current);
+    return () => observer.disconnect();
+  }, [isRadarOpen]);
 
- // ฟันธง 1: คำนวณรัศมีและเพิ่มตัวแปร uiScale เพื่อให้ตัวหนังสือ/UI ขยายตามสัดส่วนจออย่างสมมาตร
- const radarLayout = useMemo(() => {
-  // สมองกลคำนวณขนาดตัวหนังสือ (ยิ่งจอกว้าง ตัวหนังสือยิ่งใหญ่ แต่ตันสูงสุดที่ 1.8 เท่า)
-  const uiScale = Math.max(1, Math.min(1.8, radarDim.w / 360)); 
-  
-  // เผื่อขอบด้านข้างและบนล่างให้กว้างขึ้น เพื่อไม่ให้ตัวหนังสือ AZ ที่ขยาย ถูกตัดขาด
-  const topMargin = 70 * uiScale; 
-  const bottomMargin = 45 * uiScale;
-  const sideMargin = 45 * uiScale;
-  
-  const R = Math.max(50, Math.min(radarDim.w - sideMargin * 2, radarDim.h - topMargin - bottomMargin) / 2);
-  const cx = radarDim.w / 2;
-  const cy = (radarDim.h - topMargin - bottomMargin) / 2 + topMargin - 10; 
-  
-  return { R, cx, cy, uiScale };
-}, [radarDim]);
+  const radarLayout = useMemo(() => {
+    const uiScale = Math.max(1, Math.min(1.8, radarDim.w / 360)); 
+    const topMargin = 70 * uiScale; 
+    const bottomMargin = 45 * uiScale;
+    const sideMargin = 45 * uiScale;
+    const R = Math.max(50, Math.min(radarDim.w - sideMargin * 2, radarDim.h - topMargin - bottomMargin) / 2);
+    const cx = radarDim.w / 2;
+    const cy = (radarDim.h - topMargin - bottomMargin) / 2 + topMargin - 10; 
+    return { R, cx, cy, uiScale };
+  }, [radarDim]);
 
- const radarData = useMemo(() => {
-   if (!targetSatrec) return { segments: [], maxEl: 0 };
-   const segments = [];
-   let prevPoint = null;
-   let maxEl = -90;
-   const { R, cx, cy } = radarLayout;
+  const radarData = useMemo(() => {
+    if (!targetSatrec) return { segments: [], maxEl: 0 };
+    const segments = [];
+    let prevPoint = null;
+    let maxEl = -90;
+    const { R, cx, cy } = radarLayout;
+    let hasFutureVisibility = false; 
 
-   for (let m = -30; m <= 30; m += 0.5) { 
-     const d = new Date(currentDate.getTime() + m * 60000);
-     const pos = calculateSatData(d, targetSatrec);
-     
-     if (pos && !isNaN(pos.elevationDeg) && !isNaN(pos.azimuthDeg)) {
-       if (pos.elevationDeg > maxEl) maxEl = pos.elevationDeg; 
-       if (pos.elevationDeg < -15) { prevPoint = null; continue; }
-       
-       const r = R * ((90 - pos.elevationDeg) / 90);
-       const x = cx + r * Math.sin((pos.azimuthDeg * Math.PI) / 180);
-       const y = cy - r * Math.cos((pos.azimuthDeg * Math.PI) / 180);
-       
-       const isVis = pos.elevationDeg >= PASS_MIN_ELEVATION_DEG;
-       const isPast = m <= 0; 
+    for (let m = -30; m <= 30; m += 0.5) { 
+      const d = new Date(currentDate.getTime() + m * 60000);
+      const pos = calculateSatData(d, targetSatrec);
+      
+      if (pos && !isNaN(pos.elevationDeg) && !isNaN(pos.azimuthDeg)) {
+        if (pos.elevationDeg > maxEl) maxEl = pos.elevationDeg; 
+        if (m >= 0 && pos.elevationDeg >= PASS_MIN_ELEVATION_DEG) {
+          hasFutureVisibility = true;
+        }
+        if (pos.elevationDeg < -15) { prevPoint = null; continue; }
+        
+        const r = R * ((90 - pos.elevationDeg) / 90);
+        const x = cx + r * Math.sin((pos.azimuthDeg * Math.PI) / 180);
+        const y = cy - r * Math.cos((pos.azimuthDeg * Math.PI) / 180);
+        
+        const isVis = pos.elevationDeg >= PASS_MIN_ELEVATION_DEG;
+        const isPast = m <= 0; 
 
-       if (prevPoint) {
-         let lineColor, strokeWidth, strokeDash;
-         if (isPast) {
-           if (isVis || prevPoint.isVis) {
-             lineColor = 'var(--cyan)'; strokeWidth = "3"; strokeDash = "none";
-           } else {
-             lineColor = 'rgba(0, 234, 255, 0.3)'; strokeWidth = "1.5"; strokeDash = "3 3";
-           }
-         } else {
-           lineColor = 'var(--gold)'; strokeWidth = "1.5"; strokeDash = "3 3";
-         }
-         segments.push({ x1: prevPoint.x, y1: prevPoint.y, x2: x, y2: y, color: lineColor, width: strokeWidth, dash: strokeDash });
-       }
-       prevPoint = { x, y, isVis, isPast };
-     }
-   }
-   return { segments, maxEl: maxEl > -15 ? maxEl.toFixed(1) : 'N/A' };
- }, [targetSatrec, Math.floor(simulatedTimeMs / 60000), radarLayout]);
+        if (prevPoint) {
+          let lineColor, strokeWidth, strokeDash;
+          if (isPast) {
+            if (isVis || prevPoint.isVis) {
+              lineColor = 'var(--cyan)'; strokeWidth = "3"; strokeDash = "none";
+            } else {
+              lineColor = 'rgba(0, 234, 255, 0.3)'; strokeWidth = "1.5"; strokeDash = "3 3";
+            }
+          } else {
+            lineColor = 'var(--gold)'; strokeWidth = "1.5"; strokeDash = "3 3";
+          }
+          segments.push({ x1: prevPoint.x, y1: prevPoint.y, x2: x, y2: y, color: lineColor, width: strokeWidth, dash: strokeDash });
+        }
+        prevPoint = { x, y, isVis, isPast };
+      }
+    }
+    
+    if (!hasFutureVisibility) {
+      return { segments: [], maxEl: 'N/A' };
+    }
+    return { segments, maxEl: maxEl > -15 ? maxEl.toFixed(1) : 'N/A' };
+  }, [targetSatrec, Math.floor(simulatedTimeMs / 60000), radarLayout]);
 
- const radarCurrentPos = useMemo(() => {
-   if (!targetData || isNaN(targetData.elevationDeg) || isNaN(targetData.azimuthDeg)) return null;
-   if (targetData.elevationDeg < -15) return null;
-   
-   const { R, cx, cy } = radarLayout;
-   const r = R * ((90 - targetData.elevationDeg) / 90);
-   const x = cx + r * Math.sin((targetData.azimuthDeg * Math.PI) / 180);
-   const y = cy - r * Math.cos((targetData.azimuthDeg * Math.PI) / 180);
-   
-   return { x, y, isVis: targetData.elevationDeg >= PASS_MIN_ELEVATION_DEG, el: targetData.elevationDeg };
- }, [targetData, radarLayout]);
+  const radarCurrentPos = useMemo(() => {
+    if (!targetData || isNaN(targetData.elevationDeg) || isNaN(targetData.azimuthDeg)) return null;
+    if (targetData.elevationDeg < -15) return null;
+    
+    const { R, cx, cy } = radarLayout;
+    const r = R * ((90 - targetData.elevationDeg) / 90);
+    const x = cx + r * Math.sin((targetData.azimuthDeg * Math.PI) / 180);
+    const y = cy - r * Math.cos((targetData.azimuthDeg * Math.PI) / 180);
+    
+    return { x, y, isVis: targetData.elevationDeg >= PASS_MIN_ELEVATION_DEG, el: targetData.elevationDeg };
+  }, [targetData, radarLayout]);
 
   return (
     <>
       <Globe
         ref={globeRef} width={size.width} height={size.height}
         backgroundColor="#000000"
-        /* ฟันธง: เปลี่ยนเป็นภาพกลางคืนความละเอียดสูง (แสงไฟเมือง) และสลับกลางวันอัตโนมัติเมื่อกดปุ่ม Sunlight */
-       /* ฟันธง: ใช้ภาพเดียวไปเลยให้แสงเงาทำงานสมจริง และลดชั้นบรรยากาศให้ขอบโลกคมกริบแบบ Sci-Fi */
-       globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-       bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-       backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
-       showAtmosphere={true}
-       atmosphereColor="#00eaff"
-       atmosphereAltitude={0.05}
-
+        globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
+        bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
+        backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+        showAtmosphere={true}
+        atmosphereColor="#00eaff"
+        atmosphereAltitude={0.05}
         objectsData={[...allSatObjects]}
         objectLat="lat" objectLng="lng" objectAltitude="altitude"
         objectThreeObject={(d) => createSatelliteModel(d.isTarget)}
@@ -907,14 +944,12 @@ export default function App() {
             if (globeRef.current) globeRef.current.pointOfView({ lat: d.lat, lng: d.lng, altitude: 0.4 }, 1000);
           }
         }}
-
         labelsData={[GROUND_STATION]} 
         labelLat="lat" labelLng="lng" labelText="name"
         labelColor={() => '#00eaff'}
         labelSize={0.4}
         labelDotRadius={0}
         labelAltitude={0.02}
-
         htmlElementsData={allSatObjects.filter(sat => sat.isTarget)}
         htmlLat="lat" htmlLng="lng" htmlAltitude="altitude"
         htmlElement={d => {
@@ -928,7 +963,6 @@ export default function App() {
             </div>`;
           return el;
         }}
-
         pathsData={pathsToDraw3D}
         pathPoints="points"
         pathPointLat="lat" pathPointLng="lng" pathPointAlt="alt"
@@ -941,7 +975,6 @@ export default function App() {
         ringMaxRadius={linkActive ? 8 : 4}
         ringPropagationSpeed={1.5}
         ringRepeatPeriod={800}
-
         polygonsData={footprintPolygonData}
         polygonGeoJsonGeometry={d => ({ type: 'Polygon', coordinates: [d.coords] })}
         polygonCapColor={d => d.fillColor}
@@ -962,10 +995,9 @@ export default function App() {
               backgroundColor: '#000'
             }}
           >
-            {/* ฟันธง: ระบบสร้างเงากลางคืน (Night Shadow) แบบ Gradient ที่ทำงานได้สมบูรณ์ทุกเบราว์เซอร์ */}
             {realtimeSun && (() => {
               const nightLng = currentSunPos.lng > 0 ? currentSunPos.lng - 180 : currentSunPos.lng + 180;
-              const nightLat = -currentSunPos.lat; // เงาตกตรงข้ามกับจุดที่ดวงอาทิตย์ตั้งฉาก
+              const nightLat = -currentSunPos.lat; 
               const nightX = (nightLng + 180) / 360 * 100;
               const nightY = (90 - nightLat) / 180 * 100;
               return (
@@ -988,8 +1020,7 @@ export default function App() {
                 const segments = [];
                 let currentPoints = [];
                 pathObj.points.forEach((p, idx) => {
-                  // ฟันธง 3: เปลี่ยนระยะเช็คการกระโดดข้ามขั้วโลกเป็น 90 องศา จะแก้บั๊กเส้นตีกลับได้ 100%
-                if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
+                  if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
                     segments.push(currentPoints);
                     currentPoints = [];
                   }
@@ -1005,8 +1036,7 @@ export default function App() {
                 const segments = [];
                 let currentPoints = [];
                 pathObj.points.forEach((p, idx) => {
-                  // ฟันธง 3: เปลี่ยนระยะเช็คการกระโดดข้ามขั้วโลกเป็น 90 องศา จะแก้บั๊กเส้นตีกลับได้ 100%
-                if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
+                  if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
                     segments.push(currentPoints);
                     currentPoints = [];
                   }
@@ -1026,22 +1056,20 @@ export default function App() {
                 />
               )}
 
-                {allSatObjects.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
+              {allSatObjects.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
                 const isPrimary = sat.catnr === selectedCatnr;
                 const radiusDeg = getFootprintRadiusDeg(sat.altKm, PASS_MIN_ELEVATION_DEG);
                 if (isNaN(radiusDeg)) return null;
                 
-                // ฟันธง 1: แก้ไข Polar Distortion (ปรับสัดส่วนความกว้างของวงรีตามละติจูด)
                 const latRad = (sat.lat * Math.PI) / 180;
-                const cosLat = Math.max(Math.abs(Math.cos(latRad)), 0.05); // กันค่าเข้าใกล้ 0 ที่ขั้วโลก
-                const rxDeg = Math.min(radiusDeg / cosLat, 180); // ขยายแกน X แต่ไม่ให้เกินครึ่งโลก
+                const cosLat = Math.max(Math.abs(Math.cos(latRad)), 0.05); 
+                const rxDeg = Math.min(radiusDeg / cosLat, 180); 
                 
                 const cx = (sat.lng + 180) / 360 * 100;
                 const cy = (90 - sat.lat) / 180 * 100;
                 const rx = rxDeg / 360 * 100;
                 const ry = radiusDeg / 180 * 100;
                 
-                // ฟันธง 2: แก้ไข Edge Wrap-around (วาดวงรีโคลนนิ่งซ้ายขวา ให้ขอบเชื่อมกันเนียนกริบ)
                 return [-100, 0, 100].map(offset => (
                   <ellipse 
                     key={`fp-${sat.catnr}-${offset}`}
@@ -1192,16 +1220,40 @@ export default function App() {
                 </div>
 
                 <ul className="info-list">
-                  <li><span>Operator / Agency:</span> <strong>{targetConfig.operator || 'Unknown'}</strong></li>
-                  <li><span>Mission Type:</span> <strong>{targetConfig.mission || 'Various'}</strong></li>
-                  <li><span>Orbit Class:</span> <strong>{targetData?.altKm > 2000 ? (targetData?.altKm > 30000 ? 'GEO' : 'MEO') : 'LEO'}</strong></li>
+                  <li>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Operator / Agency:</span> 
+                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.operator || 'Unknown'}</strong>
+                  </li>
+                  <li>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Mission Type:</span> 
+                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.mission || 'Various'}</strong>
+                  </li>
+                  <li>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Orbit Class:</span> 
+                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetData?.altKm > 2000 ? (targetData?.altKm > 30000 ? 'GEO' : 'MEO') : 'LEO'}</strong>
+                  </li>
                   
-                  <li><span>Station Mask:</span> <strong>{PASS_MIN_ELEVATION_DEG.toFixed(1)}°</strong></li>
-                  <li><span>Telemetry (TT&C):</span> <strong>{targetConfig.telemetry || 'N/A'}</strong></li>
-                  <li><span>Payload Downlink:</span> <strong>{targetConfig.payload || 'N/A'}</strong></li>
+                  <li>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Station Mask:</span> 
+                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{PASS_MIN_ELEVATION_DEG.toFixed(1)}°</strong>
+                  </li>
+                  <li>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Telemetry (TT&C):</span> 
+                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.telemetry || 'N/A'}</strong>
+                  </li>
+                  <li>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Payload Downlink:</span> 
+                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.payload || 'N/A'}</strong>
+                  </li>
                   
-                  <li><span>TLE Epoch:</span> <strong>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
-                  <li><span>TLE Source:</span> <strong>{tleSource}</strong></li>
+                  <li>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span> 
+                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong>
+                  </li>
+                  <li>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span> 
+                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{tleSource}</strong>
+                  </li>
                 </ul>
               </div>
             </div>
@@ -1217,125 +1269,143 @@ export default function App() {
           </button>
           
           {isRightPanelOpen && (
-            <div className="right-panel">
-              <div className="control-group">
-                <p>SYSTEM CONTROL</p>
-                <button className={`btn ${!isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(false)}>PAUSE</button>
-                <button className={`btn ${isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(true)}>PLAY</button>
-                <button className="btn" onClick={() => { 
-                  setSimulatedTimeMs(Date.now()); 
-                  setSpeedMult(1); 
-                  setIsPlaying(true); 
-                  isTrackingRef.current = false;
-                  setCameraMode('FREE LOOK');
-                  setSelectedCatnr(null);
-                  setSelectedCatnrs([]); 
-                  setShowGroundTrack(false);
-                  if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
-                }}>RESET NOW</button>
-                
-                <input 
-                  type="file" 
-                  accept=".txt,.tle" 
-                  ref={fileInputRef} 
-                  style={{ display: 'none' }} 
-                  onChange={handleFileUpload} 
-                />
-                <button 
-                  className="btn" 
-                  onClick={() => fileInputRef.current && fileInputRef.current.click()} 
-                  disabled={isUpdatingTle}
-                >
-                  {isUpdatingTle ? 'READING FILE...' : 'UPDATE TLE MANUAL'}
-                </button>
-                
-                <button 
-                  className={`btn ${realtimeSun ? 'active' : ''}`} 
-                  onClick={() => setRealtimeSun(!realtimeSun)}
-                >
-                 {realtimeSun ? 'DAY/NIGHT: REAL-TIME' : 'DAY/NIGHT: DISABLED'}
-                </button>
-                
-                <button 
-                  className={`btn ${isFlatMap ? 'active' : ''}`} 
-                  onClick={() => setIsFlatMap(!isFlatMap)}
-                  style={{ marginTop: '10px' }}
-                >
-                  {isFlatMap ? 'VIEW: 3D GLOBE' : 'VIEW: 2D TACTICAL MAP'}
-                </button>
+           <div className="right-panel">
+              
+           {/* กลุ่มที่ 1: การควบคุมเวลาและความเร็ว */}
+           <div className="control-group">
+             <p>TIME & PLAYBACK</p>
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+               <button className={`btn ${!isPlaying ? 'active' : ''}`} style={{ marginBottom: 0, fontSize: '13px', letterSpacing: '1px' }} onClick={() => setIsPlaying(false)}>PAUSE</button>
+               <button className={`btn ${isPlaying ? 'active' : ''}`} style={{ marginBottom: 0, fontSize: '13px', letterSpacing: '1px' }} onClick={() => setIsPlaying(true)}>PLAY</button>
+               <button className="btn" style={{ marginBottom: 0, fontSize: '13px', letterSpacing: '1px' }} onClick={() => { 
+                 setSimulatedTimeMs(Date.now()); 
+                 setSpeedMult(1); 
+                 setIsPlaying(true); 
+                 isTrackingRef.current = false;
+                 setCameraMode('FREE LOOK');
+                 setSelectedCatnr(null);
+                 setSelectedCatnrs([]); 
+                 setShowGroundTrack(false);
+                 if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
+               }}>RESET</button>
+             </div>
+             <div className="speed-row">
+               {[1, 100, 300, 500].map(s => (
+                 <button key={s} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0}} onClick={() => setSpeedMult(s)}>{s}X</button>
+               ))}
+             </div>
+           </div>
 
-                <button 
-                  className={`btn ${showGroundTrack ? 'active' : ''}`} 
-                  onClick={() => setShowGroundTrack(!showGroundTrack)}
-                  style={{ marginTop: '10px' }}
-                >
-                  24H GROUNDTRACK
-                </button>
+           {/* กลุ่มที่ 2: การแสดงผลมุมมอง */}
+           <div className="control-group">
+             <p>DISPLAY CONTROLS</p>
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+               <button 
+                 className={`btn ${realtimeSun ? 'active' : ''}`} 
+                 style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
+                 onClick={() => setRealtimeSun(!realtimeSun)}
+               >
+                 {realtimeSun ? 'DAY/NIGHT' : 'SUN OFF'}
+               </button>
+               
+               <button 
+                 className={`btn ${isFlatMap ? 'active' : ''}`} 
+                 style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
+                 onClick={() => setIsFlatMap(!isFlatMap)}
+               >
+                 {isFlatMap ? '2D TACTICAL' : '3D GLOBE'}
+               </button>
 
-                <button 
-                  className={`btn ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
-                  onClick={() => {
-                    const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
-                    setCameraMode(newMode);
-                    isTrackingRef.current = (newMode === 'TRACKING');
-                    
-                    if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
-                      try {
-                        const rec = satrecs[selectedCatnr];
-                        if (rec) {
-                            const pos = calculateSatData(new Date(simulatedTimeMs), rec);
-                            if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-                              globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: 0.4 }, 1000);
-                            }
-                        }
-                      } catch (err) {}
-                    }
-                  }}
-                  style={{ marginTop: '10px' }}
-                >
-                  CAMERA TRACKING
-                </button>
-              </div>
+               <button 
+                 className={`btn ${showGroundTrack ? 'active' : ''}`} 
+                 style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
+                 onClick={() => setShowGroundTrack(!showGroundTrack)}
+               >
+                 GROUND TRACK
+               </button>
 
-                {/* ฟันธง: ปุ่มเรียกดูหน้าจอจานเรดาร์ ขยายกรอบให้กว้างและจัดกึ่งกลางเป๊ะๆ */}
-                <button 
-                  className={`btn ${isRadarOpen ? 'active' : ''}`} 
-                  onClick={() => setIsRadarOpen(!isRadarOpen)}
-                  style={{ 
-                    marginTop: '10px', 
-                    padding: '12px 10px', /* เพิ่มพื้นที่บน-ล่างให้หายใจ */
-                    minHeight: '48px',    /* บังคับความสูงขั้นต่ำ ไม่ให้กรอบบีบตัวหนังสือ */
-                    display: 'flex',      /* ใช้ Flex จัดระเบียบไอคอนและข้อความ */
-                    justifyContent: 'center', 
-                    alignItems: 'center', 
-                    gap: '8px',           /* เว้นช่องไฟระหว่างเสาอากาศกับตัวหนังสือ */
-                    borderColor: 'var(--green)', 
-                    color: 'var(--green)', 
-                    textShadow: '0 0 8px var(--green)' 
-                  }}
-                >
-                  📡 GISTDA RADAR SKYPLOT
-                </button>
+               <button 
+                 className={`btn ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
+                 style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
+                 onClick={() => {
+                   const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
+                   setCameraMode(newMode);
+                   isTrackingRef.current = (newMode === 'TRACKING');
+                   
+                   if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
+                     try {
+                       const rec = satrecs[selectedCatnr];
+                       if (rec) {
+                           const pos = calculateSatData(new Date(simulatedTimeMs), rec);
+                           if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+                             globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: 0.4 }, 1000);
+                           }
+                       }
+                     } catch (err) {}
+                   }
+                 }}
+               >
+                 TARGET LOCK
+               </button>
+             </div>
+           </div>
 
-              <div className="control-group">
-                <p>SPEED</p>
-                <div className="speed-row">
-                  {[1, 100, 300, 500].map(s => (
-                    <button key={s} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0}} onClick={() => setSpeedMult(s)}>{s}X</button>
-                  ))}
-                </div>
-              </div>
+           {/* กลุ่มที่ 3: ข้อมูลและเครื่องมือพิเศษ */}
+           <div className="control-group" style={{ paddingBottom: '15px' }}>
+             <p>DATA & TOOLS</p>
+             
+             <button 
+               className="btn" 
+               onClick={handleAutoUpdateTle} 
+               disabled={isUpdatingTle}
+               style={{ borderColor: 'var(--cyan)', color: 'var(--cyan)', textShadow: '0 0 8px var(--cyan)', marginBottom: '8px', letterSpacing: '1px' }}
+             >
+               {isUpdatingTle ? 'FETCHING...' : 'SYNC LIVE TLE'}
+             </button>
 
-              <div className="control-group" style={{ padding: '25px 20px', textAlign: 'center' }}>
-                <p>SATELLITE DATABASE</p>
-                <button 
-                  className="btn database-btn" 
-                  onClick={() => setIsModalOpen(true)}
-                >
-                  🛰️ OPEN DATABASE
-                </button>
-              </div>
-            </div>
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+               <button 
+                 className="btn database-btn" 
+                 style={{ marginBottom: 0, fontSize: '13px', padding: '10px 5px', letterSpacing: '1px' }} 
+                 onClick={() => setIsModalOpen(true)}
+               >
+                 DATABASE
+               </button>
+               
+               <input type="file" accept=".txt,.tle" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} />
+               <button 
+                 className="btn" 
+                 onClick={() => fileInputRef.current && fileInputRef.current.click()} 
+                 disabled={isUpdatingTle}
+                 style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', opacity: 0.8, letterSpacing: '1px' }}
+               >
+                 UPLOAD TLE
+               </button>
+             </div>
+
+             <button 
+               className={`btn ${isRadarOpen ? 'active' : ''}`} 
+               onClick={() => setIsRadarOpen(!isRadarOpen)}
+               style={{ 
+                 marginBottom: 0, 
+                 padding: '12px 10px',
+                 minHeight: '48px',    
+                 display: 'flex',      
+                 justifyContent: 'center', 
+                 alignItems: 'center', 
+                 gap: '8px',           
+                 borderColor: 'var(--green)', 
+                 color: 'var(--green)', 
+                 textShadow: '0 0 8px var(--green)',
+                 fontWeight: '900',
+                 letterSpacing: '1.5px'
+               }}
+             >
+               RADAR SKYPLOT
+             </button>
+           </div>
+
+         </div>
           )}
         </div>
       </div>
@@ -1346,7 +1416,6 @@ export default function App() {
             <div className="modal-header">
               <h2><span style={{fontSize:'26px', marginRight:'8px'}}>🛰️</span> SATELLITE DATABASE</h2>
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                {/* ฟันธง: ปุ่มเคลียร์ดาวเทียมดวงรองทั้งหมด ทิ้งไว้แค่ดวง MAIN */}
                 <button 
                   className="modal-clear-btn" 
                   onClick={() => setSelectedCatnrs([selectedCatnr])}
@@ -1360,7 +1429,6 @@ export default function App() {
             
             <div className="modal-content">
               {Array.from(new Set(SATELLITE_OPTIONS.map(s => s.group))).map(groupName => {
-                // ฟันธง: Logic เช็คสถานะการเลือกดาวเทียมทั้งกลุ่ม
                 const satsInGroup = SATELLITE_OPTIONS.filter(sat => sat.group === groupName);
                 const groupCatnrs = satsInGroup.map(s => s.catnr);
                 const isAllSelected = groupCatnrs.every(cat => selectedCatnrs.includes(cat));
@@ -1370,17 +1438,14 @@ export default function App() {
                   <div className="group-header-row">
                     <div className="modal-group-title">{groupName}</div>
                     
-                    {/* ฟันธง: ปุ่ม Select All / Deselect All ประจำกลุ่ม */}
                     <button 
                       className="group-toggle-btn"
                       onClick={() => {
                         let newSelected = [...selectedCatnrs];
                         
                         if (isAllSelected) {
-                          // ถ้าเลือกครบแล้ว ให้ลบทั้งกลุ่มออก (แต่ล็อกดวง MAIN เอาไว้ระบบจะได้ไม่พัง)
                           newSelected = newSelected.filter(c => !groupCatnrs.includes(c) || c === selectedCatnr);
                         } else {
-                          // ถ้ายังไม่ครบ ให้เพิ่มทั้งกลุ่มเข้าไป
                           groupCatnrs.forEach(c => {
                             if (!newSelected.includes(c)) newSelected.push(c);
                           });
@@ -1442,8 +1507,7 @@ export default function App() {
         </div>
       )}
 
-{/* ฟันธง: หน้าจอ RADAR แบบ Dynamic Grid (ขยายจอแล้ววงกลม+เส้นจะงอกขึ้นมาเองอัตโนมัติ ตัวอักษรเท่าเดิม) */}
-{isRadarOpen && (
+      {isRadarOpen && (
         <div ref={radarContainerRef} className="radar-perfect-scale" style={{
           position: 'fixed',
           top: `${radarPos.y}px`,
@@ -1459,22 +1523,21 @@ export default function App() {
           minWidth: '300px',
           minHeight: '350px',
           overflow: 'hidden',
-          resize: 'both' // ให้ลากขยายได้อิสระ
+          resize: 'both' 
         }}>
           
-          {/* เอา viewBox ออกทิ้งไปเลยครับ! จบปัญหาอาการแว่นขยาย */}
-          {/* เอา viewBox ออกทิ้งไปเลยครับ! จบปัญหาอาการแว่นขยาย */}
           <svg width="100%" height="100%" style={{ display: 'block' }}>
             
-            {/* Header: ปรับความกว้างและสัดส่วนตัวหนังสือให้ยืดตาม uiScale */}
+            {/* Header พื้นที่ลากได้ */}
             <rect x="0" y="0" width={radarDim.w - 40} height={40 * radarLayout.uiScale} fill="transparent" cursor={isDraggingRadar ? 'grabbing' : 'grab'} onMouseDown={handleRadarMouseDown} />
             <line x1="10" y1={40 * radarLayout.uiScale} x2={radarDim.w - 10} y2={40 * radarLayout.uiScale} stroke="var(--green)" strokeDasharray="3 3" opacity="0.5" />
             <text x="15" y={28 * radarLayout.uiScale} fill="var(--green)" fontSize={14 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron">📡 AZ/EL</text>
             
+            {/* จุดที่หายไป: ธงชาติและชื่อดาวเทียม (เอากลับมาแล้ว!) */}
             {(() => {
               const sat = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr);
               if (!sat) return null;
-              const s = radarLayout.uiScale; // ดึงค่าตัวคูณมาใช้ให้โค้ดสั้นลง
+              const s = radarLayout.uiScale; 
               return (
                 <g style={{ pointerEvents: 'none' }} transform={`translate(${radarDim.w / 2}, ${20 * s})`}>
                   <rect x={-70 * s} y={-14 * s} width={140 * s} height={28 * s} rx={4 * s} fill="rgba(0,255,102,0.2)" stroke="rgba(0,255,102,0.5)" />
@@ -1484,11 +1547,13 @@ export default function App() {
               );
             })()}
 
+            {/* ปุ่มปิด (X) */}
             <g onClick={() => setIsRadarOpen(false)} cursor="pointer">
               <rect x={radarDim.w - (35 * radarLayout.uiScale)} y={10 * radarLayout.uiScale} width={24 * radarLayout.uiScale} height={24 * radarLayout.uiScale} rx={4 * radarLayout.uiScale} fill="transparent" stroke="var(--green)" />
               <text x={radarDim.w - (23 * radarLayout.uiScale)} y={27 * radarLayout.uiScale} fill="var(--green)" fontSize={14 * radarLayout.uiScale} textAnchor="middle" fontWeight="bold">✕</text>
             </g>
 
+            {/* ข้อมูลมุม EL */}
             <text x="15" y={65 * radarLayout.uiScale} fill="var(--cyan)" fontSize={11 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron" textAnchor="start">
               EL: {radarCurrentPos && radarCurrentPos.el ? Math.max(0, radarCurrentPos.el).toFixed(1) : '0.0'}°
             </text>
@@ -1496,11 +1561,11 @@ export default function App() {
               MAX EL: {radarData.maxEl !== 'N/A' ? `${radarData.maxEl}°` : 'N/A'}
             </text>
 
+            {/* วงแหวนเรดาร์และเส้น Grid ที่อัปเกรดความเข้มแล้ว */}
             <g style={{ pointerEvents: 'none' }}>
               {(() => {
                 const { R, cx, cy, uiScale } = radarLayout;
                 
-                // ระบบวงกลมด้านในคงไว้เหมือนเดิม 100% ตามสั่ง
                 const elStep = R > 250 ? 10 : (R > 150 ? 15 : 30);
                 const rings = [];
                 for (let e = elStep; e < 90; e += elStep) rings.push(e);
@@ -1515,27 +1580,28 @@ export default function App() {
                        const x2 = cx + R * Math.sin((az * Math.PI) / 180);
                        const y2 = cy - R * Math.cos((az * Math.PI) / 180);
                        const isMain = az % 90 === 0;
-                       return <line key={`az-${az}`} x1={cx} y1={cy} x2={x2} y2={y2} stroke="rgba(0, 255, 102, 0.3)" strokeWidth={isMain ? "1" : "0.5"} strokeDasharray={isMain ? "none" : "3 3"} />
+                       // ฟันธง: ปรับความหนาเส้น AZ (เส้นหลัก 1.5, เส้นรอง 0.8) และเพิ่มความเข้มสี
+                       return <line key={`az-${az}`} x1={cx} y1={cy} x2={x2} y2={y2} stroke="rgba(0, 255, 102, 0.45)" strokeWidth={isMain ? "1.5" : "0.8"} strokeDasharray={isMain ? "none" : "3 3"} />
                     })}
 
                     {rings.map(el => {
                       const r = R * ((90 - el) / 90);
                       return (
                         <React.Fragment key={`el-${el}`}>
-                          <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(0, 255, 102, 0.4)" strokeWidth="1" strokeDasharray="4 4" />
+                          {/* ฟันธง: ปรับความหนาเส้นวงกลม EL เป็น 1.2 และเพิ่มความเข้มสี */}
+                          <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(0, 255, 102, 0.55)" strokeWidth="1.2" strokeDasharray="4 4" />
                           {R > 120 && el % 30 === 0 && (
-                            <text x={cx + 2} y={cy - r + (9 * uiScale)} fill="rgba(0,255,102,0.6)" fontSize={9 * uiScale}>{el}°</text>
+                            <text x={cx + 2} y={cy - r + (9 * uiScale)} fill="rgba(0,255,102,0.8)" fontSize={9 * uiScale} fontWeight="bold">{el}°</text>
                           )}
                         </React.Fragment>
                       )
                     })}
                     
-                    <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(0, 255, 102, 0.6)" strokeWidth="1.5" />
+                    {/* ขอบเรดาร์วงนอกสุด ทำให้คมกริบ */}
+                    <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(0, 255, 102, 0.8)" strokeWidth="2" />
                     
-                    {/* ฟันธง 2: เพิ่มข้อความมุมกวาด (Azimuth) มาตรฐาน 8 ทิศทาง และปรับขนาดตาม uiScale */}
                     {[0, 45, 90, 135, 180, 225, 270, 315].map(az => {
                       const isMain = az % 90 === 0;
-                      // เผื่อระยะห่างข้อความจากขอบวงกลม ให้สมส่วนตามขนาดหน้าจอ
                       const padding = isMain ? 15 * uiScale : 12 * uiScale; 
                       const lx = cx + (R + padding) * Math.sin((az * Math.PI) / 180);
                       const ly = cy - (R + padding) * Math.cos((az * Math.PI) / 180);
@@ -1546,7 +1612,6 @@ export default function App() {
                       if (az === 180) label = "S (180°)";
                       if (az === 270) label = "W (270°)";
 
-                      // จัดตำแหน่งข้อความให้ไม่ทับวงกลม
                       let anchor = "middle";
                       if (az > 0 && az < 180) anchor = "start";
                       if (az > 180 && az < 360) anchor = "end";
@@ -1574,18 +1639,20 @@ export default function App() {
                 );
               })()}
 
+              {/* วาดเส้นพาสดาวเทียม */}
               {radarData.segments.map((seg, i) => (
                 <line key={i} x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke={seg.color} strokeWidth={seg.width} strokeDasharray={seg.dash} />
               ))}
               
-              {/* จุดดาวเทียม ขยายตามสัดส่วนหน้าจอ */}
+              {/* ตำแหน่งดาวเทียมปัจจุบัน */}
               {radarCurrentPos && (
                 <circle cx={radarCurrentPos.x} cy={radarCurrentPos.y} r={6 * radarLayout.uiScale} fill="#ff9900" stroke="#ffffff" strokeWidth={1.5 * radarLayout.uiScale} style={{ filter: `drop-shadow(0 0 ${10 * radarLayout.uiScale}px #ff9900)` }} />
               )}
+              {/* จุดกึ่งกลาง (สถานีรับสัญญาณ) */}
               <circle cx={radarLayout.cx} cy={radarLayout.cy} r={3 * radarLayout.uiScale} fill="var(--red)" />
             </g>
 
-            {/* Legend ด้านล่างขยายสมมาตร */}
+            {/* Legend ด้านล่าง */}
             <text x={radarDim.w / 2} y={radarDim.h - (12 * radarLayout.uiScale)} fontSize={10 * radarLayout.uiScale} fontFamily="Orbitron" textAnchor="middle">
               <tspan fill="rgba(0, 234, 255, 0.4)">- - DEPARTED</tspan>
               <tspan dx={15 * radarLayout.uiScale} fill="var(--gold)">- - APPROACH</tspan>
