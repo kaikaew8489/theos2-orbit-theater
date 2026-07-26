@@ -12,50 +12,74 @@ const PASS_MIN_ELEVATION_DEG = 5;
 const EARTH_RADIUS_KM = 6371;
 
 const SATELLITE_OPTIONS = [
-  // GISTDA EARTH OBSERVATION 
-  { catnr: '58016', name: 'THEOS-2', displayName: 'THEOS-2', flag: 'th', group: 'GISTDA EARTH OBSERVATION', operator: 'GISTDA', mission: 'High-Res Optical', telemetry: '2066.56 UP / 2244.228 DN MHz (S-Band)', payload: '8150 MHz (X-Band)' },
-  { catnr: '33396', name: 'THEOS', displayName: 'THEOS', flag: 'th', group: 'GISTDA EARTH OBSERVATION', operator: 'GISTDA', mission: 'Earth Observation', telemetry: '2036 UP / 2211 DN MHz (S-Band)', payload: '8140 MHz (X-Band)' },
-  
-  // SPACE STATIONS 
-  { catnr: '25544', name: 'ISS (ZARYA)', displayName: 'ISS (Space Station)', flag: 'us', group: 'SPACE STATIONS', operator: 'International', mission: 'Space Station', telemetry: '2.216 GHz (S-Band)', payload: '15.003 GHz (Ku-Band)' },
-  { catnr: '48274', name: 'CSS (TIANGONG)', displayName: 'TIANGONG (CSS)', flag: 'cn', group: 'SPACE STATIONS', operator: 'CMSA', mission: 'Space Station', telemetry: 'S-Band', payload: 'Ka-Band' },
+  // 1. GISTDA & THAILAND COMMUNICATIONS (LEO & GEO) - คัดเฉพาะที่ยังมีชีวิต!
+  { catnr: '58016', name: 'THEOS-2', displayName: 'THEOS-2', flag: 'th', group: 'GISTDA & THAILAND (LEO/GEO)', operator: 'GISTDA', mission: 'High-Res Optical', telemetry: '2066.56 UP / 2244.228 DN MHz', payload: '8150 MHz' },
+  { catnr: '33396', name: 'THEOS', displayName: 'THEOS', flag: 'th', group: 'GISTDA & THAILAND (LEO/GEO)', operator: 'GISTDA', mission: 'Earth Observation', telemetry: '2036 UP / 2211 DN MHz', payload: '8140 MHz' },
+  { catnr: '39500', name: 'THAICOM 6', displayName: 'THAICOM 6', flag: 'th', group: 'GISTDA & THAILAND (LEO/GEO)', operator: 'Thaicom', mission: 'Communications (GEO)', telemetry: 'C/Ku-Band', payload: 'C/Ku-Band' },
+  { catnr: '39498', name: 'THAICOM 7', displayName: 'THAICOM 7 (ASIASAT 6)', flag: 'th', group: 'GISTDA & THAILAND (LEO/GEO)', operator: 'Thaicom', mission: 'Communications (GEO)', telemetry: 'C-Band', payload: 'C-Band' },
+  { catnr: '41552', name: 'THAICOM 8', displayName: 'THAICOM 8', flag: 'th', group: 'GISTDA & THAILAND (LEO/GEO)', operator: 'Thaicom', mission: 'Communications (GEO)', telemetry: 'Ku-Band', payload: 'Ku-Band' },
 
-  // THAI CUBESAT & MICROSAT 
-  { catnr: '43720', name: 'KNACKSAT-1', displayName: 'KNACKSAT-1', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'KMUTNB', mission: 'Tech Demo', telemetry: 'UHF/VHF', payload: 'N/A' },
+  // 2. THAI CUBESAT & MICROSAT (LEO) - คัดเฉพาะที่ยังอยู่!
   { catnr: '46292', name: 'NAPA-1', displayName: 'NAPA-1 / RTAF-SAT-1', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'RTAF', mission: 'Earth Observation', telemetry: 'UHF/VHF', payload: 'S-Band' },
-  { catnr: '48008', name: 'BCCSAT-1', displayName: 'BCCSAT-1', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'BCC', mission: 'Educational', telemetry: 'UHF/VHF', payload: 'N/A' },
   { catnr: '48900', name: 'NAPA-2', displayName: 'NAPA-2 / RTAF-SAT-2', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'RTAF', mission: 'Earth Observation', telemetry: 'UHF/VHF', payload: 'S-Band' },
-  { catnr: '62689', name: 'LOGSATS-2', displayName: 'LOGSATS-2', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'EOS Orbit', mission: 'IoT Tech Demo', telemetry: 'UHF/VHF', payload: 'N/A' },
-  { catnr: '67683', name: 'KNACKSAT-2', displayName: 'KNACKSAT-2', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'KMUTNB', mission: 'Tech Demo', telemetry: '435.590 MHz (UHF)', payload: '435.590 MHz (UHF)' },
 
-  // INTERNATIONAL RADAR (SAR) 
-  { catnr: '32382', name: 'RADARSAT-2', displayName: 'RADARSAT-2', flag: 'ca', group: 'INTERNATIONAL RADAR (SAR)', operator: 'MDA', mission: 'SAR Imaging', telemetry: '2.215 GHz (S-Band)', payload: '8.250 GHz (X-Band)' },
-  { catnr: '31598', name: 'COSMO-SKYMED-1', displayName: 'COSMO-1', flag: 'it', group: 'INTERNATIONAL RADAR (SAR)', operator: 'ASI / e-GEOS', mission: 'SAR Imaging', telemetry: '2.025 - 2.110 GHz (S-Band)', payload: '8.0 - 8.4 GHz (X-Band)' },
-  { catnr: '32376', name: 'COSMO-SKYMED-2', displayName: 'COSMO-2', flag: 'it', group: 'INTERNATIONAL RADAR (SAR)', operator: 'ASI / e-GEOS', mission: 'SAR Imaging', telemetry: '2.025 - 2.110 GHz (S-Band)', payload: '8.0 - 8.4 GHz (X-Band)' },
-  { catnr: '33412', name: 'COSMO-SKYMED-3', displayName: 'COSMO-3', flag: 'it', group: 'INTERNATIONAL RADAR (SAR)', operator: 'ASI / e-GEOS', mission: 'SAR Imaging', telemetry: '2.025 - 2.110 GHz (S-Band)', payload: '8.0 - 8.4 GHz (X-Band)' },
-  { catnr: '37216', name: 'COSMO-SKYMED-4', displayName: 'COSMO-4', flag: 'it', group: 'INTERNATIONAL RADAR (SAR)', operator: 'ASI / e-GEOS', mission: 'SAR Imaging', telemetry: '2.025 - 2.110 GHz (S-Band)', payload: '8.0 - 8.4 GHz (X-Band)' },
-  { catnr: '39634', name: 'SENTINEL-1A', displayName: 'SENTINEL-1A', flag: 'eu', group: 'INTERNATIONAL RADAR (SAR)', operator: 'ESA', mission: 'SAR Imaging', telemetry: '2.025 - 2.110 GHz (S-Band)', payload: '8.025 - 8.400 GHz (X-Band)' },
-  { catnr: '31698', name: 'TERRASAR-X', displayName: 'TERRASAR-X', flag: 'de', group: 'INTERNATIONAL RADAR (SAR)', operator: 'DLR', mission: 'SAR Imaging', telemetry: 'S-Band', payload: 'X-Band' },
-  { catnr: '36605', name: 'TANDEM-X', displayName: 'TANDEM-X', flag: 'de', group: 'INTERNATIONAL RADAR (SAR)', operator: 'DLR', mission: 'SAR Imaging', telemetry: 'S-Band', payload: 'X-Band' },
+  // 3. SPACE STATIONS & TELESCOPES
+  { catnr: '25544', name: 'ISS (ZARYA)', displayName: 'ISS (Space Station)', flag: 'us', group: 'SPACE STATIONS & TELESCOPES', operator: 'International', mission: 'Space Station', telemetry: '2.216 GHz', payload: '15.003 GHz' },
+  { catnr: '48274', name: 'CSS (TIANGONG)', displayName: 'TIANGONG (CSS)', flag: 'cn', group: 'SPACE STATIONS & TELESCOPES', operator: 'CMSA', mission: 'Space Station', telemetry: 'S-Band', payload: 'Ka-Band' },
+  { catnr: '20580', name: 'HST', displayName: 'HUBBLE TELESCOPE', flag: 'us', group: 'SPACE STATIONS & TELESCOPES', operator: 'NASA/ESA', mission: 'Space Observatory', telemetry: 'S-Band', payload: 'High Gain S-Band' },
 
-  // EARTH RESOURCES & WEATHER
-  { catnr: '49260', name: 'LANDSAT-9', displayName: 'LANDSAT-9', flag: 'us', group: 'EARTH RESOURCES & WEATHER', operator: 'NASA / USGS', mission: 'Earth Resources', telemetry: '2.206 GHz (S-Band)', payload: '8.212 GHz (X-Band)' },
-  { catnr: '39084', name: 'LANDSAT-8', displayName: 'LANDSAT-8', flag: 'us', group: 'EARTH RESOURCES & WEATHER', operator: 'NASA / USGS', mission: 'Earth Resources', telemetry: '2.206 GHz (S-Band)', payload: '8.212 GHz (X-Band)' },
-  { catnr: '25994', name: 'TERRA', displayName: 'TERRA', flag: 'us', group: 'EARTH RESOURCES & WEATHER', operator: 'NASA', mission: 'Earth Resources', telemetry: '2.106 GHz (S-Band)', payload: '8.212 GHz (X-Band)' },
-  { catnr: '27424', name: 'AQUA', displayName: 'AQUA', flag: 'us', group: 'EARTH RESOURCES & WEATHER', operator: 'NASA', mission: 'Earth Resources', telemetry: '2.106 GHz (S-Band)', payload: '8.160 GHz (X-Band)' },
-  { catnr: '54234', name: 'NOAA-21', displayName: 'NOAA-21 (JPSS-2)', flag: 'us', group: 'EARTH RESOURCES & WEATHER', operator: 'NOAA', mission: 'Weather & Climate', telemetry: '2.220 GHz (S-Band)', payload: '7.812 GHz (X-Band)' },
-  { catnr: '43013', name: 'NOAA-20', displayName: 'NOAA-20 (JPSS-1)', flag: 'us', group: 'EARTH RESOURCES & WEATHER', operator: 'NOAA', mission: 'Weather & Climate', telemetry: '2.220 GHz (S-Band)', payload: '7.812 GHz (X-Band)' },
-  { catnr: '37849', name: 'SUOMI NPP', displayName: 'SUOMI NPP', flag: 'us', group: 'EARTH RESOURCES & WEATHER', operator: 'NOAA', mission: 'Weather & Climate', telemetry: '2.220 GHz (S-Band)', payload: '7.812 GHz (X-Band)' },
-  { catnr: '40697', name: 'SENTINEL-2A', displayName: 'SENTINEL-2A', flag: 'eu', group: 'EARTH RESOURCES & WEATHER', operator: 'ESA', mission: 'Earth Resources', telemetry: '2.025 GHz (S-Band)', payload: '8.025 - 8.400 GHz (X-Band)' },
-  { catnr: '32783', name: 'CARTOSAT-2A', displayName: 'CARTOSAT-2A', flag: 'in', group: 'EARTH RESOURCES & WEATHER', operator: 'ISRO', mission: 'Earth Resources', telemetry: 'S-Band', payload: 'X-Band' },
+  // 4. GLOBAL NAVIGATION (GNSS) - MEO
+  { catnr: '24876', name: 'GPS BIIR-2', displayName: 'GPS BIIR-2 (PRN 13)', flag: 'us', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'USSF', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'L1, L2' },
+  { catnr: '28874', name: 'GPS BIIRM-1', displayName: 'GPS BIIRM-1 (PRN 17)', flag: 'us', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'USSF', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'L1, L2' },
+  { catnr: '36585', name: 'GPS BIIF-1', displayName: 'GPS BIIF-1 (PRN 01)', flag: 'us', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'USSF', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'L1, L2, L5' },
+  { catnr: '43873', name: 'GPS BIII-1', displayName: 'GPS BIII-1 (PRN 04)', flag: 'us', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'USSF', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'L1, L2, L5' },
+  { catnr: '37846', name: 'GSAT0101', displayName: 'GALILEO (GSAT0101)', flag: 'eu', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'ESA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'E1, E5, E6' },
+  { catnr: '37847', name: 'GSAT0102', displayName: 'GALILEO (GSAT0102)', flag: 'eu', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'ESA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'E1, E5, E6' },
+  { catnr: '38857', name: 'GSAT0103', displayName: 'GALILEO (GSAT0103)', flag: 'eu', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'ESA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'E1, E5, E6' },
+  { catnr: '40128', name: 'GSAT0201', displayName: 'GALILEO (GSAT0201)', flag: 'eu', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'ESA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'E1, E5, E6' },
+  { catnr: '40129', name: 'GSAT0202', displayName: 'GALILEO (GSAT0202)', flag: 'eu', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'ESA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'E1, E5, E6' },
+  { catnr: '37829', name: 'COSMOS 2474', displayName: 'GLONASS-M (742)', flag: 'ru', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'Roscosmos', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'L1, L2' },
+  { catnr: '46689', name: 'COSMOS 2547', displayName: 'GLONASS-K (705)', flag: 'ru', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'Roscosmos', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'L1, L2, L3' },
+  { catnr: '36828', name: 'BEIDOU-2 C06', displayName: 'BEIDOU-2 (C06)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (IGSO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
+  { catnr: '37210', name: 'BEIDOU-2 C04', displayName: 'BEIDOU-2 (C04)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (GEO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
+  { catnr: '37256', name: 'BEIDOU-2 C07', displayName: 'BEIDOU-2 (C07)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (IGSO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
+  { catnr: '37384', name: 'BEIDOU-2 C08', displayName: 'BEIDOU-2 (C08)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (IGSO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
+  { catnr: '38091', name: 'BEIDOU-2 C05', displayName: 'BEIDOU-2 (C05)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (GEO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
+  { catnr: '40549', name: 'BEIDOU-3 C31', displayName: 'BEIDOU-3 (C31)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (IGSO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
+  { catnr: '43001', name: 'BEIDOU-3 C19', displayName: 'BEIDOU-3 (C19)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
+  { catnr: '43002', name: 'BEIDOU-3 C20', displayName: 'BEIDOU-3 (C20)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
 
-  // GLOBAL EESS & SCIENCE 
+  // 5. INTERNATIONAL RADAR (SAR)
+  { catnr: '32382', name: 'RADARSAT-2', displayName: 'RADARSAT-2', flag: 'ca', group: 'SYNTHETIC APERTURE RADAR (SAR)', operator: 'MDA', mission: 'SAR Imaging', telemetry: '2.215 GHz', payload: '8.250 GHz' },
+  { catnr: '31598', name: 'COSMO-SKYMED-1', displayName: 'COSMO-1', flag: 'it', group: 'SYNTHETIC APERTURE RADAR (SAR)', operator: 'ASI / e-GEOS', mission: 'SAR Imaging', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '32376', name: 'COSMO-SKYMED-2', displayName: 'COSMO-2', flag: 'it', group: 'SYNTHETIC APERTURE RADAR (SAR)', operator: 'ASI / e-GEOS', mission: 'SAR Imaging', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '33412', name: 'COSMO-SKYMED-3', displayName: 'COSMO-3', flag: 'it', group: 'SYNTHETIC APERTURE RADAR (SAR)', operator: 'ASI / e-GEOS', mission: 'SAR Imaging', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '37216', name: 'COSMO-SKYMED-4', displayName: 'COSMO-4', flag: 'it', group: 'SYNTHETIC APERTURE RADAR (SAR)', operator: 'ASI / e-GEOS', mission: 'SAR Imaging', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '39634', name: 'SENTINEL-1A', displayName: 'SENTINEL-1A', flag: 'eu', group: 'SYNTHETIC APERTURE RADAR (SAR)', operator: 'ESA', mission: 'SAR Imaging', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '31698', name: 'TERRASAR-X', displayName: 'TERRASAR-X', flag: 'de', group: 'SYNTHETIC APERTURE RADAR (SAR)', operator: 'DLR', mission: 'SAR Imaging', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '36605', name: 'TANDEM-X', displayName: 'TANDEM-X', flag: 'de', group: 'SYNTHETIC APERTURE RADAR (SAR)', operator: 'DLR', mission: 'SAR Imaging', telemetry: 'S-Band', payload: 'X-Band' },
+
+  // 6. WEATHER & EARTH RESOURCES
+  { catnr: '40267', name: 'HIMAWARI-8', displayName: 'HIMAWARI-8', flag: 'jp', group: 'WEATHER & EARTH RESOURCES', operator: 'JMA', mission: 'Weather (GEO)', telemetry: 'Ku-Band', payload: 'Ka-Band' },
+  { catnr: '41858', name: 'HIMAWARI-9', displayName: 'HIMAWARI-9', flag: 'jp', group: 'WEATHER & EARTH RESOURCES', operator: 'JMA', mission: 'Weather (GEO)', telemetry: 'Ku-Band', payload: 'Ka-Band' },
+  { catnr: '41866', name: 'GOES-16', displayName: 'GOES-16', flag: 'us', group: 'WEATHER & EARTH RESOURCES', operator: 'NOAA', mission: 'Weather (GEO)', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '49260', name: 'LANDSAT-9', displayName: 'LANDSAT-9', flag: 'us', group: 'WEATHER & EARTH RESOURCES', operator: 'NASA / USGS', mission: 'Earth Resources', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '39084', name: 'LANDSAT-8', displayName: 'LANDSAT-8', flag: 'us', group: 'WEATHER & EARTH RESOURCES', operator: 'NASA / USGS', mission: 'Earth Resources', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '25994', name: 'TERRA', displayName: 'TERRA', flag: 'us', group: 'WEATHER & EARTH RESOURCES', operator: 'NASA', mission: 'Earth Resources', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '27424', name: 'AQUA', displayName: 'AQUA', flag: 'us', group: 'WEATHER & EARTH RESOURCES', operator: 'NASA', mission: 'Earth Resources', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '54234', name: 'NOAA-21', displayName: 'NOAA-21 (JPSS-2)', flag: 'us', group: 'WEATHER & EARTH RESOURCES', operator: 'NOAA', mission: 'Weather & Climate', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '43013', name: 'NOAA-20', displayName: 'NOAA-20 (JPSS-1)', flag: 'us', group: 'WEATHER & EARTH RESOURCES', operator: 'NOAA', mission: 'Weather & Climate', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '37849', name: 'SUOMI NPP', displayName: 'SUOMI NPP', flag: 'us', group: 'WEATHER & EARTH RESOURCES', operator: 'NOAA', mission: 'Weather & Climate', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '40697', name: 'SENTINEL-2A', displayName: 'SENTINEL-2A', flag: 'eu', group: 'WEATHER & EARTH RESOURCES', operator: 'ESA', mission: 'Earth Resources', telemetry: 'S-Band', payload: 'X-Band' },
+  { catnr: '32783', name: 'CARTOSAT-2A', displayName: 'CARTOSAT-2A', flag: 'in', group: 'WEATHER & EARTH RESOURCES', operator: 'ISRO', mission: 'Earth Resources', telemetry: 'S-Band', payload: 'X-Band' },
+
+  // 7. GLOBAL EESS & SCIENCE 
   { catnr: '39150', name: 'GAOFEN-1', displayName: 'GAOFEN-1', flag: 'cn', group: 'GLOBAL EESS & SCIENCE', operator: 'CNSA', mission: 'Earth Observation', telemetry: 'S-Band', payload: 'X-Band' },
   { catnr: '40376', name: 'SMAP', displayName: 'SMAP', flag: 'us', group: 'GLOBAL EESS & SCIENCE', operator: 'NASA', mission: 'Soil Moisture', telemetry: 'S-Band', payload: 'X-Band' },
   { catnr: '54754', name: 'SWOT', displayName: 'SWOT', flag: 'us', group: 'GLOBAL EESS & SCIENCE', operator: 'NASA/CNES', mission: 'Water Topography', telemetry: 'S-Band', payload: 'X-Band' },
   { catnr: '43613', name: 'ICESAT-2', displayName: 'ICESAT-2', flag: 'us', group: 'GLOBAL EESS & SCIENCE', operator: 'NASA', mission: 'Ice Elevation', telemetry: 'S-Band', payload: 'X-Band' },
 
-  // MEGA CONSTELLATIONS (STARLINK)
+  // 8. MEGA CONSTELLATIONS (STARLINK & ONEWEB)
   { catnr: '44714', name: 'STARLINK-1008', displayName: 'STARLINK-1008', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'SpaceX', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
   { catnr: '44718', name: 'STARLINK-1012', displayName: 'STARLINK-1012', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'SpaceX', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
   { catnr: '44723', name: 'STARLINK-1017', displayName: 'STARLINK-1017', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'SpaceX', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
@@ -66,8 +90,8 @@ const SATELLITE_OPTIONS = [
   { catnr: '44748', name: 'STARLINK-1043', displayName: 'STARLINK-1043', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'SpaceX', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
   { catnr: '44751', name: 'STARLINK-1046', displayName: 'STARLINK-1046', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'SpaceX', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
   { catnr: '44752', name: 'STARLINK-1047', displayName: 'STARLINK-1047', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'SpaceX', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
-
-  // MEGA CONSTELLATIONS (ONEWEB)
+  { catnr: '52312', name: 'STARLINK-3932', displayName: 'STARLINK-3932', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'SpaceX', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
+  { catnr: '52313', name: 'STARLINK-3957', displayName: 'STARLINK-3957', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'SpaceX', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
   { catnr: '44057', name: 'ONEWEB-0012', displayName: 'ONEWEB-0012', flag: 'gb', group: 'MEGA CONSTELLATIONS', operator: 'OneWeb', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
   { catnr: '44058', name: 'ONEWEB-0010', displayName: 'ONEWEB-0010', flag: 'gb', group: 'MEGA CONSTELLATIONS', operator: 'OneWeb', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
   { catnr: '44059', name: 'ONEWEB-0008', displayName: 'ONEWEB-0008', flag: 'gb', group: 'MEGA CONSTELLATIONS', operator: 'OneWeb', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
@@ -79,27 +103,12 @@ const SATELLITE_OPTIONS = [
   { catnr: '45133', name: 'ONEWEB-0020', displayName: 'ONEWEB-0020', flag: 'gb', group: 'MEGA CONSTELLATIONS', operator: 'OneWeb', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
   { catnr: '45134', name: 'ONEWEB-0021', displayName: 'ONEWEB-0021', flag: 'gb', group: 'MEGA CONSTELLATIONS', operator: 'OneWeb', mission: 'Broadband', telemetry: 'Ku-Band', payload: 'Ku/Ka-Band' },
 
-  // COMMUNICATIONS (GLOBALSTAR)
-  { catnr: '31573', name: 'GLOBALSTAR M069', displayName: 'GLOBALSTAR M069', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'Globalstar', mission: 'Mobile Comms', telemetry: 'S/L-Band', payload: 'S/L-Band' },
-  { catnr: '31574', name: 'GLOBALSTAR M072', displayName: 'GLOBALSTAR M072', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'Globalstar', mission: 'Mobile Comms', telemetry: 'S/L-Band', payload: 'S/L-Band' },
-  { catnr: '32265', name: 'GLOBALSTAR M066', displayName: 'GLOBALSTAR M066', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'Globalstar', mission: 'Mobile Comms', telemetry: 'S/L-Band', payload: 'S/L-Band' },
-  { catnr: '37188', name: 'GLOBALSTAR M079', displayName: 'GLOBALSTAR M079', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'Globalstar', mission: 'Mobile Comms', telemetry: 'S/L-Band', payload: 'S/L-Band' },
-  { catnr: '37189', name: 'GLOBALSTAR M074', displayName: 'GLOBALSTAR M074', flag: 'us', group: 'MEGA CONSTELLATIONS', operator: 'Globalstar', mission: 'Mobile Comms', telemetry: 'S/L-Band', payload: 'S/L-Band' },
-
-  // GLOBAL NAVIGATION (GNSS) - BEIDOU
-  { catnr: '36828', name: 'BEIDOU-2 C06', displayName: 'BEIDOU-2 (C06)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (IGSO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
-  { catnr: '37210', name: 'BEIDOU-2 C04', displayName: 'BEIDOU-2 (C04)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (GEO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
-  { catnr: '37256', name: 'BEIDOU-2 C07', displayName: 'BEIDOU-2 (C07)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (IGSO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
-  { catnr: '37384', name: 'BEIDOU-2 C08', displayName: 'BEIDOU-2 (C08)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (IGSO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
-  { catnr: '38091', name: 'BEIDOU-2 C05', displayName: 'BEIDOU-2 (C05)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (GEO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
-  { catnr: '40549', name: 'BEIDOU-3 C31', displayName: 'BEIDOU-3 (C31)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (IGSO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
-  { catnr: '43001', name: 'BEIDOU-3 C19', displayName: 'BEIDOU-3 (C19)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
-  { catnr: '43002', name: 'BEIDOU-3 C20', displayName: 'BEIDOU-3 (C20)', flag: 'cn', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'CNSA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'B1, B2, B3' },
-
-  // GLOBAL NAVIGATION (GNSS) - GALILEO
-  { catnr: '37846', name: 'GSAT0101', displayName: 'GALILEO (GSAT0101)', flag: 'eu', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'ESA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'E1, E5, E6' },
-  { catnr: '37847', name: 'GSAT0102', displayName: 'GALILEO (GSAT0102)', flag: 'eu', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'ESA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'E1, E5, E6' },
-  { catnr: '38857', name: 'GSAT0103', displayName: 'GALILEO (GSAT0103)', flag: 'eu', group: 'GLOBAL NAVIGATION (GNSS)', operator: 'ESA', mission: 'Navigation (MEO)', telemetry: 'L-Band', payload: 'E1, E5, E6' }
+  // 9. COMMUNICATIONS (L-BAND)
+  { catnr: '31573', name: 'GLOBALSTAR M069', displayName: 'GLOBALSTAR M069', flag: 'us', group: 'COMMUNICATIONS (L-BAND)', operator: 'Globalstar', mission: 'Mobile Comms', telemetry: 'S/L-Band', payload: 'S/L-Band' },
+  { catnr: '31574', name: 'GLOBALSTAR M072', displayName: 'GLOBALSTAR M072', flag: 'us', group: 'COMMUNICATIONS (L-BAND)', operator: 'Globalstar', mission: 'Mobile Comms', telemetry: 'S/L-Band', payload: 'S/L-Band' },
+  { catnr: '32265', name: 'GLOBALSTAR M066', displayName: 'GLOBALSTAR M066', flag: 'us', group: 'COMMUNICATIONS (L-BAND)', operator: 'Globalstar', mission: 'Mobile Comms', telemetry: 'S/L-Band', payload: 'S/L-Band' },
+  { catnr: '37188', name: 'GLOBALSTAR M079', displayName: 'GLOBALSTAR M079', flag: 'us', group: 'COMMUNICATIONS (L-BAND)', operator: 'Globalstar', mission: 'Mobile Comms', telemetry: 'S/L-Band', payload: 'S/L-Band' },
+  { catnr: '37189', name: 'GLOBALSTAR M074', displayName: 'GLOBALSTAR M074', flag: 'us', group: 'COMMUNICATIONS (L-BAND)', operator: 'Globalstar', mission: 'Mobile Comms', telemetry: 'S/L-Band', payload: 'S/L-Band' }
 ];
 
 const FALLBACK_TLES = {
@@ -107,95 +116,8 @@ const FALLBACK_TLES = {
   '58016': { line1: '1 58016U 23155A   26166.96487797  .00000718  00000-0  97744-4 0  9995', line2: '2 58016  97.8882 237.9656 0001407  90.8603 269.2771 14.81738229145245' },
   '33396': { line1: '1 33396U 08049A   26166.85000000  .00000100  00000-0  50000-4 0  9991', line2: '2 33396  98.5400 210.1200 0001500  85.0000 275.0000 14.20000000900001' },
   '25544': { line1: '1 25544U 98067A   26201.79846070  .00005574  00000-0  10900-3 0  9995', line2: '2 25544  51.6312 133.7599 0006835 319.3995  40.6483 15.49066413576965' },
-  '48274': { line1: '1 48274U 21035A   26204.00000000  .00000000  00000-0  00000-0 0  9999', line2: '2 48274  41.4700 120.0000 0001500 180.0000 180.0000 15.60000000000000' }, 
-  
-  // ของเดิม (Thai Cubesat)
-  '43720': { line1: '1 43720U 18099D   26166.85000000  .00000090  00000-0  45000-4 0  9999', line2: '2 43720  98.1800 220.1000 0001300  88.0000 000.0000 14.59000000900009' },
-  '46292': { line1: '1 46292U 20061BA  26166.85000000  .00000090  00000-0  45000-4 0  9999', line2: '2 46292  98.1800 220.1000 0001300  88.0000 060.0000 14.59000000900009' },
-  '48008': { line1: '1 48008U 21022H   26202.85000000  .00000090  00000-0  45000-4 0  9999', line2: '2 48008  97.5000 220.1000 0001300  88.0000 060.0000 14.59000000900009' },
-  '48900': { line1: '1 48900U 21059G   26202.85000000  .00000090  00000-0  45000-4 0  9999', line2: '2 48900  97.5000 220.1000 0001300  88.0000 060.0000 14.59000000900009' },
-  '62689': { line1: '1 62689U 23155G   26202.85000000  .00000090  00000-0  45000-4 0  9999', line2: '2 62689  97.5000 220.1000 0001300  88.0000 060.0000 14.59000000900009' },
-  '67683': { line1: '1 67683U 24155G   26202.85000000  .00000090  00000-0  45000-4 0  9999', line2: '2 67683  97.5000 220.1000 0001300  88.0000 060.0000 14.59000000900009' },
-
-  // ของเดิม (SAR & Earth Observation)
-  '32382': { line1: '1 32382U 07061A   26202.60341558  .00000099  00000+0  55382-4 0  9990', line2: '2 32382  98.5791 209.0450 0001341  85.6887 274.4449 14.29984452970873' },
-  '31598': { line1: '1 31598U 07023A   26202.62118812  .00002298  00000+0  20364-3 0  9997', line2: '2 31598  97.8855  34.7692 0001812  95.0649 265.0780 14.97244419 34949' },
-  '32376': { line1: '1 32376U 07059A   26202.59142825  .00000260  00000+0  39213-4 0  9999', line2: '2 32376  97.8898  25.6922 0001474  94.2407 265.8975 14.82153951  7109' },
-  '33412': { line1: '1 33412U 08054A   26202.60280087  .00002865  00000+0  19446-3 0  9990', line2: '2 33412  97.8254  61.7418 0016592 144.5833 215.6499 15.07143192962127' },
-  '37216': { line1: '1 37216U 10060A   26202.87414014  .00000374  00000+0  53551-4 0  9993', line2: '2 37216  97.8900  25.9727 0001468  90.5169 269.6212 14.82156050849703' },
-  '39634': { line1: '1 39634U 14016A   26202.58469653  .00000103  00000+0  31533-4 0  9997', line2: '2 39634  98.1714 209.6122 0001435  85.1809 274.9554 14.59173297655036' },
-  '31698': { line1: '1 31698U 07026A   26202.44324132  .00000200  00000+0  12714-4 0  9997', line2: '2 31698  97.4457 209.6623 0001808  80.3305 279.8134 15.19148901 58421' },
-  '36605': { line1: '1 36605U 10030A   26202.44323971  .00000080  00000+0  69995-5 0  9999', line2: '2 36605  97.4466 209.6630 0001785 100.1073 260.0363 15.19148789891840' },
-  '49260': { line1: '1 49260U 21088A   26202.18816322  .00000217  00000+0  58165-4 0  9991', line2: '2 49260  98.2264 271.9512 0001073  92.7639 267.3683 14.57098343255953' },
-  '39084': { line1: '1 39084U 13008A   26202.56572164  .00000215  00000+0  57916-4 0  9993', line2: '2 39084  98.2285 272.2897 0001337  91.8641 268.2711 14.57097234702907' },
-  '25994': { line1: '1 25994U 99068A   26202.61954139  .00000241  00000+0  58077-4 0  9998', line2: '2 25994  97.9436 250.7972 0003622 110.2563  49.2698 14.61127057414632' },
-  '27424': { line1: '1 27424U 02022A   26202.61098541  .00000537  00000+0  11669-3 0  9991', line2: '2 27424  98.4301 172.5868 0001325 102.0917 312.0397 14.62134884288301' },
-  '54234': { line1: '1 54234U 22150A   26202.57178498  .00000039  00000+0  39192-4 0  9998', line2: '2 54234  98.7059 140.7835 0002913  92.9119 267.2391 14.19541826191420' },
-  '43013': { line1: '1 43013U 17073A   26202.61007573  .00000028  00000+0  34127-4 0  9990', line2: '2 43013  98.7772 141.7679 0001601 117.5455 242.5884 14.19517347449354' },
-  '37849': { line1: '1 37849U 11061A   26202.59669540  .00000061  00000+0  50149-4 0  9995', line2: '2 37849  98.7956 143.2390 0001073 185.7964 174.3200 14.19523619763329' },
-  '40697': { line1: '1 40697U 15028A   26202.62030285  .00000257  00000+0  11465-3 0  9993', line2: '2 40697  98.5668 276.9811 0001324  96.2802 263.8532 14.30816331578651' },
-  '32783': { line1: '1 32783U 08021A   26202.61184102  .00000240  00000+0  38932-4 0  9993', line2: '2 32783  97.7612 250.1425 0011923   7.4059 352.7327 14.79280264983896' },
-  '41866': { line1: '1 41866U 16071A   26202.59556191 -.00000089  00000+0  00000+0 0  9999', line2: '2 41866   0.4199  85.4484 0000685  72.3972 251.2077  1.00271776 35443' },
-  '41882': { line1: '1 41882U 16077A   26202.64086039 -.00000357  00000+0  00000+0 0  9996', line2: '2 41882   2.4080  79.8916 0008146 159.3196  54.5323  1.00265376 35271' },
-  '40267': { line1: '1 40267U 14060A   26202.64415374 -.00000274  00000+0  00000+0 0  9998', line2: '2 40267   0.0419 263.4457 0001309 253.7501 154.7516  1.00271154 43100' },
-  '38771': { line1: '1 38771U 12049A   26202.61072963  .00000042  00000+0  38851-4 0  9992', line2: '2 38771  98.6485 253.4198 0001346 221.8467 138.2608 14.21447602718155' },
-  '40069': { line1: '1 40069U 14037A   26202.56620946 -.00000010  00000+0  14927-4 0  9992', line2: '2 40069  98.5143 177.0912 0004764 305.4497  54.6236 14.21469887624201' },
-  '39150': { line1: '1 39150U 13018A   26202.62458456  .00000510  00000+0  80300-4 0  9993', line2: '2 39150  97.9076 273.9898 0017656 150.9869 209.2327 14.76523192713328' },
-  '40376': { line1: '1 40376U 15003A   26202.60961285  .00000285  00000+0  64260-4 0  9994', line2: '2 40376  98.1287 209.2183 0001633  92.4865 267.6524 14.63392770612653' },
-  '54754': { line1: '1 54754U 22173A   26202.64354096  .00000057  00000+0  40400-4 0  9992', line2: '2 54754  77.6118 348.7929 0000214  70.3491 289.7684 14.00172654183972' },
-  '43613': { line1: '1 43613U 18070A   26202.53193309  .00008021  00000+0  29144-3 0  9991', line2: '2 43613  92.0084 300.2608 0004849  44.3614 315.8023 15.28247442437700' },
-
-  // ของใหม่ที่เพิ่มเข้าไปรอบนี้ (STARLINK)
-  '44714': { line1: '1 44714U 19074B   26203.85026071  .00043430  00000+0  65493-3 0  9996', line2: '2 44714  53.1486 257.4051 0005733 347.6199  12.4671 15.54349637369758' },
-  '44718': { line1: '1 44718U 19074F   26203.90241220  .00033521  00000+0  50186-3 0  9994', line2: '2 44718  53.1532 257.3464 0006055 350.4988   9.5908 15.54669722369757' },
-  '44723': { line1: '1 44723U 19074L   26203.59465954  .00030080  00000+0  89176-3 0  9995', line2: '2 44723  53.0453 263.7268 0000886  74.0426 286.0673 15.34612174369612' },
-  '44725': { line1: '1 44725U 19074N   26203.63352324  .00066630  00000+0  78560-3 0  9993', line2: '2 44725  53.1540 280.8739 0005311 322.6141  37.4503 15.60756549369387' },
-  '44741': { line1: '1 44741U 19074AE  26203.29108934  .00079445  00000+0  45231-3 0  9996', line2: '2 44741  53.0397 245.6485 0004236  27.2706 332.8536 15.78280675369830' },
-  '44744': { line1: '1 44744U 19074AH  26203.71106589  .00029233  00000+0  95349-3 0  9995', line2: '2 44744  53.0558 309.5752 0001136 251.4157 108.6720 15.31583154368982' },
-  '44747': { line1: '1 44747U 19074AL  26203.27373482  .00027377  00000+0  39067-3 0  9999', line2: '2 44747  53.0415 165.8551 0001451  58.9768 301.1385 15.56101247370981' },
-  '44748': { line1: '1 44748U 19074AM  26203.52631903  .00046385  00000+0  41630-3 0  9992', line2: '2 44748  53.0459 257.8185 0003233  22.1036 338.0119 15.67831807369690' },
-  '44751': { line1: '1 44751U 19074AQ  26203.63380023  .00042380  00000+0  49888-3 0  9996', line2: '2 44751  53.0451 281.1779 0003829 289.6198  70.4401 15.60996941369375' },
-  '44752': { line1: '1 44752U 19074AR  26203.81294063  .00034667  00000+0  98615-3 0  9996', line2: '2 44752  53.0682 233.3488 0001790 314.2366  45.8489 15.35839511370088' },
-  
-  // ONEWEB
-  '44057': { line1: '1 44057U 19010A   26203.74374192  .00000059  00000+0  11998-3 0  9995', line2: '2 44057  87.9078 221.7217 0001652  96.8358 263.2961 13.16594592356240' },
-  '44058': { line1: '1 44058U 19010B   26203.76909415 -.00000042  00000+0 -14218-3 0  9992', line2: '2 44058  87.9079 221.7131 0002371  97.0243 263.1157 13.16594262356297' },
-  '44059': { line1: '1 44059U 19010C   26203.79442328 -.0000013  00000+0 -68432-4 0  9997', line2: '2 44059  87.9074 221.7024 0002074  86.3755 273.7613 13.16593468356418' },
-  '44060': { line1: '1 44060U 19010D   26203.55359207 -.00000116  00000+0 -34111-3 0  9996', line2: '2 44060  87.8975 252.1735 0002052 105.1379 254.9978 13.15548157356020' },
-  '44061': { line1: '1 44061U 19010E   26203.55752999 -.00000056  00000+0 -18184-3 0  9997', line2: '2 44061  87.8984 252.1405 0002201  94.9634 265.1747 13.15546720356077' },
-  '44062': { line1: '1 44062U 19010F   26203.14556028  .00000014  00000+0  35375-5 0  9993', line2: '2 44062  87.8992 252.2334 0002166  94.0959 266.0419 13.15546725356015' },
-  '45131': { line1: '1 45131U 20008A   26203.54825201  .00000728  00000+0  20773-2 0  9991', line2: '2 45131  87.8495  45.6845 0000783  84.4533 275.6683 13.09460725310697' },
-  '45132': { line1: '1 45132U 20008B   26203.81143215  .00000673  00000+0  18927-2 0  9997', line2: '2 45132  87.8810  29.1676 0002078  91.4979 268.6387 13.10376287312617' },
-  '45133': { line1: '1 45133U 20008C   26203.47543953 -.00000485  00000+0 -14255-2 0  9996', line2: '2 45133  87.8826  29.2349 0001799  88.1371 271.9963 13.10374490312960' },
-  '45134': { line1: '1 45134U 20008D   26203.49071875  .00000224  00000+0  60437-3 0  9991', line2: '2 45134  87.8819  29.2458 0001771  92.1672 267.9658 13.10375332313270' },
-  
-  // GLOBALSTAR
-  '31573': { line1: '1 31573U 07020C   26203.34397047 -.00000053  00000+0  36290-3 0  9999', line2: '2 31573  52.0018 152.6174 0001486 226.2046 297.9391 12.23472540883104' },
-  '31574': { line1: '1 31574U 07020D   26203.43989804 -.00000088  00000+0 -55494-4 0  9995', line2: '2 31574  51.9955   6.3933 0001633  48.1342 337.6937 11.91658759879188' },
-  '32265': { line1: '1 32265U 07048C   26203.32694402 -.00000025  00000+0  59145-3 0  9994', line2: '2 32265  51.9610 317.0380 0005480 116.3209 278.9500 12.30390412864557' },
-  '37188': { line1: '1 37188U 10054A   26203.76436852 -.00000099  00000+0  26196-4 0  9997', line2: '2 37188  52.0059   0.3677 0001113  89.9803 309.6942 12.62266424727044' },
-  '37189': { line1: '1 37189U 10054B   26203.70807359 -.00000103  00000+0  61618-5 0  9991', line2: '2 37189  52.0038 359.7991 0000833 104.9572 278.6412 12.62262042727646' },
-
-  // BEIDOU
-  '36828': { line1: '1 36828U 10036A   26203.83497221 -.00000090  00000+0  00000+0 0  9994', line2: '2 36828  54.3079 162.6381 0059059 225.2794 320.0279  1.00261993 58459' },
-  '37210': { line1: '1 37210U 10057A   26203.85983729 -.00000112  00000+0  00000+0 0  9993', line2: '2 37210   3.7336  68.7236 0005248 183.3998 157.9688  1.00273222 57644' },
-  '37256': { line1: '1 37256U 10068A   26202.87819282 -.00000198  00000+0  00000+0 0  9992', line2: '2 37256  47.4828 271.3972 0057045 214.5351 238.1175  1.00271863 57143' },
-  '37384': { line1: '1 37384U 11013A   26202.49436278 -.00000172  00000+0  00000+0 0  9995', line2: '2 37384  62.4558  39.8259 0035881 183.5212 359.9880  1.00259347 56004' },
-  '37763': { line1: '1 37763U 11038A   26203.99265681 -.00000035  00000+0  00000+0 0  9995', line2: '2 37763  54.6048 165.3543 0160072 231.4898 355.6942  1.00278691 55001' },
-  '37948': { line1: '1 37948U 11073A   26183.72937883 -.00000128  00000+0  00000+0 0  9990', line2: '2 37948  47.6496 271.3544 0114527 222.0502 141.5350  1.00270596 53296' },
-  '38091': { line1: '1 38091U 12008A   26204.00350590  .00000058  00000+0  00000+0 0  9999', line2: '2 38091   3.6610  69.4702 0007035 271.4937  19.7057  1.00273416 52724' },
-  '40549': { line1: '1 40549U 15019A   26203.86188105 -.00000173  00000+0  00000+0 0  9998', line2: '2 40549  49.1249 295.0310 0038696 195.6676 212.2841  1.00291059 41434' },
-  '43001': { line1: '1 43001U 17069A   26201.96127414 -.00000079  00000+0  00000+0 0  9991', line2: '2 43001  56.7221  61.9715 0008832 327.7311  32.2769  1.86231306 59235' },
-  '43002': { line1: '1 43002U 17069B   26203.51098727 -.00000077  00000+0  00000+0 0  9997', line2: '2 43002  56.7230  61.9567 0007814   0.0665 359.9968  1.86231039 59258' },
-
-  // GALILEO
-  '37846': { line1: '1 37846U 11060A   26203.04348625 -.00000107  00000+0  00000+0 0  9998', line2: '2 37846  56.9816 340.8168 0002031  64.0635 295.9520  1.70475789 91713' },
-  '37847': { line1: '1 37847U 11060B   26202.38421657 -.00000107  00000+0  00000+0 0  9992', line2: '2 37847  56.9829 340.8353 0001995   5.2866 355.7737  1.70476023 91712' },
-  '38857': { line1: '1 38857U 12055A   26200.15144010 -.00000035  00000+0  00000+0 0  9997', line2: '2 38857  55.8248 100.6680 0003622 312.6356  47.3724  1.70473478 85556' },
-  '40128': { line1: '1 40128U 14050A   26202.91197597 -.00000055  00000+0  00000+0 0  9994', line2: '2 40128  48.8375 272.0101 1679296 180.7600 179.0021  1.85519659 78966' },
-  '40129': { line1: '1 40129U 14050B   26203.16739232 -.00000050  00000+0  00000+0 0  9996', line2: '2 40129  48.8548 271.0857 1680673 181.4787 178.0078  1.85520629 81134' }
+  '48274': { line1: '1 48274U 21035A   26204.00000000  .00000000  00000-0  00000-0 0  9999', line2: '2 48274  41.4700 120.0000 0001500 180.0000 180.0000 15.60000000000000' }
 };
-
 // ==========================================
 // 2. SCI-FI CSS (INJECTED) - ORBITAL RADAR EDITION
 // ==========================================
@@ -690,12 +612,18 @@ export default function App() {
   }, [allSatObjects, selectedCatnrs, selectedCatnr]);
 
   const signalVisualPath = useMemo(() => {
+    // 1. ถ้าสัญญาณไม่เข้า (ยังไม่ AOS) หรือไม่มีข้อมูล ให้ซ่อนเส้น
     if (!linkActive || !targetData || isNaN(targetData.lat) || isNaN(targetData.lng)) return [];
+    
+    // 2. ฟันธง: ซ่อนเส้นสัญญาณเฉพาะดาวเทียม GEO (เช่น ไทยคม ที่สูงกว่า 30,000 km) เพื่อไม่ให้เส้นโยงยาวเกะกะ
+    if (targetData.altKm > 30000) return []; 
+
     const gsPoint = { lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, alt: 0 };
     const satPoint = { lat: targetData.lat, lng: targetData.lng, alt: Math.max(0, targetData.altKm) / EARTH_RADIUS_KM };
+    
     return [
-      { points: [gsPoint, satPoint], color: 'rgba(255, 255, 255, 0.9)', stroke: 0.4 },
-      { points: [gsPoint, satPoint], color: 'rgba(0, 234, 255, 0.5)', stroke: 2.0 }
+      { points: [gsPoint, satPoint], color: 'rgba(255, 255, 255, 0.9)', stroke: 0.4 }, // เส้นแกนกลางสีขาว
+      { points: [gsPoint, satPoint], color: 'rgba(0, 255, 102, 0.6)', stroke: 2.0 }  // รัศมีสีเขียว (Green) ตามคำสั่ง!
     ];
   }, [linkActive, targetData]);
 
@@ -941,7 +869,11 @@ export default function App() {
             if (!selectedCatnrs.includes(d.catnr)) setSelectedCatnrs([...selectedCatnrs, d.catnr]);
             isTrackingRef.current = true;
             setCameraMode('TRACKING');
-            if (globeRef.current) globeRef.current.pointOfView({ lat: d.lat, lng: d.lng, altitude: 0.4 }, 1000);
+            if (globeRef.current) {
+              // ฟันธง: ซูมกล้องถอยหลังให้พ้นระยะความสูงของดาวเทียม (GEO สูงมาก กล้องต้องถอยไกล)
+              const camAlt = Math.max(0.4, (d.altKm / EARTH_RADIUS_KM) + 0.5);
+              globeRef.current.pointOfView({ lat: d.lat, lng: d.lng, altitude: camAlt }, 1000);
+            }
           }
         }}
         labelsData={[GROUND_STATION]} 
@@ -971,7 +903,7 @@ export default function App() {
         pathTransitionDuration={0}
         
         ringsData={[{ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng }]}
-        ringColor={() => linkActive ? t => `rgba(0, 255, 102, ${1-t})` : t => `rgba(255, 51, 51, ${1-t})`}
+        ringColor={() => linkActive ? t => `rgba(255, 170, 0, ${1-t})` : t => `rgba(255, 51, 51, ${1-t})`}
         ringMaxRadius={linkActive ? 8 : 4}
         ringPropagationSpeed={1.5}
         ringRepeatPeriod={800}
@@ -1325,28 +1257,30 @@ export default function App() {
                </button>
 
                <button 
-                 className={`btn ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
-                 style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
-                 onClick={() => {
-                   const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
-                   setCameraMode(newMode);
-                   isTrackingRef.current = (newMode === 'TRACKING');
-                   
-                   if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
-                     try {
-                       const rec = satrecs[selectedCatnr];
-                       if (rec) {
-                           const pos = calculateSatData(new Date(simulatedTimeMs), rec);
-                           if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-                             globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: 0.4 }, 1000);
-                           }
-                       }
-                     } catch (err) {}
-                   }
-                 }}
-               >
-                 TARGET LOCK
-               </button>
+  className={`btn ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
+  style={{ marginBottom: 0, fontSize: '15px', padding: '14px 5px', letterSpacing: '0.5px' }} 
+  onClick={() => {
+    const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
+    setCameraMode(newMode);
+    isTrackingRef.current = (newMode === 'TRACKING');
+    
+    if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
+      try {
+        const rec = satrecs[selectedCatnr];
+        if (rec) {
+            const pos = calculateSatData(new Date(simulatedTimeMs), rec);
+            if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+              // ฟันธง: ซูมกล้องตอนกด Target Lock ให้สัมพันธ์กับความสูง GEO/LEO
+              const camAlt = Math.max(0.4, (pos.altKm / EARTH_RADIUS_KM) + 0.5);
+              globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: camAlt }, 1000);
+            }
+        }
+      } catch (err) {}
+    }
+  }}
+>
+  TARGET LOCK
+</button>
              </div>
            </div>
 
