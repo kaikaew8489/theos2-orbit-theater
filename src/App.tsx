@@ -418,6 +418,8 @@ export default function App() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  
+
   // --- ระบบ PASS PREDICTION ---
   const [isPassModalOpen, setIsPassModalOpen] = useState(false);
   const [passSchedule, setPassSchedule] = useState([]);
@@ -557,6 +559,38 @@ export default function App() {
       return { ...prev, [winName]: maxZ + 1 }; // ถ้าถูกทับอยู่ ให้ดันค่า Z ให้สูงกว่าเพื่อน
     });
   };
+
+  // 📍 ฟันธง 1: สมองกลควบคุมหน้าต่าง Ground Station (วางต่อจาก bringToFront)
+  const [isGsModalOpen, setIsGsModalOpen] = useState(false);
+  const [gsPos, setGsPos] = useState({ x: 20, y: 150 });
+  const [isDraggingGs, setIsDraggingGs] = useState(false);
+  const dragGsRef = useRef({ startX: 0, startY: 0, initialX: 0, initialY: 0 });
+
+  const handleGsMouseDown = (e) => {
+    setIsDraggingGs(true);
+    bringToFront('gs');
+    dragGsRef.current = { startX: e.clientX, startY: e.clientY, initialX: gsPos.x, initialY: gsPos.y };
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (isDraggingGs) {
+        setGsPos({
+          x: dragGsRef.current.initialX + (e.clientX - dragGsRef.current.startX),
+          y: dragGsRef.current.initialY + (e.clientY - dragGsRef.current.startY)
+        });
+      }
+    };
+    const handleMouseUp = () => setIsDraggingGs(false);
+    if (isDraggingGs) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingGs]);
 
   const handlePassMouseDown = (e) => {
     setIsDraggingPass(true);
@@ -819,21 +853,22 @@ useEffect(() => {
   prevLinkActive.current = linkActive;
 }, [linkActive]);
 
-  const signalVisualPath = useMemo(() => {
-    // 1. ถ้าสัญญาณไม่เข้า (ยังไม่ AOS) หรือไม่มีข้อมูล ให้ซ่อนเส้น
-    if (!linkActive || !targetData || isNaN(targetData.lat) || isNaN(targetData.lng)) return [];
-    
-    // 2. ฟันธง: ซ่อนเส้นสัญญาณเฉพาะดาวเทียม GEO (เช่น ไทยคม ที่สูงกว่า 30,000 km) เพื่อไม่ให้เส้นโยงยาวเกะกะ
-    if (targetData.altKm > 30000) return []; 
+// 📍 ฟันธง 1: นำ signalVisualPath กลับมา แต่เรียงพิกัดจาก "ดาวเทียม -> พื้นโลก" และใส่แท็ก isSignal
+const signalVisualPath = useMemo(() => {
+  if (!linkActive || !targetData || isNaN(targetData.lat) || isNaN(targetData.lng)) return [];
+  if (targetData.altKm > 30000) return []; 
 
-    const gsPoint = { lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, alt: 0 };
-    const satPoint = { lat: targetData.lat, lng: targetData.lng, alt: Math.max(0, targetData.altKm) / EARTH_RADIUS_KM };
-    
-    return [
-      { points: [gsPoint, satPoint], color: 'rgba(255, 255, 255, 0.9)', stroke: 0.4 }, // เส้นแกนกลางสีขาว
-      { points: [gsPoint, satPoint], color: 'rgba(0, 255, 102, 0.6)', stroke: 2.0 }  // รัศมีสีเขียว (Green) ตามคำสั่ง!
-    ];
-  }, [linkActive, targetData]);
+  const gsPoint = { lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, alt: 0 };
+  const satPoint = { lat: targetData.lat, lng: targetData.lng, alt: Math.max(0.01, targetData.altKm / EARTH_RADIUS_KM) };
+  
+  return [{ 
+    points: [satPoint, gsPoint], // ต้องเอา sat ขึ้นก่อน gs สัญญาณจะได้วิ่งพุ่งลงพื้น!
+    color: 'rgba(0, 255, 102, 0.9)', 
+    stroke: 1.5,
+    isSignal: true // 📍 ฝังแท็กไว้บอกสมองกลว่านี่คือเส้นที่ต้องกระพริบ
+  }];
+}, [linkActive, targetData]);
+
 
   const footprintPolygonData = useMemo(() => {
     const polygons = [];
@@ -982,14 +1017,29 @@ useEffect(() => {
   }, [radarDim]);
 
   const radarData = useMemo(() => {
-    if (!targetSatrec) return { segments: [], maxEl: 0 };
+    if (!targetSatrec || !targetData) return { segments: [], maxEl: 0 };
+
+    // 📍 ฟันธง 1: กฎเหล็กซ่อนเส้นทาง (ปรากฏก่อน AOS ประมาณ 1.5 นาที)
+    // ดาวเทียมวงโคจรต่ำ (LEO) จะมีความเร็วเชิงมุมประมาณ 3-5 องศาต่อนาที
+    // ถ้าเราซ่อนเส้นทั้งหมดเมื่อมุมเงยปัจจุบัน ต่ำกว่า -2 องศา
+    // เส้นจะเด้งสว่างขึ้นมาบนจอเรดาร์ก่อนจะพ้นขอบฟ้า (5 องศา AOS) ประมาณ 1 นาทีเศษๆ พอดีเป๊ะ!
+    // 📍 ฟันธง: สมองกลดักจับ "ขาลง (Descending)" เพื่อล้างเส้นสีฟ้าทิ้งให้ตรงจังหวะเป๊ะๆ
+    const nextPos = calculateSatData(new Date(currentDate.getTime() + 60000), targetSatrec);
+    const isDescending = nextPos && nextPos.elevationDeg < targetData.elevationDeg;
+
+    // ถ้ามุมเงยต่ำกว่า 0 หรือ (ต่ำกว่า 5 องศา และกำลังบินลงลับขอบฟ้า) ให้ล้างเส้นทิ้งทันที!
+    if (targetData.elevationDeg <= 0 || (targetData.elevationDeg < PASS_MIN_ELEVATION_DEG && isDescending)) {
+      return { segments: [], maxEl: 'N/A' };
+    }
+
     const segments = [];
     let prevPoint = null;
     let maxEl = -90;
     const { R, cx, cy } = radarLayout;
     let hasFutureVisibility = false; 
 
-    for (let m = -30; m <= 30; m += 0.5) { 
+    // 📍 ฟันธง 2: ลดระยะสแกนเหลือ -15 ถึง +15 นาที (เพราะ LEO ข้ามฟ้าแค่ 10-15 นาที) ไม่ต้องเปลือง CPU สแกนไกล
+    for (let m = -15; m <= 15; m += 0.5) { 
       const d = new Date(currentDate.getTime() + m * 60000);
       const pos = calculateSatData(d, targetSatrec);
       
@@ -998,7 +1048,9 @@ useEffect(() => {
         if (m >= 0 && pos.elevationDeg >= PASS_MIN_ELEVATION_DEG) {
           hasFutureVisibility = true;
         }
-        if (pos.elevationDeg < -15) { prevPoint = null; continue; }
+        
+        // 📍 ฟันธง 3: ตัดเส้นที่ไม่พ้นขอบฟ้า (ต่ำกว่า 0 องศา) ทิ้ง เพื่อไม่ให้วาดเลอะทะลุกรอบขอบเรดาร์วงนอก
+        if (pos.elevationDeg < 0) { prevPoint = null; continue; }
         
         const r = R * ((90 - pos.elevationDeg) / 90);
         const x = cx + r * Math.sin((pos.azimuthDeg * Math.PI) / 180);
@@ -1024,11 +1076,11 @@ useEffect(() => {
       }
     }
     
-    if (!hasFutureVisibility) {
+    if (!hasFutureVisibility && segments.length === 0) {
       return { segments: [], maxEl: 'N/A' };
     }
-    return { segments, maxEl: maxEl > -15 ? maxEl.toFixed(1) : 'N/A' };
-  }, [targetSatrec, Math.floor(simulatedTimeMs / 60000), radarLayout]);
+    return { segments, maxEl: maxEl > 0 ? maxEl.toFixed(1) : 'N/A' };
+  }, [targetSatrec, targetData, Math.floor(simulatedTimeMs / 60000), radarLayout]);
 
   const radarCurrentPos = useMemo(() => {
     if (!targetData || isNaN(targetData.elevationDeg) || isNaN(targetData.azimuthDeg)) return null;
@@ -1105,12 +1157,20 @@ useEffect(() => {
             </div>`;
           return el;
         }}
+
+    
+
         pathsData={pathsToDraw3D}
         pathPoints="points"
         pathPointLat="lat" pathPointLng="lng" pathPointAlt="alt"
         pathColor="color" pathStroke="stroke"
         pathResolution={4}
         pathTransitionDuration={0}
+
+        /* 📍 ฟันธง 4: สั่งให้เฉพาะเส้นที่ฝังแท็ก isSignal วิ่งเป็นช็อตๆ ลงมาที่สถานี */
+        pathDashLength={d => d.isSignal ? 0.05 : 0}
+        pathDashGap={d => d.isSignal ? 0.05 : 0}
+        pathDashAnimateTime={d => d.isSignal ? 1500 : 0}
         
         ringsData={[{ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng }]}
         ringColor={() => linkActive ? t => `rgba(255, 170, 0, ${1-t})` : t => `rgba(255, 51, 51, ${1-t})`}
@@ -1131,8 +1191,13 @@ useEffect(() => {
           <div 
             className="flat-map-container"
             style={{
-              backgroundImage: "url('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')",
-              backgroundSize: 'cover',
+              /* 📍 ฟันธง Gimmick 3: สร้างเส้น Grid สีฟ้าจางๆ ทาบลงบนแผนที่โลก */
+              backgroundImage: `
+                linear-gradient(rgba(0, 234, 255, 0.15) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 234, 255, 0.15) 1px, transparent 1px),
+                url('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+              `,
+              backgroundSize: '4% 8%, 4% 8%, cover',
               backgroundPosition: 'center',
               backgroundColor: '#000'
             }}
@@ -1322,6 +1387,16 @@ useEffect(() => {
                   {targetConfig.flag ? <img src={`https://flagcdn.com/w40/${targetConfig.flag}.png`} alt="flag" /> : <span style={{fontSize: '30px'}}>🛰️</span>}
                   <h2>{targetConfig.displayName}</h2>
                 </div>
+
+                {/* 📍 ฟันธง Gimmick 1: เอฟเฟกต์ Pulse Glow หายใจเข้าออกตอนจับเป้าได้ */}
+                <style>{`
+                  @keyframes pulse-glow {
+                    0% { box-shadow: 0 0 15px rgba(0, 234, 255, 0.4), inset 0 0 10px rgba(0, 234, 255, 0.2); }
+                    50% { box-shadow: 0 0 30px rgba(0, 234, 255, 1), inset 0 0 20px rgba(0, 234, 255, 0.8); }
+                    100% { box-shadow: 0 0 15px rgba(0, 234, 255, 0.4), inset 0 0 10px rgba(0, 234, 255, 0.2); }
+                  }
+                  .status-banner.active { animation: pulse-glow 2s infinite ease-in-out; }
+                `}</style>
 
                 {/* 📍 ฟันธง: ป้าย Status Banner อัปเกรดใหม่ แสดง Countdown และ Max EL */}
                 <div className={`status-banner ${linkActive ? 'active' : 'standby'}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '15px 10px' }}>
@@ -1530,11 +1605,42 @@ useEffect(() => {
                {isUpdatingTle ? 'FETCHING...' : 'SYNC LIVE TLE'}
              </button>
 
+             {/* 📍 ฟันธง 1: ปุ่ม GROUND STATION ดีไซน์ Sci-Fi (บังคับสไตล์ทับ CSS เดิมที่กวนอยู่) */}
+            <button 
+              onClick={() => { setIsGsModalOpen(!isGsModalOpen); if (!isGsModalOpen) bringToFront('gs'); }}
+              style={{ 
+                width: '100%', 
+                padding: '12px', 
+                marginBottom: '10px', 
+                background: 'rgba(0, 234, 255, 0.05)', 
+                border: '1px solid var(--cyan)', 
+                color: 'var(--cyan)', 
+                fontFamily: 'Orbitron', 
+                fontWeight: 'bold', 
+                letterSpacing: '2px',
+                boxShadow: '0 0 10px rgba(0,234,255,0.1)',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                textTransform: 'uppercase'
+              }}
+              onMouseEnter={(e) => { 
+                e.currentTarget.style.background = 'rgba(0, 234, 255, 0.2)'; 
+                e.currentTarget.style.boxShadow = '0 0 20px rgba(0,234,255,0.4), inset 0 0 10px rgba(0,234,255,0.2)'; 
+              }}
+              onMouseLeave={(e) => { 
+                e.currentTarget.style.background = 'rgba(0, 234, 255, 0.05)'; 
+                e.currentTarget.style.boxShadow = '0 0 10px rgba(0,234,255,0.1)'; 
+              }}
+            >
+              GROUND STATION
+            </button>
+
              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+               {/* 📍 ฟันธง: แก้ปุ่ม DATABASE ให้กดสลับเปิด-ปิดได้ และเรืองแสงเมื่อเปิดใช้งาน */}
                <button 
-                 className="btn database-btn" 
+                 className={`btn database-btn ${isModalOpen ? 'active' : ''}`} 
                  style={{ marginBottom: 0, fontSize: '13px', padding: '10px 5px', letterSpacing: '1px' }} 
-                 onClick={() => setIsModalOpen(true)}
+                 onClick={() => { setIsModalOpen(!isModalOpen); if (!isModalOpen) bringToFront('db'); }}
                >
                  DATABASE
                </button>
@@ -1603,16 +1709,129 @@ useEffect(() => {
         </div>
       </div>
       
-     {/* --- SATELLITE DATABASE (โหมดป๊อปอัปลอยตัว) --- */}
-     {isModalOpen && (
-       <div className="modal-box" onMouseDownCapture={() => bringToFront('db')} style={{ 
-        position: 'fixed', top: `${dbPos.y}px`, left: `${dbPos.x}px`, zIndex: windowZ.db,
-        width: '900px', height: '600px', minWidth: '400px', minHeight: '300px',
-        resize: 'both', overflow: 'hidden', 
-        /* ฟันธง: ปรับความใสตรงนี้ */
-        background: 'rgba(0, 10, 25, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-        border: '1px solid rgba(0, 234, 255, 0.5)', boxShadow: '0 0 30px rgba(0, 234, 255, 0.2)'
-      }}>
+{/* --- SKP GISTDA GROUND STATION (ป๊อปอัปขยายได้อิสระ + Auto-Scale) --- */}
+{isGsModalOpen && (
+        <div className="modal-box gs-modal" onMouseDownCapture={() => bringToFront('gs')} style={{ 
+          position: 'fixed', top: `${gsPos.y}px`, left: `${gsPos.x}px`, zIndex: windowZ?.gs || 9999,
+          width: '380px', height: '350px', minWidth: '300px', minHeight: '280px',
+          
+          /* 📍 ฟันธง: ปลดล็อกกำแพงขนาด ให้ลากขยายได้ไม่จำกัดเหมือน Radar */
+          maxWidth: 'none', maxHeight: 'none', 
+          resize: 'both', overflow: 'hidden', padding: '0',
+          
+          background: 'rgba(0, 10, 25, 0.65)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+          border: '1px solid var(--cyan)', boxShadow: '0 0 30px rgba(0, 234, 255, 0.15)',
+          display: 'flex', flexDirection: 'column', borderRadius: '6px',
+          containerType: 'inline-size' /* 📍 สั่งให้กรอบนี้เป็น Container สำหรับขยายฟอนต์ตาม */
+        }}>
+          
+          {/* 📍 สมองกล CSS: สั่งให้ตัวหนังสือขยายตามความกว้างกรอบ (cqw) */}
+          <style>{`
+            .gs-modal .gs-header-text { font-size: clamp(14px, 4.5cqw, 35px) !important; }
+            .gs-modal .gs-icon { font-size: clamp(16px, 5cqw, 40px) !important; margin-right: clamp(4px, 1.5cqw, 15px) !important; }
+            .gs-modal .gs-label { font-size: clamp(11px, 3.5cqw, 26px) !important; }
+            .gs-modal .gs-value { font-size: clamp(12px, 3.8cqw, 28px) !important; }
+            .gs-modal .gs-row { padding-bottom: clamp(6px, 1.5cqw, 20px) !important; }
+            .gs-modal .gs-status-box { padding: clamp(8px, 2cqw, 25px) !important; margin-top: clamp(5px, 1cqw, 15px) !important; }
+          `}</style>
+
+         {/* Header */}
+          {/* 📍 ฟันธง 1: ใช้ position relative และ center เพื่อบังคับให้ข้อความอยู่ตรงกลางเป๊ะ ส่วนปุ่มกากบาทถูกจับแยกไปชิดขวา (absolute) */}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 15px', borderBottom: '1px solid rgba(0, 234, 255, 0.3)', background: 'rgba(0, 234, 255, 0.1)', cursor: isDraggingGs ? 'grabbing' : 'grab', flexShrink: 0 }} onMouseDown={handleGsMouseDown}>
+            <div style={{ color: 'var(--cyan)', fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '1px', display: 'flex', alignItems: 'center', pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              <span className="gs-icon">📡</span> <span className="gs-header-text" style={{ textOverflow: 'ellipsis', overflow: 'hidden' }}>GROUND STATION</span>
+            </div>
+            {/* ปุ่มปิด (X) ถูกล็อคพิกัดให้อยู่ชิดขวาเสมอ */}
+            <button className="modal-close-btn" style={{ position: 'absolute', right: '15px', width: '32px', height: '32px', flexShrink: 0, borderColor: 'var(--cyan)', color: 'var(--cyan)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsGsModalOpen(false); }}>✕</button>
+          </div>
+
+         {/* Body: ข้อมูลอัปเดตใหม่ */}
+          {/* 📍 ฟันธง 2: ฝัง CSS ซ่อน Scrollbar แบบ 100% (เลื่อนเมาส์กลิ้งได้ปกติ แต่ไม่แสดงแถบให้เกะกะสายตา) */}
+          <style>{`
+            .gs-no-scroll::-webkit-scrollbar { display: none; }
+            .gs-no-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+          `}</style>
+          <div className="gs-no-scroll" style={{ padding: '15px', display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', gap: '2cqw', fontFamily: 'Rajdhani', letterSpacing: '0.5px' }}>
+            
+            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
+              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>LOCATION:</span>
+              <span className="gs-value" style={{ color: '#fff', fontWeight: 'bold' }}>SKP Sri Racha Chonburi</span>
+            </div>
+            
+            {/* 📍 ฟันธงข้อ 1: แยก LAT / LON ออกเป็น 2 บรรทัด */}
+            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
+              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>LATITUDE:</span>
+              <span className="gs-value" style={{ color: 'var(--cyan)' }}>13.1522° N</span>
+            </div>
+            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
+              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>LONGITUDE:</span>
+              <span className="gs-value" style={{ color: 'var(--cyan)' }}>101.1205° E</span>
+            </div>
+
+            {/* 📍 ฟันธงข้อ 2: ใช้ค่า ASL อ้างอิงจากแผนที่ Contour */}
+            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
+              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>ALTITUDE (ASL):</span>
+              <span className="gs-value" style={{ color: '#fff' }}>120.5 m</span>
+            </div>
+
+            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
+              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>S-BAND (TT&C):</span>
+              <span className="gs-value" style={{ color: '#fff', fontWeight: 'bold' }}>2.0 - 2.3 GHz</span>
+            </div>
+
+            {/* 📍 ฟันธงข้อ 3: เปลี่ยนจาก PAYLOAD เป็น DOWNLINK ให้ถูกต้องตามหลักวิศวกรรม */}
+            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
+              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>X-BAND (DOWNLINK):</span>
+              <span className="gs-value" style={{ color: '#fff', fontWeight: 'bold' }}>8.0 - 8.4 GHz</span>
+            </div>
+
+            {/* 📍 ฟันธงข้อ 4: เพิ่มข้อมูล SYSTEM HARDWARE เติมเต็มความเป็น Command Center ของจริง */}
+            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
+              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>SYSTEM HARDWARE:</span>
+              <span className="gs-value" style={{ color: '#fff' }}>VIASAT / KRATOS</span>
+            </div>
+
+            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
+              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>HORIZON MASK:</span>
+              <span className="gs-value" style={{ color: '#fff' }}>5.0°</span>
+            </div>
+
+            <div className="gs-status-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: linkActive ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 255, 255, 0.05)', borderRadius: '4px', border: `1px solid ${linkActive ? 'var(--green)' : 'rgba(255,255,255,0.2)'}` }}>
+              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.8)' }}>ANTENNA STATUS:</span>
+              <span className="gs-value" style={{ color: linkActive ? 'var(--green)' : 'var(--gold)', fontWeight: 'bold', animation: linkActive ? 'pulse-glow 2s infinite' : 'none' }}>
+                {linkActive ? 'TRACKING (LOCKED)' : 'STANDBY'}
+              </span>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+    {/* --- SATELLITE DATABASE --- */}
+    {isModalOpen && (
+        <div className="modal-box db-modal" onMouseDownCapture={() => bringToFront('db')} style={{ 
+          position: 'fixed', top: `${dbPos.y}px`, left: `${dbPos.x}px`, zIndex: windowZ.db,
+          width: '900px', height: '600px', minWidth: '400px', minHeight: '300px',
+          
+          /* 📍 ฟันธง 1: ทลายกำแพง! ปลดล็อกการขยายกรอบให้ยืดได้แบบไม่มีที่สิ้นสุด */
+          maxWidth: 'none', maxHeight: 'none', 
+          
+          resize: 'both', overflow: 'hidden', 
+          background: 'rgba(0, 10, 25, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+          border: '1px solid rgba(0, 234, 255, 0.5)', boxShadow: '0 0 30px rgba(0, 234, 255, 0.2)',
+          display: 'flex', flexDirection: 'column',
+          containerType: 'inline-size' /* 📍 ฟันธง 2: เปิดโหมดให้ตัวหนังสือยืดตามกรอบ */
+        }}>
+          
+          <style>{`
+            .db-modal .modal-header h2 { font-size: clamp(16px, 2.5cqw, 40px) !important; }
+            .db-modal .modal-clear-btn { font-size: clamp(10px, 1.2cqw, 22px) !important; padding: clamp(4px, 0.5cqw, 15px) clamp(10px, 1cqw, 25px) !important; }
+            .db-modal .modal-group-title { font-size: clamp(12px, 1.5cqw, 28px) !important; }
+            .db-modal .group-toggle-btn { font-size: clamp(10px, 1.2cqw, 22px) !important; }
+            .db-modal .modal-sat-btn { font-size: clamp(13px, 1.6cqw, 30px) !important; padding: clamp(10px, 1.5cqw, 30px) clamp(15px, 2cqw, 40px) !important; }
+          `}</style>
+
+
           {/* ฟันธง: SATELLITE DATABASE HEADER (แบบสมมาตร ไม่ตกบรรทัด) */}
           <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', cursor: isDraggingDb ? 'grabbing' : 'grab', flexWrap: 'nowrap' }} onMouseDown={handleDbMouseDown}>
             
@@ -1624,7 +1843,7 @@ useEffect(() => {
             {/* กลาง: ป้ายชื่อ DATABASE (อยู่กึ่งกลางเป๊ะ) */}
             <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(0, 234, 255, 0.1)', border: '1px solid rgba(0, 234, 255, 0.5)', padding: '4px 20px', borderRadius: '4px', margin: '0 10px', whiteSpace: 'nowrap' }}>
               <span style={{ color: '#fff', fontSize: '15px', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
-                DATABASE
+                SATELLITES DATABASE
               </span>
             </div>
 
@@ -1716,121 +1935,130 @@ useEffect(() => {
         </div>
       )}
 
-{/* --- PASS SCHEDULE (โหมดป๊อปอัปลอยตัว) --- */}
-{isPassModalOpen && (
-        <div className="modal-box" onMouseDownCapture={() => bringToFront('pass')} style={{ 
+{/* --- PASS SCHEDULE --- */}
+      {isPassModalOpen && (
+        <div className="modal-box pass-modal" onMouseDownCapture={() => bringToFront('pass')} style={{ 
           position: 'fixed', top: `${passPos.y}px`, left: `${passPos.x}px`, zIndex: windowZ.pass,
-          width: '800px', height: '550px', minWidth: '400px', minHeight: '300px',
-          resize: 'both', overflow: 'hidden',
-          /* ฟันธง: ปรับความใสตรงนี้ */
-          background: 'rgba(0, 10, 25, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-          border: '1px solid rgba(255, 204, 0, 0.5)', boxShadow: '0 0 30px rgba(255, 204, 0, 0.15)'
+          width: '850px', height: '550px', minWidth: '500px', minHeight: '350px',
+          
+          /* 📍 ฟันธง 1: ทลายกำแพง! ปลดล็อกการขยายกรอบให้ยืดได้แบบไม่มีที่สิ้นสุด */
+          maxWidth: 'none', maxHeight: 'none', 
+          
+          resize: 'both', overflow: 'hidden', 
+          background: 'rgba(0, 10, 25, 0.65)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255, 204, 0, 0.5)', boxShadow: '0 0 30px rgba(255, 204, 0, 0.15)',
+          display: 'flex', flexDirection: 'column',
+          containerType: 'inline-size' /* 📍 ฟันธง 2: เปิดโหมดให้ตัวหนังสือยืดตามกรอบ */
         }}>
-          {/* ฟันธง: PASS SCHEDULE HEADER (แบบสมมาตร เหมือนเรดาร์เป๊ะ) */}
-          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', borderBottomColor: 'var(--gold)', cursor: isDraggingPass ? 'grabbing' : 'grab', flexWrap: 'nowrap' }} onMouseDown={handlePassMouseDown}>
+          
+          <style>{`
+            .pass-modal .auto-scale-header { font-size: clamp(16px, 2.2cqw, 40px) !important; }
+            .pass-modal .auto-scale-badge { font-size: clamp(12px, 1.5cqw, 28px) !important; padding: clamp(4px, 0.8cqw, 15px) clamp(15px, 2cqw, 30px) !important; }
+            .pass-modal .auto-scale-flag { width: clamp(18px, 2.2cqw, 40px) !important; margin-right: clamp(8px, 1cqw, 15px) !important; }
+            .pass-modal th { font-size: clamp(11px, 1.5cqw, 26px) !important; padding: clamp(8px, 1.2cqw, 20px) clamp(4px, 0.8cqw, 15px) !important; }
+            .pass-modal td { font-size: clamp(13px, 1.7cqw, 30px) !important; padding: clamp(8px, 1.2cqw, 20px) clamp(4px, 0.8cqw, 15px) !important; }
+          `}</style>
+
+          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', borderBottom: '1px solid rgba(255, 204, 0, 0.5)', cursor: isDraggingPass ? 'grabbing' : 'grab', flexWrap: 'nowrap', flexShrink: 0 }} onMouseDown={handlePassMouseDown}>
             
             {/* ซ้าย: ข้อความ PASS SCHEDULE */}
-            <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center', color: 'var(--gold)', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: '15px', textShadow: '0 0 10px var(--gold)', whiteSpace: 'nowrap', overflow: 'hidden', pointerEvents: 'none' }}>
-              <span style={{fontSize:'20px', marginRight:'8px'}}>⏱️</span> 
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>PASS SCHEDULE</span>
+            <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center', color: 'var(--gold)', fontFamily: 'Orbitron', fontWeight: 'bold', textShadow: '0 0 10px var(--gold)', whiteSpace: 'nowrap', overflow: 'hidden', pointerEvents: 'none' }}>
+              <span className="auto-scale-header" style={{marginRight:'8px'}}>⏱️</span> 
+              <span className="auto-scale-header" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>PASS SCHEDULE</span>
             </div>
 
-            {/* กลาง: ป้ายธงชาติ + ชื่อดาวเทียม (อยู่กึ่งกลางเป๊ะ) */}
-            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(255, 204, 0, 0.1)', border: '1px solid rgba(255, 204, 0, 0.5)', padding: '4px 15px', borderRadius: '4px', margin: '0 10px', whiteSpace: 'nowrap' }}>
+            {/* กลาง: ป้ายธงชาติ + ชื่อดาวเทียม */}
+            <div className="auto-scale-badge" style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(255, 204, 0, 0.1)', border: '1px solid rgba(255, 204, 0, 0.5)', borderRadius: '4px', margin: '0 10px', whiteSpace: 'nowrap' }}>
               {SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr)?.flag && (
-                <img src={`https://flagcdn.com/w20/${SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr).flag}.png`} alt="flag" style={{ width: '18px', marginRight: '8px', borderRadius: '2px' }} />
+                <img className="auto-scale-flag" src={`https://flagcdn.com/w40/${SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr).flag}.png`} alt="flag" style={{ borderRadius: '2px' }} />
               )}
-              <span style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '1px' }}>
+              <span style={{ color: '#fff', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '1px' }}>
                 {SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr)?.displayName || 'Unknown'}
               </span>
             </div>
 
             {/* ขวา: ปุ่มปิด (X) */}
             <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '14px', flexShrink: 0, borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.2)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsPassModalOpen(false); }}>✕</button>
+              <button className="modal-close-btn" style={{ width: '36px', height: '36px', fontSize: '16px', flexShrink: 0, borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.2)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsPassModalOpen(false); }}>✕</button>
             </div>
           </div>
           
-          <div className="modal-content" style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="modal-content" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
             {isCalculatingPass ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--cyan)', fontSize: '22px', fontFamily: 'Orbitron' }}>
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--cyan)', fontSize: '22px', fontFamily: 'Orbitron', margin: 'auto' }}>
                 CALCULATING ORBITAL TRAJECTORY...
               </div>
             ) : (
-              <table className="hide-scroll" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', fontSize: '18px', color: '#fff' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid var(--gold)', color: 'var(--gold)', textAlign: 'left', fontSize: '16px', letterSpacing: '1px' }}>
-                      {/* ฟันธง: ลบคอลัมน์ SATELLITE ออกไปแล้ว */}
-                      <th style={{ padding: '15px 10px' }}>DATE (UTC)</th>
-                      <th style={{ padding: '15px 10px' }}>AOS</th>
-                      <th style={{ padding: '15px 10px', color: 'var(--gold)' }}>MAX EL TIME</th>
-                      <th style={{ padding: '15px 10px' }}>LOS</th>
-                      <th style={{ padding: '15px 10px' }}>DURATION</th>
-                      <th style={{ padding: '15px 10px' }}>MAX EL</th>
-                      <th style={{ padding: '15px 10px' }}>AOS / LOS AZ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {passSchedule.length === 0 ? (
-                      <tr><td colSpan={7} style={{ padding: '25px', textAlign: 'center', color: 'var(--red)', fontSize: '20px' }}>NO PASSES IN NEXT 3 DAYS OR GEO</td></tr>
-                    ) : (
-                      passSchedule.map((pass, idx) => {
-                        const aosD = new Date(pass.aosTime);
-                        const losD = new Date(pass.losTime);
-                        const peakD = new Date(pass.peakTime); 
-                        
-                        const durMins = Math.floor(pass.durationMs / 60000);
-                        const durSecs = Math.floor((pass.durationMs % 60000) / 1000);
+              <table className="hide-scroll" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', fontSize: '18px', color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
+                <thead>
+                  {/* ฟันธง: คุมโทนหัวตารางให้เป็นสีขาวขุ่น (rgba(255,255,255,0.6)) สีเดียวทั้งหมด เพื่อขับให้ข้อมูลด้านล่างโดดเด่น */}
+                  <tr style={{ borderBottom: '1px solid rgba(255, 204, 0, 0.4)', color: 'rgba(255, 255, 255, 0.6)', textAlign: 'left', letterSpacing: '1px' }}>
+                    <th>DATE (UTC)</th>
+                    <th>AOS</th>
+                    <th>MAX EL TIME</th>
+                    <th>LOS</th>
+                    <th>DURATION</th>
+                    <th>MAX EL</th>
+                    <th>AOS / LOS AZ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {passSchedule.length === 0 ? (
+                    <tr><td colSpan={7} style={{ padding: '25px', textAlign: 'center', color: 'var(--red)' }}>NO PASSES IN NEXT 3 DAYS OR GEO</td></tr>
+                  ) : (
+                    passSchedule.map((pass, idx) => {
+                      const aosD = new Date(pass.aosTime);
+                      const losD = new Date(pass.losTime);
+                      const peakD = new Date(pass.peakTime); 
+                      
+                      const durMins = Math.floor(pass.durationMs / 60000);
+                      const durSecs = Math.floor((pass.durationMs % 60000) / 1000);
 
-                        return (
-                          <tr 
-                            key={idx} 
-                            onClick={() => {
-                              // 📍 ฟันธง: กดปุ๊บ วาร์ปเวลาไปก่อน AOS 1 นาที ให้เริ่มจำลองทันที!
-                              setSimulatedTimeMs(pass.aosTime - 60000);
-                              setSpeedMult(30); // วิ่งความเร็ว 30X
-                              setIsPlaying(true);
-                              bringToFront('radar'); // ดันจอเรดาร์ขึ้นมาโชว์บนสุด
-                            }}
-                            style={{ 
-                              borderBottom: '1px dashed rgba(255,255,255,0.15)', 
-                              backgroundColor: 'transparent',
-                              cursor: 'pointer', /* เปลี่ยนเมาส์เป็นรูปมือ ให้รู้ว่ากดได้ */
-                              transition: 'background-color 0.2s'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.2)'} /* เวลาเอาเมาส์ชี้ แถวจะสว่างเป็นสีทอง */
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                          >
-                            <td style={{ padding: '14px 10px', color: 'rgba(255,255,255,0.9)' }}>{aosD.toISOString().split('T')[0]}</td>
-                            
-                            {/* ฟันธง: สีเขียว สำหรับ AOS */}
-                            <td style={{ padding: '14px 10px', color: 'var(--green)', fontWeight: 'bold' }}>
-                              {pad2(aosD.getUTCHours())}:{pad2(aosD.getUTCMinutes())}:{pad2(aosD.getUTCSeconds())}
-                            </td>
-                            
-                            {/* ฟันธง: สีทอง สำหรับ MAX EL TIME */}
-                            <td style={{ padding: '14px 10px', color: 'var(--gold)', fontWeight: 'bold' }}>
-                              {pad2(peakD.getUTCHours())}:{pad2(peakD.getUTCMinutes())}:{pad2(peakD.getUTCSeconds())}
-                            </td>
-                            
-                            {/* ฟันธง: สีแดง สำหรับ LOS */}
-                            <td style={{ padding: '14px 10px', color: 'var(--red)', fontWeight: 'bold' }}>
-                              {pad2(losD.getUTCHours())}:{pad2(losD.getUTCMinutes())}:{pad2(losD.getUTCSeconds())}
-                            </td>
-                            
-                            <td style={{ padding: '14px 10px', color: 'rgba(255,255,255,0.9)' }}>{durMins}m {pad2(durSecs)}s</td>
-                            
-                            <td style={{ padding: '14px 10px', color: 'var(--cyan)', fontWeight: 'bold' }}>{pass.maxEl.toFixed(2)}°</td>
-                            
-                            <td style={{ padding: '14px 10px', color: 'rgba(255,255,255,0.6)', fontSize: '15px' }}>
-                              {pass.aosAz.toFixed(1)}° → {pass.losAz.toFixed(1)}°
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                      return (
+                        <tr 
+                          key={idx} 
+                          onClick={() => {
+                            setSimulatedTimeMs(pass.aosTime - 60000);
+                            setSpeedMult(30); 
+                            setIsPlaying(true);
+                            bringToFront('radar'); 
+                          }}
+                          style={{ 
+                            borderBottom: '1px dashed rgba(255,255,255,0.15)', 
+                            backgroundColor: 'transparent',
+                            cursor: 'pointer',
+                            transition: 'background-color 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.2)'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <td style={{ color: 'rgba(255,255,255,0.9)' }}>{aosD.toISOString().split('T')[0]}</td>
+                          
+                          <td style={{ color: 'var(--green)', fontWeight: 'bold' }}>
+                            {pad2(aosD.getUTCHours())}:{pad2(aosD.getUTCMinutes())}:{pad2(aosD.getUTCSeconds())}
+                          </td>
+                          
+                          <td style={{ color: 'var(--gold)', fontWeight: 'bold' }}>
+                            {pad2(peakD.getUTCHours())}:{pad2(peakD.getUTCMinutes())}:{pad2(peakD.getUTCSeconds())}
+                          </td>
+                          
+                          <td style={{ color: 'var(--red)', fontWeight: 'bold' }}>
+                            {pad2(losD.getUTCHours())}:{pad2(losD.getUTCMinutes())}:{pad2(losD.getUTCSeconds())}
+                          </td>
+                          
+                          <td style={{ color: 'rgba(255,255,255,0.9)' }}>{durMins}m {pad2(durSecs)}s</td>
+                          
+                          <td style={{ color: 'var(--cyan)', fontWeight: 'bold' }}>{pass.maxEl.toFixed(2)}°</td>
+                          
+                          <td style={{ color: 'rgba(255,255,255,0.6)' }}>
+                            {pass.aosAz.toFixed(1)}° → {pass.losAz.toFixed(1)}°
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             )}
           </div>
         </div>
@@ -1980,27 +2208,38 @@ useEffect(() => {
             </text>
           </svg>
 
-              {/* --- เริ่ม: เอฟเฟกต์คลื่นสแกนเรดาร์สีเขียว --- */}
-          {!linkActive && (
-            <>
-              <style>{`
-                @keyframes radar-sweep {
-                  0% { transform: rotate(0deg); }
-                  100% { transform: rotate(360deg); }
-                }
-              `}</style>
-              <div style={{
-                position: 'absolute',
-                top: 0, left: 0, right: 0, bottom: 0,
-                borderRadius: '50%',
-                background: 'conic-gradient(from 0deg, rgba(0, 255, 102, 0) 70%, rgba(0, 255, 102, 0.15) 95%, rgba(0, 255, 102, 0.9) 100%)',
-                animation: 'radar-sweep 3s infinite linear',
-                pointerEvents: 'none',
-                zIndex: 10
-              }} />
-            </>
-          )}
-          {/* --- จบ: เอฟเฟกต์คลื่นสแกนเรดาร์ --- */}
+          {/* --- เริ่ม: เอฟเฟกต์คลื่นสแกนเรดาร์สีเขียว (ล้างเส้นซ้ำ + ล็อคเป้า + ตัดขอบเนียนกริบ) --- */}
+          <style>{`
+              @keyframes radar-sweep {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+              }
+            `}</style>
+            <div style={{
+              position: 'absolute',
+              left: `${radarLayout.cx - radarLayout.R}px`,
+              top: `${radarLayout.cy - radarLayout.R}px`,
+              width: `${radarLayout.R * 2}px`,
+              height: `${radarLayout.R * 2}px`,
+              
+              /* 📍 ฟันธง: ล็อกขอบเขตให้คมกริบพอดีเส้นรอบวง 100% ไม่ให้มีแสงทะลุออกไปเด็ดขาด */
+              borderRadius: '50%',
+              overflow: 'hidden',
+              clipPath: 'circle(50% at 50% 50%)',
+              WebkitClipPath: 'circle(50% at 50% 50%)', 
+              
+              background: 'conic-gradient(from 0deg, rgba(0, 255, 102, 0) 70%, rgba(0, 255, 102, 0.15) 95%, rgba(0, 255, 102, 0.9) 100%)',
+              animation: linkActive ? 'none' : 'radar-sweep 3s infinite linear',
+              transform: linkActive && targetData && !isNaN(targetData.azimuthDeg) 
+                         ? `rotate(${targetData.azimuthDeg}deg)` 
+                         : 'none',
+              pointerEvents: 'none',
+              zIndex: 10,
+              opacity: linkActive ? 0.5 : 1,
+              transition: 'transform 0.1s linear, opacity 0.3s'
+            }} />
+            {/* --- จบ: เอฟเฟกต์คลื่นสแกนเรดาร์ --- */}
+            
 
         </div>
       )}
