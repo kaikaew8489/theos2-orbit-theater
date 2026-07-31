@@ -356,10 +356,23 @@ function getCirclePolygon(centerLat, centerLng, radiusDeg, numPoints = 64) {
 function createSatelliteModel(isTarget = false) {
   const group = new THREE.Group();
   const gold = new THREE.MeshBasicMaterial({ color: '#ffcc00' });
-  const blue = new THREE.MeshBasicMaterial({ color: '#00eaff' });
+  const silver = new THREE.MeshBasicMaterial({ color: '#8892b0' }); 
+  
   group.add(new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.45), gold));
-  const lp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 0.95), blue); lp.position.x = -1.85; group.add(lp);
-  const rp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 0.95), blue); rp.position.x = 1.85; group.add(rp);
+  
+  // ฟันธง: กำหนดมุมเอียง 45 องศา (Math.PI / 4) เพื่อบิดแผงรับแสงและโชว์หน้ากว้าง
+  const tiltAngle = Math.PI / 4;
+
+  const lp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 0.95), silver); 
+  lp.position.x = -1.85; 
+  lp.rotation.x = tiltAngle; // บิดแกน X เงยแผงขึ้น
+  group.add(lp);
+  
+  const rp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 0.95), silver); 
+  rp.position.x = 1.85; 
+  rp.rotation.x = tiltAngle; // บิดแกน X เงยแผงขึ้น
+  group.add(rp);
+  
   const scale = isTarget ? 3.0 : 1.2;
   group.scale.set(scale, scale, scale);
   return group;
@@ -372,6 +385,8 @@ export default function App() {
   const globeRef = useRef(null);
   const fileInputRef = useRef(null); 
   const isTrackingRef = useRef(false);
+
+  
 
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   
@@ -402,6 +417,77 @@ export default function App() {
   const [cameraMode, setCameraMode] = useState('FREE LOOK');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // --- ระบบ PASS PREDICTION ---
+  const [isPassModalOpen, setIsPassModalOpen] = useState(false);
+  const [passSchedule, setPassSchedule] = useState([]);
+  const [isCalculatingPass, setIsCalculatingPass] = useState(false);
+
+  // 📍 1. ฟันธง: เพิ่มตัวแปรบรรทัดนี้ลงไปเพื่อเก็บค่าว่ากำลังคลิกเลือก Pass ไหนอยู่
+  const [selectedPassIndex, setSelectedPassIndex] = useState(null);
+
+  // ฟังก์ชันสมองกล: คำนวณหา AOS/LOS ล่วงหน้า 3 วัน
+  const calculateFuturePasses = (catnr) => {
+    setIsCalculatingPass(true);
+
+    // 📍 2. ฟันธง: เพิ่มบรรทัดนี้ เพื่อเคลียร์หน้าจอฝั่งขวาทุกครั้งที่กดคำนวณใหม่
+    setSelectedPassIndex(null);
+    
+    const rec = satrecs[catnr];
+    if (!rec) { setIsCalculatingPass(false); return; }
+
+    setTimeout(() => {
+      const passes = [];
+      let isPassActive = false;
+      let currentPass = null;
+      
+      const now = new Date(simulatedTimeMs);
+      const daysToPredict = 3; 
+      const stepMs = 10000; // ฟันธง: บีบการคำนวณละเอียดขึ้นเป็นทุก 10 วินาที เพื่อหาจุด MAX EL ได้แม่นยำ
+      const maxTime = now.getTime() + (daysToPredict * 24 * 60 * 60 * 1000);
+
+      for (let t = now.getTime(); t < maxTime; t += stepMs) {
+        const d = new Date(t);
+        const pos = calculateSatData(d, rec);
+        
+        if (!pos || isNaN(pos.elevationDeg)) continue;
+
+        if (pos.elevationDeg >= PASS_MIN_ELEVATION_DEG) {
+          if (!isPassActive) {
+            isPassActive = true;
+            currentPass = { 
+              aosTime: t, 
+              aosAz: pos.azimuthDeg, // 📍 เก็บค่า AOS Azimuth
+              maxEl: pos.elevationDeg, 
+              peakTime: t 
+            };
+          } else {
+            if (pos.elevationDeg > currentPass.maxEl) {
+              currentPass.maxEl = pos.elevationDeg;
+              currentPass.peakTime = t; // 📍 เวลา MAX EL TIME จะอัปเดตตลอดจนกว่าจะถึงจุดสูงสุด
+            }
+          }
+        } else {
+          if (isPassActive) {
+            isPassActive = false;
+            currentPass.losTime = t;
+            currentPass.losAz = pos.azimuthDeg; // 📍 เก็บค่า LOS Azimuth
+            currentPass.durationMs = currentPass.losTime - currentPass.aosTime;
+            passes.push(currentPass);
+          }
+        }
+      }
+      setPassSchedule(passes);
+      setIsCalculatingPass(false);
+    }, 100);
+  };
+
+  // 📍 ฟันธง: เซนเซอร์จับการเปลี่ยนดาวเทียม ถ้าเปลี่ยนปุ๊บ สั่งคำนวณตารางใหม่ทันที!
+  useEffect(() => {
+    if (isPassModalOpen && selectedCatnr) {
+      calculateFuturePasses(selectedCatnr);
+    }
+  }, [selectedCatnr]);
 
   // ฟันธง: ตัวแปรควบคุมการเปิดปิดหน้าจอ Radar Skyplot
   const [isRadarOpen, setIsRadarOpen] = useState(false);
@@ -435,6 +521,57 @@ export default function App() {
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDraggingRadar]);
+
+  // 📍 ฟันธง: สมองกลระบบลากและขยายหน้าจอ Database
+  const [dbPos, setDbPos] = useState({ x: 80, y: 80 }); // ตำแหน่งเกิด
+  const [isDraggingDb, setIsDraggingDb] = useState(false);
+  const dragDbRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
+
+  const handleDbMouseDown = (e) => {
+    setIsDraggingDb(true);
+    dragDbRef.current = { startX: e.clientX, startY: e.clientY, initX: dbPos.x, initY: dbPos.y };
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDraggingDb) return;
+      setDbPos({ x: dragDbRef.current.initX + (e.clientX - dragDbRef.current.startX), y: dragDbRef.current.initY + (e.clientY - dragDbRef.current.startY) });
+    };
+    const handleMouseUp = () => setIsDraggingDb(false);
+    if (isDraggingDb) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); }
+    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
+  }, [isDraggingDb]);
+
+  // 📍 ฟันธง: สมองกลระบบลากและขยายหน้าจอ Pass Schedule
+  const [passPos, setPassPos] = useState({ x: 120, y: 120 }); // ตำแหน่งเกิด
+  const [isDraggingPass, setIsDraggingPass] = useState(false);
+  const dragPassRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
+
+  // 📍 ฟันธง: ระบบดึงหน้าต่างที่คลิกให้มาอยู่บนสุด (Active Window)
+  const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999 });
+  
+  const bringToFront = (winName) => {
+    setWindowZ(prev => {
+      const maxZ = Math.max(...Object.values(prev));
+      if (prev[winName] === maxZ) return prev; // ถ้าอยู่บนสุดอยู่แล้ว ไม่ต้องทำอะไร
+      return { ...prev, [winName]: maxZ + 1 }; // ถ้าถูกทับอยู่ ให้ดันค่า Z ให้สูงกว่าเพื่อน
+    });
+  };
+
+  const handlePassMouseDown = (e) => {
+    setIsDraggingPass(true);
+    dragPassRef.current = { startX: e.clientX, startY: e.clientY, initX: passPos.x, initY: passPos.y };
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDraggingPass) return;
+      setPassPos({ x: dragPassRef.current.initX + (e.clientX - dragPassRef.current.startX), y: dragPassRef.current.initY + (e.clientY - dragPassRef.current.startY) });
+    };
+    const handleMouseUp = () => setIsDraggingPass(false);
+    if (isDraggingPass) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); }
+    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
+  }, [isDraggingPass]);
 
   const toggleLeftPanel = () => {
     setIsLeftPanelOpen(!isLeftPanelOpen);
@@ -520,8 +657,8 @@ export default function App() {
     if (camLight) camLight.intensity = realtimeSun ? 0 : 2.5;
 
     const ambient = scene.children.find(c => c.type === 'AmbientLight');
-    // ฟันธง: ปิดโหมด Real-time แสงรอบทิศทางต้องสว่างขึ้นเป็น 0.8
-    if (ambient) ambient.intensity = realtimeSun ? 0.02 : 0.8;
+    // ฟันธง: ปรับแสงช่วงกลางคืนจาก 0.02 เป็น 0.2 ให้เป็นโหมด Twilight (ไม่มืดสนิท)
+    if (ambient) ambient.intensity = realtimeSun ? 0.2 : 0.8;
 
     let sunLight = scene.children.find(c => c.name === 'SunLight');
     
@@ -532,9 +669,15 @@ export default function App() {
     }
 
     if (realtimeSun) {
-      const sunPos = globe.getCoords(currentSunPos.lat, currentSunPos.lng, 100); 
-      sunLight.position.set(sunPos.x, sunPos.y, sunPos.z);
-      sunLight.visible = true;
+      try {
+        if (typeof globe.getCoords === 'function') {
+          const sunPos = globe.getCoords(currentSunPos.lat, currentSunPos.lng, 100); 
+          if (sunPos) {
+            sunLight.position.set(sunPos.x, sunPos.y, sunPos.z);
+            sunLight.visible = true;
+          }
+        }
+      } catch(e) { sunLight.visible = false; }
     } else {
       sunLight.visible = false;
     }
@@ -545,6 +688,32 @@ export default function App() {
   const targetData = targetSatrec ? calculateSatData(currentDate, targetSatrec) : null;
   const targetConfig = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr) || SATELLITE_OPTIONS[0];
   const linkActive = targetData && targetData.elevationDeg >= PASS_MIN_ELEVATION_DEG;
+
+  // 📍 ฟันธง: สมองกลคำนวณเวลานับถอยหลัง Next Pass ล่วงหน้า 24 ชม. (ทำงานเบาๆ ไม่กินสเปคเครื่อง)
+  const nextPassTimestamp = useMemo(() => {
+    if (linkActive || !targetSatrec) return null;
+    let foundTime = null;
+    let maxE = 0;
+    
+    // สแกนล่วงหน้า 24 ชม. ทีละ 1 นาที หาจังหวะดาวเทียมโผล่ขอบฟ้า
+    for (let m = 0; m <= 1440; m += 1) { 
+      const t = simulatedTimeMs + (m * 60000);
+      const pos = calculateSatData(new Date(t), targetSatrec);
+      
+      if (pos && pos.elevationDeg >= PASS_MIN_ELEVATION_DEG) {
+        foundTime = t;
+        maxE = pos.elevationDeg;
+        // เมื่อเจอแล้ว หา Max EL ประจำรอบนั้นต่ออีกนิด
+        for(let m2 = 0; m2 <= 15; m2++){
+           const p2 = calculateSatData(new Date(t + m2*60000), targetSatrec);
+           if (p2 && p2.elevationDeg > maxE) maxE = p2.elevationDeg;
+           if (p2 && p2.elevationDeg < PASS_MIN_ELEVATION_DEG) break;
+        }
+        break; // ได้เวลาและมุมสูงสุดแล้ว หยุดสแกน
+      }
+    }
+    return { time: foundTime, maxEl: maxE };
+  }, [targetSatrec, linkActive]); // รีเฟรชเฉพาะตอนเปลี่ยนเป้าหมาย หรือเพิ่งจบ Pass
 
   const allSatObjects = useMemo(() => {
     return SATELLITE_OPTIONS.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
@@ -610,6 +779,45 @@ export default function App() {
     });
     return paths;
   }, [allSatObjects, selectedCatnrs, selectedCatnr]);
+
+// 📍 ฟันธง: เอฟเฟกต์เสียงเตือน AOS (Telemetry Lock) วนลูป 5 รอบ ระดับเสียงนุ่มนวล
+const prevLinkActive = useRef(false);
+useEffect(() => {
+  if (linkActive && !prevLinkActive.current) {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContext();
+      
+      const playBeep = (timeOffset, freq) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine'; 
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + timeOffset);
+        
+        gain.gain.setValueAtTime(0, ctx.currentTime + timeOffset);
+        // ฟันธง: ลด Volume ลงจาก 0.2 เป็น 0.05 ให้เสียงนุ่ม เบาสบายหู ไม่หนวกหู
+        gain.gain.linearRampToValueAtTime(0.05, ctx.currentTime + timeOffset + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + timeOffset + 0.15);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + timeOffset);
+        osc.stop(ctx.currentTime + timeOffset + 0.2);
+      };
+
+      // ฟันธง: สั่งวนลูป 5 รอบ (เว้นจังหวะรอบละ 0.8 วินาที) 
+      for (let i = 0; i < 5; i++) {
+        const offset = i * 0.8;
+        playBeep(offset, 1200);        // ติ๊ดที่ 1
+        playBeep(offset + 0.15, 1600); // ติ๊ดที่ 2
+      }
+      
+    } catch (e) { 
+      console.log('Audio blocked by browser'); 
+    }
+  }
+  prevLinkActive.current = linkActive;
+}, [linkActive]);
 
   const signalVisualPath = useMemo(() => {
     // 1. ถ้าสัญญาณไม่เข้า (ยังไม่ AOS) หรือไม่มีข้อมูล ให้ซ่อนเส้น
@@ -824,14 +1032,16 @@ export default function App() {
 
   const radarCurrentPos = useMemo(() => {
     if (!targetData || isNaN(targetData.elevationDeg) || isNaN(targetData.azimuthDeg)) return null;
-    if (targetData.elevationDeg < -15) return null;
+    
+    // ฟันธง 3: ถ้ามุมเงยต่ำกว่า Station Mask (กราวด์เปลี่ยนเป็นสีแดง) ให้ซ่อนจุดเรดาร์สีส้มหายไปทันที
+    if (targetData.elevationDeg < PASS_MIN_ELEVATION_DEG) return null;
     
     const { R, cx, cy } = radarLayout;
     const r = R * ((90 - targetData.elevationDeg) / 90);
     const x = cx + r * Math.sin((targetData.azimuthDeg * Math.PI) / 180);
     const y = cy - r * Math.cos((targetData.azimuthDeg * Math.PI) / 180);
     
-    return { x, y, isVis: targetData.elevationDeg >= PASS_MIN_ELEVATION_DEG, el: targetData.elevationDeg };
+    return { x, y, isVis: true, el: targetData.elevationDeg };
   }, [targetData, radarLayout]);
 
   return (
@@ -939,7 +1149,8 @@ export default function App() {
                       key={offset}
                       style={{
                         position: 'absolute', top: 0, left: `${offset}%`, width: '100%', height: '100%',
-                        background: `radial-gradient(circle at ${nightX}% ${nightY}%, rgba(0, 5, 15, 0.85) 0%, rgba(0, 5, 15, 0.6) 40%, transparent 65%)`
+                        // ฟันธง: ปรับความทึบของเงาลง (0.85 เหลือ 0.7) และบีบขอบเงาให้คมขึ้นตามมาตรฐาน 2D Terminator
+                        background: `radial-gradient(circle at ${nightX}% ${nightY}%, rgba(0, 10, 25, 0.7) 0%, rgba(0, 10, 25, 0.55) 45%, transparent 60%)`
                       }}
                     />
                   ))}
@@ -1112,8 +1323,30 @@ export default function App() {
                   <h2>{targetConfig.displayName}</h2>
                 </div>
 
-                <div className={`status-banner ${linkActive ? 'active' : 'standby'}`}>
-                  {linkActive ? 'SIGNAL ACQUIRED' : 'WAITING FOR AOS'}
+                {/* 📍 ฟันธง: ป้าย Status Banner อัปเกรดใหม่ แสดง Countdown และ Max EL */}
+                <div className={`status-banner ${linkActive ? 'active' : 'standby'}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '15px 10px' }}>
+                  {linkActive ? (
+                     <>
+                       <span style={{ fontSize: '18px', fontWeight: '900' }}>SIGNAL ACQUIRED</span>
+                       <span style={{ fontSize: '12px', color: 'rgba(0, 234, 255, 0.8)', letterSpacing: '2px' }}>TRACKING TARGET...</span>
+                     </>
+                  ) : nextPassTimestamp && nextPassTimestamp.time && (nextPassTimestamp.time > simulatedTimeMs) ? (
+                     <>
+                       <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', letterSpacing: '1px' }}>NEXT PASS (AOS) IN</span>
+                       <span style={{ fontSize: '28px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', color: 'var(--gold)', textShadow: '0 0 15px rgba(255, 204, 0, 0.5)', margin: '2px 0' }}>
+                         {(() => {
+                           const diffMs = nextPassTimestamp.time - simulatedTimeMs;
+                           const hrs = Math.floor(diffMs / 3600000);
+                           const mins = Math.floor((diffMs % 3600000) / 60000);
+                           const secs = Math.floor((diffMs % 60000) / 1000);
+                           return `- ${pad2(hrs)}:${pad2(mins)}:${pad2(secs)}`;
+                         })()}
+                       </span>
+                       <span style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.6)' }}>EXPECTED MAX EL: <strong style={{color: 'var(--cyan)', fontSize: '16px'}}>{nextPassTimestamp.maxEl.toFixed(1)}°</strong></span>
+                     </>
+                  ) : (
+                     <span style={{ fontSize: '16px' }}>NO UPCOMING PASS</span>
+                  )}
                 </div>
 
                 <div className="telemetry-grid">
@@ -1210,16 +1443,16 @@ export default function App() {
                <button className={`btn ${!isPlaying ? 'active' : ''}`} style={{ marginBottom: 0, fontSize: '13px', letterSpacing: '1px' }} onClick={() => setIsPlaying(false)}>PAUSE</button>
                <button className={`btn ${isPlaying ? 'active' : ''}`} style={{ marginBottom: 0, fontSize: '13px', letterSpacing: '1px' }} onClick={() => setIsPlaying(true)}>PLAY</button>
                <button className="btn" style={{ marginBottom: 0, fontSize: '13px', letterSpacing: '1px' }} onClick={() => { 
-                 setSimulatedTimeMs(Date.now()); 
-                 setSpeedMult(1); 
-                 setIsPlaying(true); 
-                 isTrackingRef.current = false;
-                 setCameraMode('FREE LOOK');
-                 setSelectedCatnr(null);
-                 setSelectedCatnrs([]); 
-                 setShowGroundTrack(false);
-                 if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
-               }}>RESET</button>
+                // 1. คืนเวลาเป็นปัจจุบัน และคืนความเร็ว 1X
+                setSimulatedTimeMs(Date.now()); 
+                setSpeedMult(1); 
+                setIsPlaying(true); 
+                
+                // 2. ปลดล็อกกล้อง และดึงมุมมองกลับมาที่ GISTDA
+                isTrackingRef.current = false;
+                setCameraMode('FREE LOOK');
+                if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
+              }}>RESET</button>
              </div>
              <div className="speed-row">
                {[1, 100, 300, 500].map(s => (
@@ -1339,125 +1572,278 @@ export default function App() {
              </button>
            </div>
 
+           <button 
+                  className={`btn ${isPassModalOpen ? 'active' : ''}`} 
+                  onClick={() => {
+                    setIsPassModalOpen(!isPassModalOpen);
+                    if (!isPassModalOpen && selectedCatnr) {
+                      calculateFuturePasses(selectedCatnr);
+                    }
+                  }}
+                  style={{ 
+                    marginBottom: 0, 
+                    padding: '14px 10px',
+                    display: 'flex',      
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    borderColor: 'var(--gold)', 
+                    color: 'var(--gold)', 
+                    textShadow: '0 0 8px var(--gold)',
+                    fontWeight: '900',
+                    letterSpacing: '1.5px',
+                    fontSize: '16px',
+                    marginTop: '10px'
+                  }}
+                >
+                  PASS SCHEDULE
+                </button>
+
          </div>
           )}
         </div>
       </div>
       
-      {isModalOpen && (
-        <div className="modal-overlay" style={{ zIndex: 99999 }}>
-          <div className="modal-box">
-            <div className="modal-header">
-              <h2><span style={{fontSize:'26px', marginRight:'8px'}}>🛰️</span> SATELLITE DATABASE</h2>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <button 
-                  className="modal-clear-btn" 
-                  onClick={() => setSelectedCatnrs([selectedCatnr])}
-                  title="Remove all secondary satellites"
-                >
-                  🧹 CLEAR OTHERS
-                </button>
-                <button className="modal-close-btn" onClick={() => setIsModalOpen(false)}>✕</button>
-              </div>
-            </div>
+     {/* --- SATELLITE DATABASE (โหมดป๊อปอัปลอยตัว) --- */}
+     {isModalOpen && (
+       <div className="modal-box" onMouseDownCapture={() => bringToFront('db')} style={{ 
+        position: 'fixed', top: `${dbPos.y}px`, left: `${dbPos.x}px`, zIndex: windowZ.db,
+        width: '900px', height: '600px', minWidth: '400px', minHeight: '300px',
+        resize: 'both', overflow: 'hidden', 
+        /* ฟันธง: ปรับความใสตรงนี้ */
+        background: 'rgba(0, 10, 25, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+        border: '1px solid rgba(0, 234, 255, 0.5)', boxShadow: '0 0 30px rgba(0, 234, 255, 0.2)'
+      }}>
+          {/* ฟันธง: SATELLITE DATABASE HEADER (แบบสมมาตร ไม่ตกบรรทัด) */}
+          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', cursor: isDraggingDb ? 'grabbing' : 'grab', flexWrap: 'nowrap' }} onMouseDown={handleDbMouseDown}>
             
-            <div className="modal-content">
-              {Array.from(new Set(SATELLITE_OPTIONS.map(s => s.group))).map(groupName => {
-                const satsInGroup = SATELLITE_OPTIONS.filter(sat => sat.group === groupName);
-                const groupCatnrs = satsInGroup.map(s => s.catnr);
-                const isAllSelected = groupCatnrs.every(cat => selectedCatnrs.includes(cat));
+            {/* ซ้าย: ไอคอน */}
+            <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center' }}>
+               <span style={{fontSize:'22px', pointerEvents: 'none'}}>🛰️</span>
+            </div>
 
-                return (
-                <div key={groupName}>
-                  <div className="group-header-row">
-                    <div className="modal-group-title">{groupName}</div>
-                    
+            {/* กลาง: ป้ายชื่อ DATABASE (อยู่กึ่งกลางเป๊ะ) */}
+            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(0, 234, 255, 0.1)', border: '1px solid rgba(0, 234, 255, 0.5)', padding: '4px 20px', borderRadius: '4px', margin: '0 10px', whiteSpace: 'nowrap' }}>
+              <span style={{ color: '#fff', fontSize: '15px', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
+                DATABASE
+              </span>
+            </div>
+
+            {/* ขวา: ปุ่ม CLEAR และ ปิด (X) */}
+            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
+              <button 
+                className="modal-clear-btn" 
+                style={{ margin: 0, padding: '4px 10px', fontSize: '11px', whiteSpace: 'nowrap' }} 
+                onMouseDown={(e) => e.stopPropagation()} 
+                onClick={(e) => { e.stopPropagation(); setSelectedCatnrs([selectedCatnr]); }} 
+                title="Remove all secondary satellites"
+              >
+                🧹 CLEAR
+              </button>
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '14px', flexShrink: 0 }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsModalOpen(false); }}>✕</button>
+            </div>
+          </div>
+          
+          <div className="modal-content" style={{ flex: 1, overflowY: 'auto' }}>
+            {Array.from(new Set(SATELLITE_OPTIONS.map(s => s.group))).map(groupName => {
+              const satsInGroup = SATELLITE_OPTIONS.filter(sat => sat.group === groupName);
+              const groupCatnrs = satsInGroup.map(s => s.catnr);
+              const isAllSelected = groupCatnrs.every(cat => selectedCatnrs.includes(cat));
+
+              return (
+              <div key={groupName}>
+                <div className="group-header-row">
+                  <div className="modal-group-title">{groupName}</div>
+                  <button 
+                    className="group-toggle-btn"
+                    onClick={() => {
+                      let newSelected = [...selectedCatnrs];
+                      if (isAllSelected) {
+                        newSelected = newSelected.filter(c => !groupCatnrs.includes(c) || c === selectedCatnr);
+                      } else {
+                        groupCatnrs.forEach(c => { if (!newSelected.includes(c)) newSelected.push(c); });
+                      }
+                      setSelectedCatnrs(newSelected);
+                    }}
+                  >
+                    {isAllSelected ? '- DESELECT ALL' : '+ SELECT ALL'}
+                  </button>
+                </div>
+
+                <div className="modal-grid">
+                  {satsInGroup.map(sat => (
                     <button 
-                      className="group-toggle-btn"
+                      key={sat.catnr} 
+                      className={`modal-sat-btn ${sat.catnr === selectedCatnr ? 'primary' : selectedCatnrs.includes(sat.catnr) ? 'secondary' : ''}`} 
                       onClick={() => {
                         let newSelected = [...selectedCatnrs];
-                        
-                        if (isAllSelected) {
-                          newSelected = newSelected.filter(c => !groupCatnrs.includes(c) || c === selectedCatnr);
+                        if (newSelected.includes(sat.catnr)) {
+                          newSelected = newSelected.filter(c => c !== sat.catnr);
                         } else {
-                          groupCatnrs.forEach(c => {
-                            if (!newSelected.includes(c)) newSelected.push(c);
-                          });
+                          newSelected.push(sat.catnr);
                         }
                         setSelectedCatnrs(newSelected);
+                        
+                        const nextTarget = newSelected.length > 0 ? newSelected[newSelected.length - 1] : null;
+                        setSelectedCatnr(nextTarget);
+                        isTrackingRef.current = true; 
+                        setCameraMode('TRACKING');
+
+                        if (globeRef.current && nextTarget) {
+                          try {
+                            const rec = satrecs[nextTarget];
+                            if (rec) {
+                                const pos = calculateSatData(currentDate, rec);
+                                if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+                                  globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng }, 0);
+                                }
+                            }
+                          } catch (err) {}
+                        }
                       }}
                     >
-                      {isAllSelected ? '- DESELECT ALL' : '+ SELECT ALL'}
+                      {sat.displayName}
+                      {sat.catnr === selectedCatnr ? (
+                        <span style={{ color: '#fff', textShadow: '0 0 10px #fff', fontSize: '15px', letterSpacing: '1px' }}>🎯 MAIN</span>
+                      ) : selectedCatnrs.includes(sat.catnr) ? (
+                        <span style={{ color: '#000', fontSize: '14px' }}>●</span>
+                      ) : null}
                     </button>
-                  </div>
-
-                  <div className="modal-grid">
-                    {satsInGroup.map(sat => (
-                      <button 
-                        key={sat.catnr} 
-                        className={`modal-sat-btn ${sat.catnr === selectedCatnr ? 'primary' : selectedCatnrs.includes(sat.catnr) ? 'secondary' : ''}`} 
-                        onClick={() => {
-                          let newSelected = [...selectedCatnrs];
-                          
-                          if (newSelected.includes(sat.catnr)) {
-                            newSelected = newSelected.filter(c => c !== sat.catnr);
-                          } else {
-                            newSelected.push(sat.catnr);
-                          }
-                          setSelectedCatnrs(newSelected);
-                          
-                          const nextTarget = newSelected.length > 0 ? newSelected[newSelected.length - 1] : null;
-                          setSelectedCatnr(nextTarget);
-
-                          isTrackingRef.current = true; 
-                          setCameraMode('TRACKING');
-
-                          if (globeRef.current && nextTarget) {
-                            try {
-                              const rec = satrecs[nextTarget];
-                              if (rec) {
-                                  const pos = calculateSatData(currentDate, rec);
-                                  if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-                                    globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng }, 0);
-                                  }
-                              }
-                            } catch (err) {}
-                          }
-                        }}
-                      >
-                        {sat.displayName}
-                        {sat.catnr === selectedCatnr ? (
-                          <span style={{ color: '#fff', textShadow: '0 0 10px #fff', fontSize: '15px', letterSpacing: '1px' }}>🎯 MAIN</span>
-                        ) : selectedCatnrs.includes(sat.catnr) ? (
-                          <span style={{ color: '#000', fontSize: '14px' }}>●</span>
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
+                  ))}
                 </div>
-              )})}
+              </div>
+            )})}
+          </div>
+        </div>
+      )}
+
+{/* --- PASS SCHEDULE (โหมดป๊อปอัปลอยตัว) --- */}
+{isPassModalOpen && (
+        <div className="modal-box" onMouseDownCapture={() => bringToFront('pass')} style={{ 
+          position: 'fixed', top: `${passPos.y}px`, left: `${passPos.x}px`, zIndex: windowZ.pass,
+          width: '800px', height: '550px', minWidth: '400px', minHeight: '300px',
+          resize: 'both', overflow: 'hidden',
+          /* ฟันธง: ปรับความใสตรงนี้ */
+          background: 'rgba(0, 10, 25, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255, 204, 0, 0.5)', boxShadow: '0 0 30px rgba(255, 204, 0, 0.15)'
+        }}>
+          {/* ฟันธง: PASS SCHEDULE HEADER (แบบสมมาตร เหมือนเรดาร์เป๊ะ) */}
+          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', borderBottomColor: 'var(--gold)', cursor: isDraggingPass ? 'grabbing' : 'grab', flexWrap: 'nowrap' }} onMouseDown={handlePassMouseDown}>
+            
+            {/* ซ้าย: ข้อความ PASS SCHEDULE */}
+            <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center', color: 'var(--gold)', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: '15px', textShadow: '0 0 10px var(--gold)', whiteSpace: 'nowrap', overflow: 'hidden', pointerEvents: 'none' }}>
+              <span style={{fontSize:'20px', marginRight:'8px'}}>⏱️</span> 
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>PASS SCHEDULE</span>
             </div>
+
+            {/* กลาง: ป้ายธงชาติ + ชื่อดาวเทียม (อยู่กึ่งกลางเป๊ะ) */}
+            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(255, 204, 0, 0.1)', border: '1px solid rgba(255, 204, 0, 0.5)', padding: '4px 15px', borderRadius: '4px', margin: '0 10px', whiteSpace: 'nowrap' }}>
+              {SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr)?.flag && (
+                <img src={`https://flagcdn.com/w20/${SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr).flag}.png`} alt="flag" style={{ width: '18px', marginRight: '8px', borderRadius: '2px' }} />
+              )}
+              <span style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '1px' }}>
+                {SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr)?.displayName || 'Unknown'}
+              </span>
+            </div>
+
+            {/* ขวา: ปุ่มปิด (X) */}
+            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '14px', flexShrink: 0, borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.2)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsPassModalOpen(false); }}>✕</button>
+            </div>
+          </div>
+          
+          <div className="modal-content" style={{ flex: 1, overflowY: 'auto' }}>
+            {isCalculatingPass ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--cyan)', fontSize: '22px', fontFamily: 'Orbitron' }}>
+                CALCULATING ORBITAL TRAJECTORY...
+              </div>
+            ) : (
+              <table className="hide-scroll" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', fontSize: '18px', color: '#fff' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--gold)', color: 'var(--gold)', textAlign: 'left', fontSize: '16px', letterSpacing: '1px' }}>
+                      {/* ฟันธง: ลบคอลัมน์ SATELLITE ออกไปแล้ว */}
+                      <th style={{ padding: '15px 10px' }}>DATE (UTC)</th>
+                      <th style={{ padding: '15px 10px' }}>AOS</th>
+                      <th style={{ padding: '15px 10px', color: 'var(--gold)' }}>MAX EL TIME</th>
+                      <th style={{ padding: '15px 10px' }}>LOS</th>
+                      <th style={{ padding: '15px 10px' }}>DURATION</th>
+                      <th style={{ padding: '15px 10px' }}>MAX EL</th>
+                      <th style={{ padding: '15px 10px' }}>AOS / LOS AZ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {passSchedule.length === 0 ? (
+                      <tr><td colSpan={7} style={{ padding: '25px', textAlign: 'center', color: 'var(--red)', fontSize: '20px' }}>NO PASSES IN NEXT 3 DAYS OR GEO</td></tr>
+                    ) : (
+                      passSchedule.map((pass, idx) => {
+                        const aosD = new Date(pass.aosTime);
+                        const losD = new Date(pass.losTime);
+                        const peakD = new Date(pass.peakTime); 
+                        
+                        const durMins = Math.floor(pass.durationMs / 60000);
+                        const durSecs = Math.floor((pass.durationMs % 60000) / 1000);
+
+                        return (
+                          <tr 
+                            key={idx} 
+                            onClick={() => {
+                              // 📍 ฟันธง: กดปุ๊บ วาร์ปเวลาไปก่อน AOS 1 นาที ให้เริ่มจำลองทันที!
+                              setSimulatedTimeMs(pass.aosTime - 60000);
+                              setSpeedMult(30); // วิ่งความเร็ว 30X
+                              setIsPlaying(true);
+                              bringToFront('radar'); // ดันจอเรดาร์ขึ้นมาโชว์บนสุด
+                            }}
+                            style={{ 
+                              borderBottom: '1px dashed rgba(255,255,255,0.15)', 
+                              backgroundColor: 'transparent',
+                              cursor: 'pointer', /* เปลี่ยนเมาส์เป็นรูปมือ ให้รู้ว่ากดได้ */
+                              transition: 'background-color 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.2)'} /* เวลาเอาเมาส์ชี้ แถวจะสว่างเป็นสีทอง */
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          >
+                            <td style={{ padding: '14px 10px', color: 'rgba(255,255,255,0.9)' }}>{aosD.toISOString().split('T')[0]}</td>
+                            
+                            {/* ฟันธง: สีเขียว สำหรับ AOS */}
+                            <td style={{ padding: '14px 10px', color: 'var(--green)', fontWeight: 'bold' }}>
+                              {pad2(aosD.getUTCHours())}:{pad2(aosD.getUTCMinutes())}:{pad2(aosD.getUTCSeconds())}
+                            </td>
+                            
+                            {/* ฟันธง: สีทอง สำหรับ MAX EL TIME */}
+                            <td style={{ padding: '14px 10px', color: 'var(--gold)', fontWeight: 'bold' }}>
+                              {pad2(peakD.getUTCHours())}:{pad2(peakD.getUTCMinutes())}:{pad2(peakD.getUTCSeconds())}
+                            </td>
+                            
+                            {/* ฟันธง: สีแดง สำหรับ LOS */}
+                            <td style={{ padding: '14px 10px', color: 'var(--red)', fontWeight: 'bold' }}>
+                              {pad2(losD.getUTCHours())}:{pad2(losD.getUTCMinutes())}:{pad2(losD.getUTCSeconds())}
+                            </td>
+                            
+                            <td style={{ padding: '14px 10px', color: 'rgba(255,255,255,0.9)' }}>{durMins}m {pad2(durSecs)}s</td>
+                            
+                            <td style={{ padding: '14px 10px', color: 'var(--cyan)', fontWeight: 'bold' }}>{pass.maxEl.toFixed(2)}°</td>
+                            
+                            <td style={{ padding: '14px 10px', color: 'rgba(255,255,255,0.6)', fontSize: '15px' }}>
+                              {pass.aosAz.toFixed(1)}° → {pass.losAz.toFixed(1)}°
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+            )}
           </div>
         </div>
       )}
 
       {isRadarOpen && (
-        <div ref={radarContainerRef} className="radar-perfect-scale" style={{
-          position: 'fixed',
-          top: `${radarPos.y}px`,
-          left: `${radarPos.x}px`,
-          zIndex: 9999,
-          background: 'rgba(0, 10, 20, 0.75)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid var(--green)',
-          borderRadius: '8px',
-          boxShadow: '0 0 30px rgba(0, 255, 102, 0.3)',
-          width: '360px', 
-          height: '420px', 
-          minWidth: '300px',
-          minHeight: '350px',
-          overflow: 'hidden',
-          resize: 'both' 
+        <div ref={radarContainerRef} className="radar-perfect-scale" onMouseDownCapture={() => bringToFront('radar')} style={{
+          position: 'fixed', top: `${radarPos.y}px`, left: `${radarPos.x}px`, zIndex: windowZ.radar,
+          width: '360px', height: '420px', minWidth: '300px', minHeight: '350px',
+          overflow: 'hidden', resize: 'both',
+          /* ฟันธง: ปรับความใสตรงนี้ */
+          background: 'rgba(0, 10, 20, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+          border: '1px solid var(--green)', borderRadius: '8px', boxShadow: '0 0 30px rgba(0, 255, 102, 0.2)'
         }}>
           
           <svg width="100%" height="100%" style={{ display: 'block' }}>
@@ -1593,6 +1979,29 @@ export default function App() {
               <tspan dx={15 * radarLayout.uiScale} fill="var(--cyan)">━━ VISIBLE</tspan>
             </text>
           </svg>
+
+              {/* --- เริ่ม: เอฟเฟกต์คลื่นสแกนเรดาร์สีเขียว --- */}
+          {!linkActive && (
+            <>
+              <style>{`
+                @keyframes radar-sweep {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+                }
+              `}</style>
+              <div style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                borderRadius: '50%',
+                background: 'conic-gradient(from 0deg, rgba(0, 255, 102, 0) 70%, rgba(0, 255, 102, 0.15) 95%, rgba(0, 255, 102, 0.9) 100%)',
+                animation: 'radar-sweep 3s infinite linear',
+                pointerEvents: 'none',
+                zIndex: 10
+              }} />
+            </>
+          )}
+          {/* --- จบ: เอฟเฟกต์คลื่นสแกนเรดาร์ --- */}
+
         </div>
       )}
 
