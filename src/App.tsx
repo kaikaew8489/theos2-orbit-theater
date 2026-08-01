@@ -494,6 +494,9 @@ export default function App() {
   // ฟันธง: ตัวแปรควบคุมการเปิดปิดหน้าจอ Radar Skyplot
   const [isRadarOpen, setIsRadarOpen] = useState(false);
 
+  // 📍 ฟันธง 1: ตัวแปรควบคุมการเปิด/ปิดเสียง Radar
+  const [isMuted, setIsMuted] = useState(false);
+
   // ฟันธง: ระบบลากและขยายหน้าจอ Radar อย่างอิสระ (Draggable)
   const [radarPos, setRadarPos] = useState({ x: 380, y: 400 }); // ตำแหน่งเริ่มต้นตอนเปิด
   const [isDraggingRadar, setIsDraggingRadar] = useState(false);
@@ -550,7 +553,7 @@ export default function App() {
   const dragPassRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
   // 📍 ฟันธง: ระบบดึงหน้าต่างที่คลิกให้มาอยู่บนสุด (Active Window)
-  const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999 });
+  const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996 });
   
   const bringToFront = (winName) => {
     setWindowZ(prev => {
@@ -814,60 +817,72 @@ export default function App() {
     return paths;
   }, [allSatObjects, selectedCatnrs, selectedCatnr]);
 
-// 📍 ฟันธง: เอฟเฟกต์เสียงเตือน AOS (Telemetry Lock) วนลูป 5 รอบ ระดับเสียงนุ่มนวล
-const prevLinkActive = useRef(false);
+// 📍 ฟันธง 2: ระบบเสียง Sonar Ping วนลูปตลอดการ Tracking (หยุดเมื่อ LOS หรือกด Mute)
+const audioCtxRef = useRef(null);
+const pingIntervalRef = useRef(null);
+
 useEffect(() => {
-  if (linkActive && !prevLinkActive.current) {
-    try {
+  // ถ้าจับสัญญาณได้ (AOS) และไม่ได้กด Mute
+  if (linkActive && !isMuted) {
+    if (!audioCtxRef.current) {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioContext();
-      
-      const playBeep = (timeOffset, freq) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine'; 
-        osc.frequency.setValueAtTime(freq, ctx.currentTime + timeOffset);
-        
-        gain.gain.setValueAtTime(0, ctx.currentTime + timeOffset);
-        // ฟันธง: ลด Volume ลงจาก 0.2 เป็น 0.05 ให้เสียงนุ่ม เบาสบายหู ไม่หนวกหู
-        gain.gain.linearRampToValueAtTime(0.05, ctx.currentTime + timeOffset + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + timeOffset + 0.15);
-        
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(ctx.currentTime + timeOffset);
-        osc.stop(ctx.currentTime + timeOffset + 0.2);
-      };
-
-      // ฟันธง: สั่งวนลูป 5 รอบ (เว้นจังหวะรอบละ 0.8 วินาที) 
-      for (let i = 0; i < 5; i++) {
-        const offset = i * 0.8;
-        playBeep(offset, 1200);        // ติ๊ดที่ 1
-        playBeep(offset + 0.15, 1600); // ติ๊ดที่ 2
-      }
-      
-    } catch (e) { 
-      console.log('Audio blocked by browser'); 
+      audioCtxRef.current = new AudioContext();
     }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+
+    const playSonarPing = () => {
+      if (!audioCtxRef.current) return;
+      const ctx = audioCtxRef.current;
+      
+      // 📍 ฟันธง: อัปเกรดเครื่องกำเนิดเสียงเป็น Dual-Layer จำลองเสียงเรือดำน้ำ (Submarine Sonar)
+      const osc1 = ctx.createOscillator(); // คลื่นหลัก (ความถี่ต่ำ-กลาง) ให้ความรู้สึกทุ้มลึก
+      const osc2 = ctx.createOscillator(); // คลื่นรอง (ความถี่สูง) สร้างความกังวาลใสแบบโลหะ
+      const gain = ctx.createGain();
+      
+      // ตั้งค่าคลื่นหลัก: ความถี่ 850Hz (ค่ามาตรฐานของคลื่นโซนาร์)
+      osc1.type = 'sine'; 
+      osc1.frequency.setValueAtTime(850, ctx.currentTime);
+      osc1.frequency.exponentialRampToValueAtTime(830, ctx.currentTime + 1.8); // ดรอปเสียงลงนิดๆ ตอนท้าย (Doppler effect)
+      
+      // ตั้งค่าคลื่นรอง: ใช้คลื่นสามเหลี่ยม (Triangle) ที่ความถี่ 1700Hz เพิ่มความแหลมบาดลึก
+      osc2.type = 'triangle'; 
+      osc2.frequency.setValueAtTime(1700, ctx.currentTime); 
+      osc2.frequency.exponentialRampToValueAtTime(1660, ctx.currentTime + 1.8);
+
+      // สร้างกราฟหางเสียง (Reverb/Echo Envelope)
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.02); // เสียงตีกระทบแรก (Attack) เร็วและคมชัด
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.8); // ปล่อยหางเสียงให้ดังกังวาลยาว 1.8 วินาที
+      
+      // ประกอบร่างระบบเสียงเข้าด้วยกัน
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+      
+      // สั่งยิงคลื่นเสียง!
+      osc1.start(ctx.currentTime);
+      osc2.start(ctx.currentTime);
+      osc1.stop(ctx.currentTime + 1.8);
+      osc2.stop(ctx.currentTime + 1.8);
+    };
+
+    // เล่นทันทีตอนเพิ่ง AOS
+    playSonarPing();
+    // สั่งให้ดังเป็นจังหวะทุกๆ 2 วินาทีตลอดหน้าจอ
+    pingIntervalRef.current = setInterval(playSonarPing, 2000);
+
+  } else {
+    // ถ้าดาวเทียมลับขอบฟ้า (LOS) หรือกดปุ่ม Mute ให้สั่งหยุดเสียงทันที
+    if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
   }
-  prevLinkActive.current = linkActive;
-}, [linkActive]);
 
-// 📍 ฟันธง 1: นำ signalVisualPath กลับมา แต่เรียงพิกัดจาก "ดาวเทียม -> พื้นโลก" และใส่แท็ก isSignal
-const signalVisualPath = useMemo(() => {
-  if (!linkActive || !targetData || isNaN(targetData.lat) || isNaN(targetData.lng)) return [];
-  if (targetData.altKm > 30000) return []; 
-
-  const gsPoint = { lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, alt: 0 };
-  const satPoint = { lat: targetData.lat, lng: targetData.lng, alt: Math.max(0.01, targetData.altKm / EARTH_RADIUS_KM) };
-  
-  return [{ 
-    points: [satPoint, gsPoint], // ต้องเอา sat ขึ้นก่อน gs สัญญาณจะได้วิ่งพุ่งลงพื้น!
-    color: 'rgba(0, 255, 102, 0.9)', 
-    stroke: 1.5,
-    isSignal: true // 📍 ฝังแท็กไว้บอกสมองกลว่านี่คือเส้นที่ต้องกระพริบ
-  }];
-}, [linkActive, targetData]);
+  // Cleanup function เมื่อ Component รีเฟรช
+  return () => {
+    if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+  };
+}, [linkActive, isMuted]); // ทำงานใหม่ทุกครั้งที่สถานะ Mute หรือ AOS เปลี่ยนแปลง
 
 
   const footprintPolygonData = useMemo(() => {
@@ -989,6 +1004,22 @@ const signalVisualPath = useMemo(() => {
 
   const thaiTime = new Date(currentDate.getTime() + 7 * 3600000);
   const formatTime = (d) => `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`;
+
+  // 📍 ฟันธง: นำตัวแปรเส้นสัญญาณ (Data Packets) ที่หายไปกลับมา!
+  const signalVisualPath = useMemo(() => {
+    if (!linkActive || !targetData || isNaN(targetData.lat) || isNaN(targetData.lng)) return [];
+    if (targetData.altKm > 30000) return []; 
+
+    const gsPoint = { lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, alt: 0 };
+    const satPoint = { lat: targetData.lat, lng: targetData.lng, alt: Math.max(0.01, targetData.altKm / EARTH_RADIUS_KM) };
+    
+    return [{ 
+      points: [satPoint, gsPoint],
+      color: 'rgba(0, 255, 102, 0.9)', 
+      stroke: 1.5,
+      isSignal: true
+    }];
+  }, [linkActive, targetData]);
 
   const pathsToDraw3D = [...orbitVisualPath, ...signalVisualPath, ...footprintBoundaryPath];
   if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
@@ -1658,7 +1689,7 @@ const signalVisualPath = useMemo(() => {
 
              <button 
                className={`btn ${isRadarOpen ? 'active' : ''}`} 
-               onClick={() => setIsRadarOpen(!isRadarOpen)}
+               onClick={() => { setIsRadarOpen(!isRadarOpen); if (!isRadarOpen) bringToFront('radar'); }}
                style={{ 
                  marginBottom: 0, 
                  padding: '12px 10px',
@@ -1682,8 +1713,9 @@ const signalVisualPath = useMemo(() => {
                   className={`btn ${isPassModalOpen ? 'active' : ''}`} 
                   onClick={() => {
                     setIsPassModalOpen(!isPassModalOpen);
-                    if (!isPassModalOpen && selectedCatnr) {
-                      calculateFuturePasses(selectedCatnr);
+                    if (!isPassModalOpen) {
+                      bringToFront('pass');
+                      if (selectedCatnr) calculateFuturePasses(selectedCatnr);
                     }
                   }}
                   style={{ 
@@ -1771,7 +1803,7 @@ const signalVisualPath = useMemo(() => {
             {/* 📍 ฟันธงข้อ 2: ใช้ค่า ASL อ้างอิงจากแผนที่ Contour */}
             <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
               <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>ALTITUDE (ASL):</span>
-              <span className="gs-value" style={{ color: '#fff' }}>120.5 m</span>
+              <span className="gs-value" style={{ color: '#fff' }}>17 m</span>
             </div>
 
             <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
@@ -2095,6 +2127,31 @@ const signalVisualPath = useMemo(() => {
               );
             })()}
 
+              {/* 📍 ฟันธง 3: ปุ่ม Mute / Unmute เสียงเรดาร์ (อยู่ข้างๆ ปุ่มปิด X) */}
+              <g onClick={() => setIsMuted(!isMuted)} cursor="pointer">
+              <rect 
+                x={radarDim.w - (105 * radarLayout.uiScale)} 
+                y={10 * radarLayout.uiScale} 
+                width={65 * radarLayout.uiScale} 
+                height={24 * radarLayout.uiScale} 
+                rx={4 * radarLayout.uiScale} 
+                fill={isMuted ? "rgba(255, 51, 51, 0.15)" : "rgba(0, 255, 102, 0.15)"} 
+                stroke={isMuted ? "var(--red)" : "var(--green)"} 
+              />
+              <text 
+                x={radarDim.w - (72.5 * radarLayout.uiScale)} 
+                y={26 * radarLayout.uiScale} 
+                fill={isMuted ? "var(--red)" : "var(--green)"} 
+                fontSize={12 * radarLayout.uiScale} 
+                textAnchor="middle" 
+                fontWeight="bold" 
+                fontFamily="Rajdhani"
+              >
+                {isMuted ? '🔇 MUTE' : '🔊 AUDIO'}
+              </text>
+            </g>
+
+
             {/* ปุ่มปิด (X) */}
             <g onClick={() => setIsRadarOpen(false)} cursor="pointer">
               <rect x={radarDim.w - (35 * radarLayout.uiScale)} y={10 * radarLayout.uiScale} width={24 * radarLayout.uiScale} height={24 * radarLayout.uiScale} rx={4 * radarLayout.uiScale} fill="transparent" stroke="var(--green)" />
@@ -2228,7 +2285,8 @@ const signalVisualPath = useMemo(() => {
               clipPath: 'circle(50% at 50% 50%)',
               WebkitClipPath: 'circle(50% at 50% 50%)', 
               
-              background: 'conic-gradient(from 0deg, rgba(0, 255, 102, 0) 70%, rgba(0, 255, 102, 0.15) 95%, rgba(0, 255, 102, 0.9) 100%)',
+             /* 📍 ฟันธง: ปรับความเข้มเส้นนำสแกน (100% Opacity) และลากหางแสงตกค้างให้ยาวและเข้มขึ้นตามมาตรฐานเรดาร์ */
+             background: 'conic-gradient(from 0deg, rgba(0, 255, 102, 0) 30%, rgba(0, 255, 102, 0.15) 70%, rgba(0, 255, 102, 0.6) 98%, rgba(0, 255, 102, 1) 100%)',
               animation: linkActive ? 'none' : 'radar-sweep 3s infinite linear',
               transform: linkActive && targetData && !isNaN(targetData.azimuthDeg) 
                          ? `rotate(${targetData.azimuthDeg}deg)` 
