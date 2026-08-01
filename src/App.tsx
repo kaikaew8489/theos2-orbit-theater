@@ -11,6 +11,20 @@ const GROUND_STATION = { lat: 13.16, lng: 100.93, name: 'GISTDA', color: '#00eaf
 const PASS_MIN_ELEVATION_DEG = 5;
 const EARTH_RADIUS_KM = 6371;
 
+// 📍 ฟันธง 1: ฐานข้อมูลคิวถ่ายภาพ THEOS-2 (สกัดจากไฟล์ MPLN_T2V PDF)
+// หมายเหตุ: เดือนใน JavaScript Date.UTC เริ่มนับจาก 0 (ดังนั้น เดือน 8 สิงหาคม = เลข 7)
+// 📍 ฟันธง 1: ฐานข้อมูลคิวถ่ายภาพ THEOS-2 (ดึงข้อมูลช่วงที่บินผ่านไทย จากไฟล์แผนการบิน Orbit 269)
+const THEOS2_IMAGING_PLAN = [
+  // คิวที่ 1: ถ่ายภาพ 19 วินาที[cite: 1]
+  { start: Date.UTC(2026, 7, 1, 2, 46, 18), end: Date.UTC(2026, 7, 1, 2, 46, 37) }, 
+  // คิวที่ 2: ถ่ายภาพ 19 วินาที[cite: 1]
+  { start: Date.UTC(2026, 7, 1, 2, 47, 10), end: Date.UTC(2026, 7, 1, 2, 47, 29) }, 
+  // คิวที่ 3: ถ่ายภาพ 37 วินาที[cite: 1]
+  { start: Date.UTC(2026, 7, 1, 2, 49, 23), end: Date.UTC(2026, 7, 1, 2, 50,  0) },
+  // คิวจำลอง: แถบอ้างอิงตอน 07:43 (อีกฝั่งของโลก)
+  { start: Date.UTC(2026, 7, 1, 7, 43, 10), end: Date.UTC(2026, 7, 1, 7, 43, 55) }
+];
+
 const SATELLITE_OPTIONS = [
   // 1. GISTDA & THAILAND COMMUNICATIONS (LEO & GEO) - คัดเฉพาะที่ยังมีชีวิต!
   { catnr: '58016', name: 'THEOS-2', displayName: 'THEOS-2', flag: 'th', group: 'GISTDA & THAILAND (LEO/GEO)', operator: 'GISTDA', mission: 'High-Res Optical', telemetry: '2066.56 UP / 2244.228 DN MHz', payload: '8150 MHz' },
@@ -445,10 +459,14 @@ export default function App() {
       
       const now = new Date(simulatedTimeMs);
       const daysToPredict = 3; 
-      const stepMs = 10000; // ฟันธง: บีบการคำนวณละเอียดขึ้นเป็นทุก 10 วินาที เพื่อหาจุด MAX EL ได้แม่นยำ
+      // 📍 ฟันธง: กำหนดเวลาถอยหลัง (Lookback) 24 ชั่วโมง เพื่อดึง Pass ในอดีตของรอบวันกลับมา
+      const lookBackMs = 24 * 60 * 60 * 1000; 
+      const stepMs = 10000; 
+      const startTime = now.getTime() - lookBackMs;
       const maxTime = now.getTime() + (daysToPredict * 24 * 60 * 60 * 1000);
 
-      for (let t = now.getTime(); t < maxTime; t += stepMs) {
+      // 📍 ฟันธง: สั่งให้ลูปสแกนเริ่มจากอดีต (startTime) แทนที่จะเริ่มจากปัจจุบัน (now)
+      for (let t = startTime; t < maxTime; t += stepMs) {
         const d = new Date(t);
         const pos = calculateSatData(d, rec);
         
@@ -782,6 +800,36 @@ export default function App() {
     return [{ points, color: 'rgba(255, 204, 0, 0.8)', stroke: 1.0 }]; 
   }, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000)]);
 
+ // 📍 ฟันธง 2: สมองกลวาดแถบพื้นที่ Swath (แถบพิซซ่าแนวราบแบบหนา)
+ const imagingSwathPaths = useMemo(() => {
+  if (!targetSatrec || selectedCatnr !== '58016') return []; 
+
+  const paths = [];
+  THEOS2_IMAGING_PLAN.forEach(plan => {
+    const points = [];
+    // สแกนคำนวณพิกัดทีละ 1 วินาที เพื่อสร้างแนวเส้นอย่างละเอียด
+    for (let t = plan.start; t <= plan.end; t += 1000) {
+      const pos = calculateSatData(new Date(t), targetSatrec);
+      if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+        // ดันความสูงขึ้นนิดนึง ให้เส้นไม่จมไปกับวงโคจรสีเหลือง
+        // 📍 ฟันธง: ดันระดับความสูงลงไปทาบติดพื้นผิวโลก (alt: 0.002) เพื่อจำลอง Ground Swath ที่แท้จริง
+        points.push({ lat: pos.lat, lng: pos.lng, alt: 0.002 });
+      }
+    }
+    if (points.length >= 2) {
+      const isImagingNow = simulatedTimeMs >= plan.start && simulatedTimeMs <= plan.end;
+      paths.push({ 
+        points, 
+        // สีแดงทึบตอนกล้องเปิดทำงาน / สีส้มอมแดงโปร่งแสงตอนเป็นแค่แผนล่วงหน้า
+        color: isImagingNow ? 'rgba(255, 51, 51, 1)' : 'rgba(255, 100, 51, 0.45)', 
+        // 📍 ปรับความกว้าง (Stroke) เป็น 6.0 ให้หนาเตอะดูเป็นชิ้น Plane จริงๆ
+        stroke: isImagingNow ? 6.0 : 4.0 
+      });
+    }
+  });
+  return paths;
+}, [selectedCatnr, targetSatrec, simulatedTimeMs]);
+
   const groundTrackPath = useMemo(() => {
     if (!targetSatrec || !showGroundTrack) return [];
     const points = [];
@@ -1021,7 +1069,7 @@ useEffect(() => {
     }];
   }, [linkActive, targetData]);
 
-  const pathsToDraw3D = [...orbitVisualPath, ...signalVisualPath, ...footprintBoundaryPath];
+  const pathsToDraw3D = [...orbitVisualPath, ...signalVisualPath, ...footprintBoundaryPath, ...imagingSwathPaths];
   if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
 
   const radarContainerRef = useRef(null);
@@ -1048,19 +1096,13 @@ useEffect(() => {
   }, [radarDim]);
 
   const radarData = useMemo(() => {
-    if (!targetSatrec || !targetData) return { segments: [], maxEl: 0 };
+    if (!targetSatrec || !targetData) return { segments: [], maxEl: 0, aosAz: null, losAz: null, sectorEdgePoints: [] };
 
-    // 📍 ฟันธง 1: กฎเหล็กซ่อนเส้นทาง (ปรากฏก่อน AOS ประมาณ 1.5 นาที)
-    // ดาวเทียมวงโคจรต่ำ (LEO) จะมีความเร็วเชิงมุมประมาณ 3-5 องศาต่อนาที
-    // ถ้าเราซ่อนเส้นทั้งหมดเมื่อมุมเงยปัจจุบัน ต่ำกว่า -2 องศา
-    // เส้นจะเด้งสว่างขึ้นมาบนจอเรดาร์ก่อนจะพ้นขอบฟ้า (5 องศา AOS) ประมาณ 1 นาทีเศษๆ พอดีเป๊ะ!
-    // 📍 ฟันธง: สมองกลดักจับ "ขาลง (Descending)" เพื่อล้างเส้นสีฟ้าทิ้งให้ตรงจังหวะเป๊ะๆ
     const nextPos = calculateSatData(new Date(currentDate.getTime() + 60000), targetSatrec);
     const isDescending = nextPos && nextPos.elevationDeg < targetData.elevationDeg;
 
-    // ถ้ามุมเงยต่ำกว่า 0 หรือ (ต่ำกว่า 5 องศา และกำลังบินลงลับขอบฟ้า) ให้ล้างเส้นทิ้งทันที!
     if (targetData.elevationDeg <= 0 || (targetData.elevationDeg < PASS_MIN_ELEVATION_DEG && isDescending)) {
-      return { segments: [], maxEl: 'N/A' };
+      return { segments: [], maxEl: 'N/A', aosAz: null, losAz: null, sectorEdgePoints: [] };
     }
 
     const segments = [];
@@ -1069,25 +1111,36 @@ useEffect(() => {
     const { R, cx, cy } = radarLayout;
     let hasFutureVisibility = false; 
 
-    // 📍 ฟันธง 2: ลดระยะสแกนเหลือ -15 ถึง +15 นาที (เพราะ LEO ข้ามฟ้าแค่ 10-15 นาที) ไม่ต้องเปลือง CPU สแกนไกล
+    // 📍 ฟันธง: ตัวแปรใหม่สำหรับคำนวณและวาดชิ้นพิซซ่า (Tracking Sector)
+    let aosAz = null;
+    let losAz = null;
+    const sectorEdgePoints = [];
+
     for (let m = -15; m <= 15; m += 0.5) { 
       const d = new Date(currentDate.getTime() + m * 60000);
       const pos = calculateSatData(d, targetSatrec);
       
       if (pos && !isNaN(pos.elevationDeg) && !isNaN(pos.azimuthDeg)) {
         if (pos.elevationDeg > maxEl) maxEl = pos.elevationDeg; 
-        if (m >= 0 && pos.elevationDeg >= PASS_MIN_ELEVATION_DEG) {
+        
+        const isVis = pos.elevationDeg >= PASS_MIN_ELEVATION_DEG;
+        
+        if (isVis) {
           hasFutureVisibility = true;
+          if (aosAz === null) aosAz = pos.azimuthDeg; // เก็บมุมแรกสุด (AOS)
+          losAz = pos.azimuthDeg; // อัปเดตทับไปเรื่อยๆ จนได้มุมสุดท้าย (LOS)
+          
+          // คำนวณพิกัดจุดขอบวงนอกสุดตามองศา เพื่อวาดขอบโค้งของพิซซ่า
+          const ex = cx + R * Math.sin((pos.azimuthDeg * Math.PI) / 180);
+          const ey = cy - R * Math.cos((pos.azimuthDeg * Math.PI) / 180);
+          sectorEdgePoints.push(`${ex},${ey}`);
         }
         
-        // 📍 ฟันธง 3: ตัดเส้นที่ไม่พ้นขอบฟ้า (ต่ำกว่า 0 องศา) ทิ้ง เพื่อไม่ให้วาดเลอะทะลุกรอบขอบเรดาร์วงนอก
         if (pos.elevationDeg < 0) { prevPoint = null; continue; }
         
         const r = R * ((90 - pos.elevationDeg) / 90);
         const x = cx + r * Math.sin((pos.azimuthDeg * Math.PI) / 180);
         const y = cy - r * Math.cos((pos.azimuthDeg * Math.PI) / 180);
-        
-        const isVis = pos.elevationDeg >= PASS_MIN_ELEVATION_DEG;
         const isPast = m <= 0; 
 
         if (prevPoint) {
@@ -1108,9 +1161,9 @@ useEffect(() => {
     }
     
     if (!hasFutureVisibility && segments.length === 0) {
-      return { segments: [], maxEl: 'N/A' };
+      return { segments: [], maxEl: 'N/A', aosAz: null, losAz: null, sectorEdgePoints: [] };
     }
-    return { segments, maxEl: maxEl > 0 ? maxEl.toFixed(1) : 'N/A' };
+    return { segments, maxEl: maxEl > 0 ? maxEl.toFixed(1) : 'N/A', aosAz, losAz, sectorEdgePoints };
   }, [targetSatrec, targetData, Math.floor(simulatedTimeMs / 60000), radarLayout]);
 
   const radarCurrentPos = useMemo(() => {
@@ -2243,6 +2296,47 @@ useEffect(() => {
                   </>
                 );
               })()}
+
+              {/* 📍 ฟันธง Gimmick: ชิ้นพิซซ่า (Tracking Coverage Sector) */}
+              {radarData.sectorEdgePoints && radarData.sectorEdgePoints.length > 0 && radarData.aosAz !== null && (
+                <g>
+                  {/* ถมสีเขียวโปร่งแสงแสดงพื้นที่ครอบคลุม */}
+                  <polygon 
+                    points={`${radarLayout.cx},${radarLayout.cy} ${radarData.sectorEdgePoints.join(' ')}`} 
+                    fill="rgba(0, 255, 102, 0.08)" 
+                  />
+                  
+                  {/* เส้น AOS และป้ายตัวเลข */}
+                  {(() => {
+                    const s = radarLayout.uiScale;
+                    const aosX = radarLayout.cx + radarLayout.R * Math.sin((radarData.aosAz * Math.PI) / 180);
+                    const aosY = radarLayout.cy - radarLayout.R * Math.cos((radarData.aosAz * Math.PI) / 180);
+                    const losX = radarLayout.cx + radarLayout.R * Math.sin((radarData.losAz * Math.PI) / 180);
+                    const losY = radarLayout.cy - radarLayout.R * Math.cos((radarData.losAz * Math.PI) / 180);
+                    
+                    return (
+                      <>
+                        {/* เส้นส้ม AOS (เริ่มต้น) */}
+                        <line x1={radarLayout.cx} y1={radarLayout.cy} x2={aosX} y2={aosY} stroke="var(--gold)" strokeWidth={2 * s} strokeDasharray="4 4" />
+                        {/* เส้นแดง LOS (สิ้นสุด) */}
+                        <line x1={radarLayout.cx} y1={radarLayout.cy} x2={losX} y2={losY} stroke="var(--red)" strokeWidth={2 * s} strokeDasharray="4 4" />
+                        
+                        {/* ป้าย AOS AZ ตรงขอบ */}
+                        <rect x={aosX - (25 * s)} y={aosY - (10 * s)} width={50 * s} height={20 * s} rx={4 * s} fill="rgba(255, 204, 0, 0.2)" stroke="var(--gold)" />
+                        <text x={aosX} y={aosY + (4 * s)} fill="var(--gold)" fontSize={11 * s} fontWeight="bold" fontFamily="Orbitron" textAnchor="middle">
+                          {radarData.aosAz.toFixed(1)}°
+                        </text>
+
+                        {/* ป้าย LOS AZ ตรงขอบ */}
+                        <rect x={losX - (25 * s)} y={losY - (10 * s)} width={50 * s} height={20 * s} rx={4 * s} fill="rgba(255, 51, 51, 0.2)" stroke="var(--red)" />
+                        <text x={losX} y={losY + (4 * s)} fill="var(--red)" fontSize={11 * s} fontWeight="bold" fontFamily="Orbitron" textAnchor="middle">
+                          {radarData.losAz.toFixed(1)}°
+                        </text>
+                      </>
+                    );
+                  })()}
+                </g>
+              )}
 
               {/* วาดเส้นพาสดาวเทียม */}
               {radarData.segments.map((seg, i) => (
