@@ -4,6 +4,94 @@ import Globe from 'react-globe.gl';
 import * as THREE from 'three';
 import * as satelliteJs from 'satellite.js';
 
+// =========================================================================
+// 📍 PDF PARSER ENGINE (Theos-2 Mission Plan) - อ้างอิงจากโค้ดของทีมงาน GISTDA
+// =========================================================================
+if (window.pdfjsLib) {
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+async function extractPdfText(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({data: buf}).promise;
+  const allLines = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const items = content.items;
+    const byY = {};
+    const yKeys = [];
+    items.forEach(it => {
+      const y = it.transform[5];
+      let bucket = null;
+      for (let k = 0; k < yKeys.length; k++) { 
+        if (Math.abs(yKeys[k] - y) <= 2) { bucket = yKeys[k]; break; } 
+      }
+      if (bucket === null) { bucket = y; yKeys.push(y); }
+      byY[bucket] = byY[bucket] || [];
+      byY[bucket].push(it);
+    });
+    yKeys.sort((a, b) => b - a);
+    yKeys.forEach(y => {
+      const lineItems = byY[y].slice().sort((a, b) => a.transform[4] - b.transform[4]);
+      let lineText = '';
+      let lastEndX = null;
+      lineItems.forEach(it => {
+        const x = it.transform[4];
+        if (lastEndX !== null && (x - lastEndX) > 1.5 && lineText.length && lineText.charAt(lineText.length - 1) !== ' ') {
+            lineText += ' ';
+        }
+        lineText += it.str;
+        lastEndX = x + (it.width || 0);
+      });
+      allLines.push(lineText);
+    });
+  }
+  return allLines.join('\n');
+}
+
+function parsePlanText(text) {
+  const lines = text.split('\n');
+  const n = lines.length;
+  const files = {};
+  const startImgRe = /^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\s+MCC05035\s+CORECI Start Imaging/;
+  const tsLineRe = /^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\s+\S/;
+  
+  function getFile(fnum) { 
+      if (!files[fnum]) files[fnum] = { file_nb: fnum }; 
+      return files[fnum]; 
+  }
+
+  let idx = 0;
+  while (idx < n) {
+    const line = lines[idx];
+    if (startImgRe.test(line)) {
+      const block = []; let j2 = idx + 1;
+      while (j2 < n && !tsLineRe.test(lines[j2])) { block.push(lines[j2]); j2++; }
+      const btxt = block.join('\n');
+      const fn = /File nb:\s*(\d+)/.exec(btxt);
+      const acqs = /Acquisition start date:\s*([\d/: .]+)/.exec(btxt);
+      const acqe = /Acquisition end date:\s*([\d/: .]+?)\. Duration:\s*([\d.]+)\s*s/.exec(btxt);
+      
+      if (fn) {
+        const f = getFile(parseInt(fn[1], 10));
+        f.acq_start = acqs ? acqs[1].trim() : null;
+        if (acqe) { 
+            f.acq_end = acqe[1].trim(); 
+            f.acq_duration_s = parseFloat(acqe[2]); 
+        }
+      }
+      idx = j2; continue;
+    }
+    idx++;
+  }
+
+  // ดึงข้อมูลออกมาเฉพาะไฟล์ที่มีการถ่ายภาพ (Acquisition)
+  const imagingPlans = Object.keys(files).map(Number).sort((a,b)=>a-b).map(fnum => files[fnum]).filter(f => f.acq_start !== null);
+  return imagingPlans;
+}
+// =========================================================================
+
 // ==========================================
 // 1. DATA & CONFIGURATION
 // ==========================================
@@ -132,9 +220,8 @@ const FALLBACK_TLES = {
   '25544': { line1: '1 25544U 98067A   26201.79846070  .00005574  00000-0  10900-3 0  9995', line2: '2 25544  51.6312 133.7599 0006835 319.3995  40.6483 15.49066413576965' },
   '48274': { line1: '1 48274U 21035A   26204.00000000  .00000000  00000-0  00000-0 0  9999', line2: '2 48274  41.4700 120.0000 0001500 180.0000 180.0000 15.60000000000000' }
 };
-// ==========================================
-// 2. SCI-FI CSS (INJECTED) - ORBITAL RADAR EDITION
-// ==========================================
+
+
 const injectStyles = () => {
   if (document.getElementById('scifi-theater-styles')) return;
   const style = document.createElement('style');
@@ -149,152 +236,210 @@ const injectStyles = () => {
     .ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; display: flex; justify-content: space-between; padding: 25px; box-sizing: border-box; z-index: 10; }
     
     .left-container { display: flex; flex-direction: column; align-items: flex-start; pointer-events: none; height: 100%; z-index: 20; }
-    .menu-toggle-btn-left { width: 42px; height: 42px; background: rgba(3, 11, 24, 0.45); backdrop-filter: blur(12px); border: 2px solid var(--cyan); color: var(--cyan); font-size: 22px; cursor: pointer; border-radius: 4px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease-in-out; margin-bottom: 15px; flex-shrink: 0; box-shadow: 0 0 15px rgba(0,234,255,0.6), inset 0 0 10px rgba(0,234,255,0.3); text-shadow: 0 0 8px var(--cyan); }
+    .menu-toggle-btn-left { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(0,234,255,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--cyan); color: var(--cyan); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(0,234,255,0.6), inset 0 0 10px rgba(0,234,255,0.3); }
+    .menu-toggle-btn-left:hover { background: var(--cyan); color: #000; box-shadow: 0 0 30px var(--cyan); transform: scale(1.1); }
     
-    .left-panel { width: 425px; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+    /* 📍 ล็อกความกว้างแผงซ้ายให้คำนวณรวมปุ่มเมนูและช่องว่าง (460 + 42 + 15 = 517px) ขอบขวาจะตรงกันเป๊ะ! */
+    .left-panel { width: 517px !important; box-sizing: border-box !important; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
     .left-panel::-webkit-scrollbar { display: none; }
     @keyframes slideInLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
 
-    /* ฟันธง: กรอบเหลี่ยมมนเล็กน้อย (4px) กว้างไม่อึดอัด และเรืองแสงจัดๆ */
-    /* ฟันธง: กรอบโปร่งแสงแบบกระจกโฮโลแกรม มองทะลุเห็นลูกโลก */
-    .panel-box { background: rgba(0, 10, 20, 0.45) !important; -webkit-backdrop-filter: blur(12px) !important; backdrop-filter: blur(12px) !important; border: 1px solid var(--cyan); border-radius: 4px; padding: 20px; box-shadow: 0 0 20px rgba(0, 234, 255, 0.3), inset 0 0 15px rgba(0, 234, 255, 0.15); position: relative; }
-    
-    /* 📍 ฟันธง: ชุดอัปเกรดความกว้าง สีเรืองแสง และความสว่าง วางทับจุดเดิมได้เลย */
-    .left-panel { width: 420px !important; } 
-    .main-title { text-align: center; padding: 20px 15px; }
-    .main-title p { display: none !important; } 
-    .main-title h1 { margin: 0 0 8px 0; font-family: 'Orbitron', sans-serif; font-size: 30px; font-weight: 900; color: #ffffff; text-shadow: 0 0 15px #00eaff, 0 0 30px #00eaff; letter-spacing: 2px; }
-    .main-title span { display: block !important; font-size: 13px !important; color: #ffffff !important; font-weight: 600 !important; letter-spacing: 2px !important; text-shadow: 0 0 8px rgba(255,255,255,0.6) !important; text-transform: uppercase !important; }
-    
-    .telemetry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
-    .telemetry-box { background: rgba(0, 234, 255, 0.05); border: 1px solid rgba(0, 234, 255, 0.2); padding: 14px 12px; border-radius: 4px; }
-    .telemetry-box span { display: block; font-size: 12px; color: rgba(255, 255, 255, 0.9); letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase; }
-    .telemetry-box strong { display: block; font-size: 22px !important; color: #ffffff !important; font-family: 'Orbitron', sans-serif; text-shadow: 0 0 10px rgba(255,255,255,0.6) !important; }
-    
-    .info-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; }
-    .info-row .label { color: rgba(255, 255, 255, 0.8) !important; }
-    .info-row .value { color: #00eaff !important; font-weight: bold !important; text-shadow: 0 0 8px rgba(0, 234, 255, 0.5) !important; }
-    
-    /* 📍 ฟันธง: อัปเกรดนาฬิกาให้ใหญ่กระแทกตา สไตล์ Command Center */
-    /* 📍 ฟันธง: CSS สำหรับ Global Time HUD (ปรับให้ต่อกันเป็น Flex Box) */
-    /* 📍 ฟันธง: ล็อกความกว้างกล่องนาฬิกาที่ 400px เป๊ะๆ และกระจายช่องว่างให้เท่ากันเพื่อแก้บั๊กจอจอดิ้น/สั่น */
-    .global-clock-hud { display: flex; justify-content: space-between; width: 400px; box-sizing: border-box; background: rgba(0, 10, 20, 0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 153, 0, 0.5); border-radius: 4px; padding: 12px 25px 8px 25px; box-shadow: 0 0 25px rgba(255, 153, 0, 0.15) inset, 0 10px 20px rgba(0,0,0,0.5); pointer-events: auto; position: relative; }
-    .global-clock-hud .clock-item { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 110px; }
-    .global-clock-hud .clock-item span { font-size: 11px; color: #00eaff; font-weight: 800; letter-spacing: 2px; margin-bottom: 2px; text-transform: uppercase; text-shadow: 0 0 8px rgba(0, 234, 255, 0.5); }
-    .global-clock-hud .clock-item strong { font-family: 'Orbitron', sans-serif; font-size: 26px; color: #ff9900; font-weight: 900; font-variant-numeric: tabular-nums; text-shadow: 0 0 15px rgba(255, 153, 0, 0.8), 0 0 5px rgba(255, 153, 0, 0.4); letter-spacing: 2px; white-space: nowrap; line-height: 1; }
-    /* 📍 ฟันธง: คลาสพิเศษสำหรับ DOY ให้เป็นสีขาวสว่าง */
-    .global-clock-hud .clock-item.doy-item strong { color: #ffffff; text-shadow: 0 0 15px rgba(255, 255, 255, 0.8), 0 0 5px rgba(255, 255, 255, 0.4); }
-    
-    .status-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); padding: 3px 15px; border-radius: 12px; font-size: 10px; font-weight: 900; font-family: 'Orbitron', sans-serif; letter-spacing: 2px; white-space: nowrap; border: 1px solid; text-transform: uppercase; }
-    .status-badge.live { background: rgba(255, 51, 51, 0.95); border-color: #ff3333; color: #fff; box-shadow: 0 0 20px rgba(255,51,51,0.6); text-shadow: 0 0 5px rgba(0,0,0,0.5); }
-    .status-badge.sim { background: rgba(255, 153, 0, 0.95); border-color: #ffcc00; color: #000; box-shadow: 0 0 20px rgba(255,153,0,0.6); }
+    /* 📍 อัปเกรดแสงแฟลร์สีฟ้า (Cyan Flare) ของแผงข้อมูลให้สว่างวาบยิ่งขึ้น */
+    .panel-box { 
+      box-sizing: border-box !important;
+      background: linear-gradient(145deg, rgba(0, 25, 45, 0.85) 0%, rgba(0, 5, 15, 0.95) 100%) !important; 
+      backdrop-filter: blur(15px) !important; 
+      border: 2px solid #00eaff !important; 
+      border-radius: 10px; padding: 20px; 
+      box-shadow: 0 0 60px rgba(0, 234, 255, 0.45), inset 0 0 30px rgba(0, 234, 255, 0.25) !important; 
+      position: relative; overflow: hidden;
+    }
 
-    .target-header { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px dashed var(--cyan); }
-    .target-header img { width: 40px; border-radius: 2px; border: 1px solid var(--cyan); box-shadow: 0 0 10px var(--cyan); }
-    .target-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: 24px; font-weight: 900; color: #fff; letter-spacing: 2px; text-shadow: 0 0 10px rgba(0,234,255,0.5); }
+    .control-group { 
+      background: linear-gradient(145deg, rgba(0, 15, 30, 0.85) 0%, rgba(0, 5, 15, 0.95) 100%) !important; 
+      backdrop-filter: blur(15px) !important; 
+      border: 1px solid var(--cyan); border-top: 2px solid var(--cyan);
+      border-radius: 8px; padding: 20px; 
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 234, 255, 0.3), inset 0 0 20px rgba(0, 234, 255, 0.15); 
+      position: relative; overflow: hidden;
+    }
     
-    .status-banner { text-align: center; font-family: 'Orbitron', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 2px; padding: 12px; margin-bottom: 20px; border-radius: 2px; transition: all 0.3s; }
-    .status-banner.standby { background: rgba(255, 51, 51, 0.15); border: 1px solid var(--red); color: var(--red); box-shadow: 0 0 20px rgba(255, 51, 51, 0.5), inset 0 0 15px rgba(255, 51, 51, 0.3); text-shadow: 0 0 8px var(--red); }
-    .status-banner.active { background: rgba(0, 234, 255, 0.15); border: 1px solid var(--cyan); color: var(--cyan); box-shadow: 0 0 20px rgba(0, 234, 255, 0.6), inset 0 0 15px rgba(0, 234, 255, 0.3); text-shadow: 0 0 8px var(--cyan); }
+    .main-title h1 { margin: 0 0 8px 0; font-family: 'Orbitron', sans-serif; font-size: 30px; font-weight: 900; color: #ffffff; text-shadow: 0 0 20px #00eaff, 0 0 40px #00eaff; letter-spacing: 2px; }
+    .main-title span { display: block !important; font-size: 13px !important; color: #ffffff !important; font-weight: 600 !important; letter-spacing: 2px !important; text-shadow: 0 0 10px rgba(255,255,255,0.8) !important; text-transform: uppercase !important; }
 
+    /* 📍 อัปเกรดนาฬิกาเป็น "ส้มเรืองแสง (Orange Flare)" และปรับขนาดฟอนต์เพื่อลดอาการตาล้าตามหลัก UI/UX */
+    .global-clock-hud { 
+      display: flex; flex-direction: column; width: 460px !important; box-sizing: border-box !important; 
+      background: linear-gradient(180deg, rgba(30, 10, 0, 0.9), rgba(5, 0, 0, 0.95)); 
+      backdrop-filter: blur(15px); 
+      border: 2px solid #FF4500; /* เปลี่ยนขอบเป็นสีส้มแดง */
+      border-radius: 10px; padding: 15px 20px 12px 20px; 
+      box-shadow: 0 0 60px rgba(255, 69, 0, 0.4), inset 0 0 30px rgba(255, 69, 0, 0.2); /* แสงแฟลร์สีส้ม */
+      pointer-events: auto; position: relative; margin-top: 10px; gap: 12px; 
+    }
+    .clock-row { display: flex; justify-content: space-between; width: 100%; }
+    .global-clock-hud .clock-item { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 130px; }
+    
+    /* 📍 ขยายหัวข้อ (THA LOCAL, DOY, UTC) เป็น 14px สีขาวหม่นเพื่อความสบายตา */
+    .global-clock-hud .clock-item span { 
+      font-size: 14px; 
+      color: rgba(255, 255, 255, 0.7); 
+      font-weight: 800; letter-spacing: 2px; margin-bottom: 6px; text-transform: uppercase; 
+      text-shadow: 0 0 5px rgba(0, 0, 0, 0.8); 
+    }
+    
+    /* 📍 ขยายตัวเลขเวลาเป็น 28px และเปลี่ยนเป็นสีส้มสว่างเรืองแสง */
+    .global-clock-hud .clock-item strong { 
+      font-family: 'Orbitron', sans-serif; 
+      font-size: 28px; 
+      color: #FF6600; 
+      font-weight: 900; font-variant-numeric: tabular-nums; 
+      text-shadow: 0 0 20px #FF4500, 0 0 40px rgba(255, 69, 0, 0.6); 
+      letter-spacing: 1px; line-height: 1; 
+    }
+    
+    /* 📍 เปลี่ยน DOY ให้เป็นสีฟ้า Cyan เรืองแสง ตัดกับสีส้มอย่างลงตัว */
+    .global-clock-hud .clock-item.doy-item strong { 
+      color: var(--cyan); 
+      text-shadow: 0 0 20px var(--cyan), 0 0 40px rgba(0, 234, 255, 0.6); 
+    }
+    .global-clock-hud .clock-item.doy-item span {
+      color: var(--cyan); 
+      text-shadow: 0 0 10px rgba(0, 234, 255, 0.5);
+    }
+    
+    .status-badge { width: 100%; text-align: center; padding: 6px 0; border-radius: 6px; font-size: 13px; font-weight: 900; font-family: 'Orbitron', sans-serif; letter-spacing: 3px; border: 1px solid; text-transform: uppercase; }
+    
+    /* 📍 LIVE OPERATIONS: สีเขียวนีออน (Nominal/Safe) ตัวหนังสือสีขาวอ่านง่าย */
+    .status-badge.live { background: linear-gradient(90deg, rgba(0, 180, 70, 0.85), rgba(0, 80, 25, 0.95)); border-color: #00ff66; color: #ffffff; box-shadow: 0 0 20px rgba(0, 255, 102, 0.5); text-shadow: 0 0 5px rgba(0,0,0,0.8); }
+    
+    /* 📍 SIMULATION MODE: สีส้มอำพัน (Warning/Test) เปลี่ยนตัวหนังสือเป็นสีขาวพร้อมเงาดำ */
+    .status-badge.sim { background: linear-gradient(90deg, rgba(255, 120, 0, 0.85), rgba(180, 60, 0, 0.95)); border-color: #ffaa00; color: #ffffff; box-shadow: 0 0 20px rgba(255, 153, 0, 0.5); text-shadow: 0 0 5px rgba(0,0,0,0.8); }
+
+    /* 📍 แก้ข้อ 2: บังคับธงชาติและชื่อดาวเทียมให้อยู่ตรงกลางและบรรทัดเดียวกันเป๊ะๆ */
+    .target-header { display: flex; flex-direction: row !important; align-items: center; justify-content: center; gap: 15px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px dashed rgba(0,234,255,0.4); }
+    .target-header img { width: 40px; border-radius: 4px; border: 1px solid var(--cyan); box-shadow: 0 0 15px var(--cyan); }
+    .target-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: 26px; font-weight: 900; color: #fff; letter-spacing: 2px; text-shadow: 0 0 15px var(--cyan); }
+    
+    .status-banner { text-align: center; font-family: 'Orbitron', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 2px; padding: 15px; margin-bottom: 20px; border-radius: 8px; transition: all 0.3s; }
+    .status-banner.standby { background: linear-gradient(180deg, rgba(255, 51, 51, 0.2), rgba(0,0,0,0.6)); border: 2px solid var(--red); color: var(--red); box-shadow: 0 0 30px rgba(255, 51, 51, 0.6), inset 0 0 20px rgba(255, 51, 51, 0.4); text-shadow: 0 0 10px var(--red); }
+    .status-banner.active { background: linear-gradient(180deg, rgba(0, 234, 255, 0.2), rgba(0,0,0,0.6)); border: 2px solid var(--cyan); color: var(--cyan); box-shadow: 0 0 30px rgba(0, 234, 255, 0.6), inset 0 0 20px rgba(0, 234, 255, 0.4); text-shadow: 0 0 10px var(--cyan); }
+
+    /* 📍 แก้ไขกรอบวงสีแดง (Telemetry Grid): ขยายช่องและตัวเลขให้ใหญ่กระแทกตา ปรับสี Label ให้อ่านง่าย */
     .telemetry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-    .t-box { background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(0, 234, 255, 0.3); border-radius: 2px; padding: 10px 15px; display: flex; flex-direction: column; transition: all 0.2s; }
-    .t-box:hover { border-color: var(--cyan); box-shadow: inset 0 0 15px rgba(0, 234, 255, 0.5); }
-    .t-box.highlight { border-color: var(--cyan); background: rgba(0, 234, 255, 0.1); box-shadow: inset 0 0 15px rgba(0, 234, 255, 0.8); }
-    .t-box span { font-size: 11px; color: #8892b0; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
-    .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 16px; color: #ffffff; margin-top: 4px; text-shadow: 0 0 8px rgba(255,255,255,0.6); }
-
-    .info-list { list-style: none; padding: 15px 0 0 0; margin: 15px 0 0 0; border-top: 1px dashed var(--cyan); font-size: 14px; line-height: 2.4; color: #ddd; }
-    .info-list li { display: flex; justify-content: space-between; }
-    .info-list span { color: #8892b0; font-weight: 600; }
-    .info-list strong { color: #ffffff; font-weight: 700; text-shadow: 0 0 5px rgba(255,255,255,0.5); text-align: right; }
-
-    /* ขวามือ */
-    .right-container { display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; height: 100%; z-index: 20; }
-    .menu-toggle-btn { width: 42px; height: 42px; background: rgba(3, 11, 24, 0.45); backdrop-filter: blur(12px); border: 2px solid var(--gold); color: var(--gold); font-size: 22px; cursor: pointer; border-radius: 4px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease-in-out; margin-bottom: 15px; flex-shrink: 0; box-shadow: 0 0 15px rgba(255,204,0,0.6), inset 0 0 10px rgba(255,204,0,0.3); text-shadow: 0 0 8px var(--gold); }
+    .t-box { background: linear-gradient(145deg, rgba(0, 15, 30, 0.6) 0%, rgba(0, 5, 10, 0.8) 100%); border: 1px solid rgba(0, 234, 255, 0.15); border-left: 3px solid rgba(0, 234, 255, 0.5); border-radius: 8px; padding: 15px 18px; display: flex; flex-direction: column; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+    .t-box:hover { border-color: var(--gold); border-left: 3px solid var(--gold); background: rgba(255, 204, 0, 0.08); box-shadow: 0 0 20px rgba(255, 204, 0, 0.2); transform: translateY(-3px); z-index: 5; }
+    .t-box.highlight { border-left: 3px solid var(--red); background: linear-gradient(90deg, rgba(255, 51, 51, 0.15) 0%, transparent 100%); box-shadow: inset 0 0 20px rgba(255, 51, 51, 0.1); }
     
-    .right-panel { width: 300px; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
+    .t-box span { font-size: 13px; color: rgba(255, 255, 255, 0.6); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+    .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 22px; color: #ffffff; margin-top: 6px; text-shadow: 0 0 10px rgba(255, 255, 255, 0.4); letter-spacing: 1px; }
+
+    /* 📍 แก้ไขกรอบวงสีเหลือง (Info List): ขยายฟอนต์ให้อ่านสบายตา ปรับ Contrast สี และเพิ่มเส้นคั่นนำสายตา */
+    .info-list { list-style: none; padding: 20px 0 0 0; margin: 20px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 15px; line-height: 2.6; }
+    .info-list li { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px; margin-bottom: 6px; }
+    .info-list li:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .info-list span { color: rgba(255, 255, 255, 0.55); font-weight: 600; letter-spacing: 0.5px; }
+    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-align: right; font-size: 16px; }
+
+    .right-container { display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; height: 100%; z-index: 20; }
+    .menu-toggle-btn { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(255,204,0,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--gold); color: var(--gold); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(255,204,0,0.6), inset 0 0 10px rgba(255,204,0,0.3); }
+    .menu-toggle-btn:hover { background: var(--gold); color: #000; box-shadow: 0 0 30px var(--gold); transform: scale(1.1); }
+    
+    /* 📍 ขยายความกว้างแผงขวาจาก 300px เป็น 440px ให้สมมาตรกับฝั่งซ้าย */
+    .right-panel { width: 440px !important; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
     @keyframes slideInRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
 
-    .control-group { background: rgba(0, 10, 20, 0.45) !important; -webkit-backdrop-filter: blur(12px) !important; backdrop-filter: blur(12px) !important; border: 1px solid var(--cyan); border-radius: 4px; padding: 20px; margin-bottom: 15px; position: relative; transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 0 20px rgba(0, 234, 255, 0.2), inset 0 0 15px rgba(0, 234, 255, 0.1); }
-    .control-group p { margin: 0 0 15px 0; font-size: 14px; font-weight: 900; letter-spacing: 3px; border-bottom: 1px dashed var(--cyan); padding-bottom: 8px; color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
+    /* 📍 จัดหัวข้อเมนูให้อยู่กึ่งกลางตามหลักสมาตร UI/UX */
+    .control-group p { text-align: center; margin: 0 0 18px 0; font-size: 18px !important; font-weight: 900; letter-spacing: 4px !important; border-bottom: 1px dashed rgba(0, 234, 255, 0.4); padding-bottom: 10px !important; color: var(--cyan); text-shadow: 0 0 10px var(--cyan); }
     
-    /* ฟันธง: ปุ่ม Hover สว่างวาบแบบอลังการ */
-    .btn { display: block; width: 100%; background: rgba(0, 0, 0, 0.6); border: 1px solid var(--cyan); color: var(--cyan); padding: 12px; margin-bottom: 10px; font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 800; cursor: pointer; text-align: center; border-radius: 2px; transition: all 0.2s ease-in-out; letter-spacing: 1.5px; text-transform: uppercase; text-shadow: 0 0 8px var(--cyan); box-shadow: 0 0 10px rgba(0, 234, 255, 0.3), inset 0 0 8px rgba(0, 234, 255, 0.1); position: relative; overflow: hidden; }
-    .btn:hover { background: rgba(0, 234, 255, 0.15) !important; color: #fff !important; border-color: #fff !important; text-shadow: 0 0 15px #fff !important; box-shadow: 0 0 30px rgba(0, 234, 255, 0.8), inset 0 0 20px rgba(0, 234, 255, 0.4) !important; transform: scale(1.02); }
-    .btn.active { background: var(--cyan) !important; color: #000 !important; border-color: var(--cyan) !important; text-shadow: none !important; box-shadow: 0 0 25px rgba(0, 234, 255, 0.9), 0 0 40px rgba(0, 234, 255, 0.5), inset 0 0 15px rgba(255, 255, 255, 0.6) !important; transform: scale(1.02); }
-    .btn:disabled { opacity: 0.3; pointer-events: none; border-color: #333; color: #555; text-shadow: none; box-shadow: none; }
+    /* 📍 ขยายขนาดปุ่มทั้งหมด: Padding จาก 12px เป็น 16px และขยายฟอนต์จาก 15px เป็น 18px */
+    .btn { display: block; width: 100%; background: rgba(0, 15, 30, 0.5); border: 1px solid rgba(0, 234, 255, 0.5); color: var(--cyan); padding: 16px !important; margin-bottom: 12px; font-family: 'Rajdhani', sans-serif; font-size: 18px !important; font-weight: 800; cursor: pointer; text-align: center; border-radius: 6px; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); letter-spacing: 2px !important; text-transform: uppercase; text-shadow: 0 0 8px rgba(0, 234, 255, 0.6); box-shadow: 0 5px 15px rgba(0,0,0,0.4); position: relative; overflow: hidden; }
+    
+    .btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); transform: skewX(-20deg); transition: 0.5s; }
+    .btn:hover::before { left: 150%; }
+    .btn:disabled { opacity: 0.3; pointer-events: none; filter: grayscale(100%); }
     .speed-row { display: flex; gap: 8px; margin-bottom: 8px; }
 
-    /* ฟันธง: กรอบ SYSTEM CONTROL เส้นสีฟ้า ตัวหนังสือสีแดงเรืองแสง / เมาส์ชี้ปุ่มเป็นสีส้มทอง */
-    .control-group:nth-child(1) { border-color: var(--cyan); box-shadow: 0 0 20px rgba(0, 234, 255, 0.2), inset 0 0 15px rgba(0, 234, 255, 0.1); }
-    .control-group:nth-child(1) p { color: var(--red); border-bottom-color: rgba(0, 234, 255, 0.5); text-shadow: 0 0 10px var(--red); }
-    .control-group:nth-child(1) .btn { border-color: rgba(0, 234, 255, 0.5); color: var(--red); text-shadow: 0 0 8px var(--red); box-shadow: 0 0 10px rgba(0, 234, 255, 0.2), inset 0 0 8px rgba(0, 234, 255, 0.1); }
-    .control-group:nth-child(1) .btn:hover { background: rgba(255, 204, 0, 0.2) !important; color: var(--gold) !important; border-color: var(--gold) !important; text-shadow: 0 0 15px var(--gold) !important; box-shadow: 0 0 30px rgba(255, 204, 0, 0.8), inset 0 0 20px rgba(255, 204, 0, 0.4) !important; }
-    .control-group:nth-child(1) .btn.active { background: var(--gold) !important; color: #000 !important; border-color: var(--gold) !important; text-shadow: none !important; box-shadow: 0 0 25px rgba(255, 204, 0, 0.9), 0 0 40px rgba(255, 204, 0, 0.5), inset 0 0 15px rgba(255, 255, 255, 0.6) !important; }
+    /* ⏱️ กลุ่มที่ 1: TIME & PLAYBACK (ขอบทอง / ปุ่มแดง-ทอง) */
+    .control-group:nth-child(1) { border-color: var(--gold); border-top-color: var(--gold); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(255, 204, 0, 0.15), inset 0 0 20px rgba(255, 204, 0, 0.05); }
+    .control-group:nth-child(1) p { color: var(--gold); border-bottom-color: rgba(255, 204, 0, 0.5); text-shadow: 0 0 10px var(--gold); }
+    
+    /* 📍 บังคับให้ปุ่มทุกตัวในกลุ่มนี้เป็นสีทองเรืองแสง (ยกแผง) */
+    .control-group:nth-child(1) .btn { border-color: rgba(255,204,0,0.4) !important; color: var(--gold) !important; text-shadow: 0 0 8px var(--gold) !important; background: rgba(255,204,0,0.05) !important; }
+    
+    /* 📍 คืนชีพสีส้มการ์เดียน (Hover) กลับมาสว่างวาบ พร้อมเปลี่ยนอักษรเป็นสีขาวมีเงาดำ */
+    .control-group:nth-child(1) .btn:hover { background: linear-gradient(135deg, #ffcc00, #ff6600) !important; color: #fff !important; border-color: #fff !important; box-shadow: 0 0 25px var(--gold) !important; text-shadow: 0 0 8px rgba(0,0,0,0.8) !important; transform: translateY(-2px); }
+    
+    /* 📍 คืนชีพสีส้มการ์เดียน (Active - เช่น ปุ่มที่กำลังกดอยู่) */
+    .control-group:nth-child(1) .btn.active { background: linear-gradient(135deg, #ffcc00, #ff8800) !important; color: #fff !important; border-color: #fff !important; box-shadow: 0 0 25px var(--gold) !important; text-shadow: 0 0 8px rgba(0,0,0,0.8) !important; }
 
-    /* ฟันธง: SPEED สีเขียวนีออน */
-    .control-group:nth-child(2) { border-color: rgba(0, 255, 102, 0.8); }
+    /* 📍 แยกเป้าหมายเฉพาะปุ่ม PAUSE ให้เป็นสีแดงอันตราย! */
+    .control-group:nth-child(1) .btn.btn-pause { border-color: rgba(255,51,51,0.6) !important; color: var(--red) !important; text-shadow: 0 0 8px var(--red) !important; background: rgba(255,51,51,0.05) !important; }
+    .control-group:nth-child(1) .btn.btn-pause:hover, .control-group:nth-child(1) .btn.btn-pause.active { background: linear-gradient(135deg, #ff3333, #aa0000) !important; color: #fff !important; border-color: #fff !important; box-shadow: 0 0 25px var(--red) !important; text-shadow: 0 0 8px rgba(0,0,0,0.8) !important; }
+
+    /* 📍 สไตล์ปุ่มเครื่องเล่นเทป (Media Controls) */
+    .media-btn { display: flex !important; flex-direction: column; align-items: center; justify-content: center; padding: 10px 5px !important; gap: 6px; }
+    .media-btn .icon { font-size: 26px; line-height: 1; filter: drop-shadow(0 0 8px currentColor); }
+    .media-btn .label { font-size: 11px; font-weight: 900; opacity: 0.9; letter-spacing: 1.5px; }
+
+    /* 🖥️ กลุ่มที่ 2: DISPLAY CONTROLS (ขอบเขียว / ปุ่มเขียวนีออนเรืองแสง) */
+    .control-group:nth-child(2) { border-color: var(--green); border-top-color: var(--green); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(0, 255, 102, 0.15), inset 0 0 20px rgba(0, 255, 102, 0.05); }
     .control-group:nth-child(2) p { color: var(--green); border-bottom-color: rgba(0, 255, 102, 0.4); text-shadow: 0 0 10px var(--green); }
-    .control-group:nth-child(2) .speed-row .btn { border-color: rgba(0, 255, 102, 0.5); color: var(--green); background: rgba(0, 255, 102, 0.05); text-shadow: 0 0 8px rgba(0, 255, 102, 0.8); box-shadow: inset 0 0 10px rgba(0, 255, 102, 0.2); }
-    .control-group:nth-child(2) .speed-row .btn:hover { background: rgba(255, 255, 255, 0.15) !important; color: #fff !important; border-color: #fff !important; text-shadow: 0 0 15px #fff !important; box-shadow: 0 0 25px rgba(255, 255, 255, 0.8), inset 0 0 15px rgba(255, 255, 255, 0.4) !important; }
-    .control-group:nth-child(2) .speed-row .btn.active { background: var(--green) !important; color: #000 !important; border-color: var(--green) !important; text-shadow: none !important; box-shadow: 0 0 25px rgba(0, 255, 102, 0.9), 0 0 40px rgba(0, 255, 102, 0.5), inset 0 0 15px rgba(255, 255, 255, 0.6) !important; }
+    .control-group:nth-child(2) .btn { border-color: rgba(0, 255, 102, 0.4) !important; color: var(--green) !important; background: rgba(0, 255, 102, 0.05) !important; text-shadow: 0 0 8px rgba(0, 255, 102, 0.6) !important; }
+    .control-group:nth-child(2) .btn:hover { background: linear-gradient(135deg, #00ff66, #009933) !important; color: #000 !important; border-color: #fff !important; text-shadow: none !important; box-shadow: 0 0 25px rgba(0, 255, 102, 0.8) !important; }
+    .control-group:nth-child(2) .btn.active { background: linear-gradient(135deg, #00ff66, #00b34a) !important; color: #000 !important; box-shadow: 0 0 30px rgba(0, 255, 102, 0.9), inset 0 0 10px rgba(255, 255, 255, 0.5) !important; border-color: #fff !important; }
 
-    .control-group:nth-child(3) { border-color: rgba(255, 204, 0, 0.8); text-align: center; padding: 25px 20px; }
-    .control-group:nth-child(3) p { color: var(--gold); border-bottom-color: rgba(255, 204, 0, 0.4); text-shadow: 0 0 10px var(--gold); }
-    .database-btn { border-color: var(--gold) !important; color: var(--gold) !important; font-size: 16px !important; padding: 15px !important; text-shadow: 0 0 10px var(--gold); box-shadow: 0 0 15px rgba(255,204,0,0.3), inset 0 0 10px rgba(255,204,0,0.2) !important; }
-    .database-btn:hover { background: rgba(255, 204, 0, 0.2) !important; box-shadow: 0 0 30px rgba(255, 204, 0, 0.8), inset 0 0 20px rgba(255, 204, 0, 0.4) !important; color: #fff !important; border-color: #fff !important; }
+    /* 🛠️ กลุ่มที่ 3: DATA & TOOLS (ขอบฟ้า / Hover สีส้มการ์เดียนตามบัญชา!) */
+    .control-group:nth-child(3) { border-color: var(--cyan); border-top-color: var(--cyan); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 30px rgba(0, 234, 255, 0.2), inset 0 0 20px rgba(0, 234, 255, 0.1); }
+    .control-group:nth-child(3) p { color: var(--cyan); border-bottom-color: rgba(0, 234, 255, 0.4); text-shadow: 0 0 10px var(--cyan); }
+    
+    /* ปุ่มมาตรฐานใน Data & Tools (Cyan -> Hover ส้มสว่าง) */
+    .control-group:nth-child(3) button { background: rgba(0, 15, 30, 0.6) !important; border: 1px solid rgba(0, 234, 255, 0.4) !important; color: var(--cyan) !important; text-shadow: 0 0 8px rgba(0, 234, 255, 0.5) !important; box-shadow: inset 0 0 10px rgba(0, 234, 255, 0.05) !important; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important; }
+    .control-group:nth-child(3) button:hover { background: linear-gradient(135deg, #ff8800, #ff3300) !important; border-color: #fff !important; color: #fff !important; box-shadow: 0 0 30px rgba(255, 102, 0, 0.9), inset 0 0 15px rgba(255, 255, 255, 0.5) !important; text-shadow: 0 0 10px #fff !important; transform: translateY(-2px) !important; }
+    
+    /* รักษาเอกลักษณ์ปุ่ม IMAGING PLAN (สีแดง) และ RADAR (สีเขียว) ไว้ไม่ให้เสียทรง */
+    .control-group:nth-child(3) button:nth-of-type(2) { border-color: rgba(255, 51, 51, 0.5) !important; color: var(--red) !important; text-shadow: 0 0 8px var(--red) !important; background: rgba(255,51,51,0.05) !important; }
+    .control-group:nth-child(3) button:nth-of-type(2):hover { background: linear-gradient(135deg, #ff3333, #aa0000) !important; border-color: #fff !important; color: #fff !important; box-shadow: 0 0 25px rgba(255, 51, 51, 0.9) !important; text-shadow: none !important; }
+    .control-group:nth-child(3) > button:last-of-type { border-color: rgba(0, 255, 102, 0.5) !important; color: var(--green) !important; text-shadow: 0 0 8px var(--green) !important; background: rgba(0,255,102,0.05) !important; }
+    .control-group:nth-child(3) > button:last-of-type:hover { background: linear-gradient(135deg, #00ff66, #009933) !important; border-color: #fff !important; color: #fff !important; box-shadow: 0 0 25px rgba(0, 255, 102, 0.9) !important; text-shadow: none !important; }
 
-    /* ฟันธง: CSS สำหรับปุ่ม CLEAR OTHERS และ Group Toggle */
-    .modal-clear-btn { background: rgba(255, 179, 71, 0.1); border: 1px solid var(--gold); color: var(--gold); padding: 5px 15px; border-radius: 2px; font-family: 'Orbitron', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 0 10px rgba(255, 204, 0, 0.2); margin-right: 15px; letter-spacing: 1px; display: flex; align-items: center; text-transform: uppercase; }
+    /* 🗓️ ปุ่มล่างสุด PASS SCHEDULE (ขอบทอง -> Hover ทองอร่าม) ขยายให้ใหญ่สมส่วน */
+    .right-panel > button:last-child { background: linear-gradient(145deg, rgba(30, 15, 0, 0.8), rgba(10, 5, 0, 0.9)) !important; border: 2px solid var(--gold) !important; color: var(--gold) !important; padding: 18px !important; font-size: 20px !important; font-weight: 900 !important; letter-spacing: 3px !important; box-shadow: 0 0 20px rgba(255, 204, 0, 0.2), inset 0 0 10px rgba(255, 204, 0, 0.1) !important; margin-top: 5px; }
+    .right-panel > button:last-child:hover { background: linear-gradient(135deg, #ffcc00, #ff6600) !important; color: #000 !important; border-color: #fff !important; box-shadow: 0 0 35px rgba(255, 204, 0, 0.8), inset 0 0 15px rgba(255, 255, 255, 0.5) !important; text-shadow: none !important; transform: scale(1.03) !important; }
+
+    .modal-clear-btn { background: rgba(255, 179, 71, 0.1); border: 1px solid var(--gold); color: var(--gold); padding: 5px 15px; border-radius: 4px; font-family: 'Orbitron', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 0 10px rgba(255, 204, 0, 0.2); margin-right: 15px; letter-spacing: 1px; display: flex; align-items: center; text-transform: uppercase; }
     .modal-clear-btn:hover { background: var(--gold); color: #000; box-shadow: 0 0 20px rgba(255, 204, 0, 0.8); transform: scale(1.05); }
-
     .group-header-row { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed rgba(0, 234, 255, 0.5); padding-bottom: 8px; margin-bottom: 15px; }
-    .group-header-row .modal-group-title { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-    .group-toggle-btn { background: transparent; border: 1px solid rgba(0, 234, 255, 0.5); color: var(--cyan); font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 800; padding: 4px 12px; border-radius: 2px; cursor: pointer; transition: all 0.2s; letter-spacing: 1px; }
-    .group-toggle-btn:hover { background: rgba(0, 234, 255, 0.2); border-color: var(--cyan); box-shadow: 0 0 15px rgba(0,234,255,0.6); color: #fff; }
+    .modal-group-title { color: var(--cyan); font-size: 16px; font-weight: 900; letter-spacing: 3px; text-transform: uppercase; font-family: 'Orbitron', sans-serif; text-shadow: 0 0 12px rgba(0, 234, 255, 0.8); }
+    .group-toggle-btn { background: rgba(0,234,255,0.1); border: 1px solid var(--cyan); color: var(--cyan); font-family: 'Rajdhani', sans-serif; font-size: 13px; font-weight: 800; padding: 4px 12px; border-radius: 4px; cursor: pointer; transition: all 0.2s; letter-spacing: 1px; }
+    .group-toggle-btn:hover { background: var(--cyan); color: #000; box-shadow: 0 0 15px var(--cyan); }
+    
+    .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; }
+    .modal-sat-btn { background: rgba(0, 255, 102, 0.05); border: 1px solid rgba(0, 255, 102, 0.4); color: #fff; padding: 15px 20px; border-radius: 6px; font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.2s ease-in-out; text-align: left; display: flex; align-items: center; justify-content: space-between; letter-spacing: 1px; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+    .modal-sat-btn:hover { background: rgba(0, 255, 102, 0.2); box-shadow: 0 0 20px rgba(0, 255, 102, 0.6); border-color: var(--green); transform: translateY(-2px); }
+    .modal-sat-btn.secondary { background: linear-gradient(135deg, #00ff66, #009933) !important; color: #000 !important; border-color: var(--green) !important; box-shadow: 0 0 25px rgba(0, 255, 102, 0.8) !important; font-weight: 900; }
+    .modal-sat-btn.primary { background: linear-gradient(135deg, #ff3333, #990000) !important; color: #fff !important; border: 1px solid #ffaaaa !important; box-shadow: 0 0 30px rgba(255, 51, 51, 0.9), inset 0 0 15px rgba(255, 255, 255, 0.5) !important; text-shadow: 0 0 5px #000 !important; font-weight: 900; z-index: 10; transform: scale(1.02); }
 
-    /* ==================================================
-       POPUP MODAL
-       ================================================== */
-    .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 5, 10, 0.9); backdrop-filter: blur(15px); z-index: 1000; display: flex; align-items: center; justify-content: center; animation: fadeIn 0.3s ease; }
-    
-    .modal-box { background: #01060d; border: 2px solid var(--cyan); border-radius: 4px; width: 95%; max-width: 1000px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 0 50px rgba(0, 234, 255, 0.4), inset 0 0 30px rgba(0, 234, 255, 0.15); position: relative; overflow: hidden; }
-    
-    .modal-header { padding: 25px 30px; border-bottom: 1px solid rgba(0, 234, 255, 0.5); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(180deg, rgba(0, 234, 255, 0.15) 0%, transparent 100%); }
-    .modal-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: 22px; color: #fff; letter-spacing: 2px; display: flex; align-items: center; gap: 12px; text-shadow: 0 0 15px var(--cyan); }
-    
-    .modal-close-btn { background: rgba(255, 51, 51, 0.1); border: 2px solid var(--red); color: var(--red); width: 45px; height: 45px; border-radius: 2px; font-size: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; box-shadow: 0 0 15px rgba(255, 51, 51, 0.5), inset 0 0 10px rgba(255, 51, 51, 0.3); text-shadow: 0 0 8px var(--red); }
-    .modal-close-btn:hover { background: var(--red); color: #fff; box-shadow: 0 0 35px rgba(255, 51, 51, 1), 0 0 60px rgba(255, 51, 51, 0.6); transform: scale(1.1); text-shadow: none; border-radius: 4px; }
-
-    .modal-content { padding: 30px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; display: flex; flex-direction: column; gap: 25px; }
+    /* 📍 แก้ข้อ 3: ซ่อน Scrollbar ของทุกหน้าต่าง และเพิ่มระยะ Padding ให้สวยงาม ไม่ชิดขอบ */
+    .modal-content { padding: 30px 40px !important; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
     .modal-content::-webkit-scrollbar { display: none; }
     
-    .modal-group-title { color: var(--cyan); font-size: 15px; font-weight: 900; letter-spacing: 3px; border-bottom: 1px dashed rgba(0, 234, 255, 0.5); padding-bottom: 10px; margin-bottom: 15px; text-transform: uppercase; font-family: 'Orbitron', sans-serif; text-shadow: 0 0 12px rgba(0, 234, 255, 0.6); }
-    .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; }
-    
-    .modal-sat-btn { background: rgba(0, 255, 102, 0.05); border: 1px solid var(--green); color: #fff; padding: 15px 20px; border-radius: 2px; font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.2s ease-in-out; text-align: left; display: flex; align-items: center; justify-content: space-between; letter-spacing: 1px; }
-    .modal-sat-btn:hover { background: rgba(0, 255, 102, 0.2); box-shadow: 0 0 20px rgba(0, 255, 102, 0.4); transform: scale(1.02); }
-    
-    .modal-sat-btn.secondary { background: var(--green) !important; color: #000 !important; border-color: var(--green) !important; box-shadow: 0 0 25px rgba(0, 255, 102, 0.8) !important; font-weight: 900; }
-    .modal-sat-btn.primary { background: rgba(255, 51, 51, 0.2) !important; color: #fff !important; border: 2px solid var(--red) !important; box-shadow: 0 0 30px rgba(255, 51, 51, 0.9), inset 0 0 15px rgba(255, 51, 51, 0.5) !important; text-shadow: 0 0 10px #fff !important; font-weight: 900; z-index: 10; }
+    /* 📍 แก้ข้อ 3: บังคับปุ่ม Close/Maximize (กากบาท/สี่เหลี่ยม) ทุกหน้าต่างให้เรืองแสงสีทองเวลานำเมาส์ไปชี้ ทับโค้ดเดิมทั้งหมด! */
+    .modal-close-btn { transition: all 0.3s ease !important; background: rgba(0,0,0,0.5) !important; cursor: pointer; border-radius: 4px; }
+    .modal-close-btn:hover { background: var(--gold) !important; color: #000 !important; border-color: var(--gold) !important; box-shadow: 0 0 20px var(--gold) !important; transform: scale(1.15) !important; z-index: 10; }
 
-    /* ==================================================
-       2D MAP
-       ================================================== */
+    /* 2D MAP */
     .flat-map-wrap { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 5; padding: 25px 320px 25px 420px; box-sizing: border-box; transition: padding 0.3s ease-in-out; }
     .flat-map-wrap.panel-closed { padding-right: 25px; }
     .flat-map-wrap.left-panel-closed { padding-left: 25px; }
-    .flat-map-container { position: relative; width: 100%; aspect-ratio: 2 / 1; max-height: 100vh; max-width: 200vh; background-color: #000; box-shadow: 0 0 50px rgba(0, 234, 255, 0.3); border: 2px solid var(--cyan); border-radius: 4px; overflow: hidden; }
+    .flat-map-container { position: relative; width: 100%; aspect-ratio: 2 / 1; max-height: 100vh; max-width: 200vh; background-color: #000; box-shadow: 0 0 50px rgba(0, 234, 255, 0.3); border: 2px solid var(--cyan); border-radius: 8px; overflow: hidden; }
     .map-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 2; }
-    
     .map-marker { position: absolute; transform: translate(-50%, -50%); cursor: pointer; pointer-events: auto; display: flex; flex-direction: column; align-items: center; transition: transform 0.2s; z-index: 3; }
     .map-marker:hover { transform: translate(-50%, -50%) scale(1.8); z-index: 20 !important; }
     .map-marker span.dot { width: 5px; height: 5px; background: currentColor; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
     .map-marker span.target-dot { width: 10px; height: 10px; background: currentColor; border-radius: 2px; box-shadow: 0 0 15px currentColor; animation: pulse 2s infinite; }
     .map-marker span.label { margin-top: 5px; font-size: 11px; font-weight: 800; white-space: nowrap; font-family: 'Rajdhani', sans-serif; text-shadow: 0 0 6px #000, 0 0 10px #000; letter-spacing: 0.5px; }
-
-    .map-marker .map-tooltip { display: none; position: absolute; bottom: 130%; left: 50%; transform: translateX(-50%); background: rgba(0, 15, 30, 0.95); border: 1px solid var(--cyan); border-radius: 2px; padding: 10px 15px; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 14px; white-space: nowrap; pointer-events: none; box-shadow: 0 5px 20px rgba(0,234,255,0.5); z-index: 30; }
+    .map-marker .map-tooltip { display: none; position: absolute; bottom: 130%; left: 50%; transform: translateX(-50%); background: rgba(0, 15, 30, 0.95); border: 1px solid var(--cyan); border-radius: 4px; padding: 10px 15px; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 14px; white-space: nowrap; pointer-events: none; box-shadow: 0 5px 20px rgba(0,234,255,0.5); z-index: 30; }
     .map-marker:hover .map-tooltip { display: block; }
     .map-tooltip img { vertical-align: middle; border-radius: 2px; margin-right: 8px; width: 20px; }
     .map-tooltip span.norad { display: block; color: var(--cyan); font-size: 12px; margin-top: 4px; font-weight: 600; }
@@ -309,6 +454,7 @@ const injectStyles = () => {
   `;
   document.head.appendChild(style);
 };
+
 
 // ==========================================
 // 3. MATH & UTILITIES
@@ -440,6 +586,31 @@ export default function App() {
   const [selectedCatnrs, setSelectedCatnrs] = useState([SATELLITE_OPTIONS[0].catnr]); 
   
   const [simulatedTimeMs, setSimulatedTimeMs] = useState(Date.now());
+// 📍 สมองกลควบคุมการกดค้างปุ่มข้ามเวลา (Hold to Seek)
+const seekRef = useRef({ isHolding: false, interval: null, timeout: null });
+
+const handleSeekDown = (amount) => {
+  seekRef.current.isHolding = false;
+  // รอ 300ms (0.3 วิ) ถ้ายังกดอยู่ถึงจะเริ่มเข้าโหมดไถลเวลาแบบสมูท (Smooth Scrubbing)
+  seekRef.current.timeout = setTimeout(() => {
+    seekRef.current.isHolding = true;
+    seekRef.current.interval = setInterval(() => {
+      setSimulatedTimeMs(prev => prev + (amount > 0 ? 1500 : -1500)); // ไถลเวลาความเร็ว 30X
+    }, 50); // อัปเดตเฟรมเรตทุก 50ms ให้ภาพบนโลกไหลลื่น
+  }, 300); 
+};
+
+const handleSeekUp = (amount) => {
+  clearTimeout(seekRef.current.timeout);
+  if (seekRef.current.interval) clearInterval(seekRef.current.interval);
+  
+  // ถ้าปล่อยเมาส์เร็วกว่า 0.3 วิ (แค่คลิก ไม่ได้กดค้าง) ให้กระโดดทีเดียว 30 วิ
+  if (!seekRef.current.isHolding && amount !== 0) {
+     setSimulatedTimeMs(prev => prev + amount); 
+  }
+  seekRef.current.isHolding = false;
+};
+
   const [isPlaying, setIsPlaying] = useState(true);
   const [speedMult, setSpeedMult] = useState(1);
   const [realtimeSun, setRealtimeSun] = useState(true);
@@ -453,7 +624,43 @@ export default function App() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  
+  // 📍 สมองกลดึงข้อมูลเปอร์เซ็นต์เมฆจาก Open-Meteo API
+  const [cloudCover, setCloudCover] = useState(null);
+  const [isFetchingCloud, setIsFetchingCloud] = useState(false);
+
+  useEffect(() => {
+    const lat = GROUND_STATION.lat;
+    const lng = GROUND_STATION.lng;
+    setIsFetchingCloud(true);
+
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=cloud_cover&forecast_days=3&timezone=UTC`;
+    
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.hourly && data.hourly.cloud_cover) {
+          const nowMs = simulatedTimeMs;
+          let closestIdx = 0;
+          let minDiff = Infinity;
+          
+          data.hourly.time.forEach((tStr, idx) => {
+            const tMs = new Date(tStr + 'Z').getTime();
+            const diff = Math.abs(tMs - nowMs);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closestIdx = idx;
+            }
+          });
+          
+          setCloudCover(data.hourly.cloud_cover[closestIdx]);
+        }
+        setIsFetchingCloud(false);
+      })
+      .catch(err => {
+        console.warn("Cloud API Error:", err);
+        setIsFetchingCloud(false);
+      });
+  }, [Math.floor(simulatedTimeMs / 3600000)]);
 
   // --- ระบบ PASS PREDICTION ---
   const [isPassModalOpen, setIsPassModalOpen] = useState(false);
@@ -612,6 +819,51 @@ export default function App() {
 
  // 📍 ฟันธง: สมองกลควบคุมหน้าต่าง IMAGING PLAN VIEWER
  const [isImgOpen, setIsImgOpen] = useState(false);
+
+ const [customAlert, setCustomAlert] = useState({ show: false, message: '', type: 'success' });
+
+ const [sourcePlans, setSourcePlans] = useState(typeof THEOS2_IMAGING_PLAN !== 'undefined' ? THEOS2_IMAGING_PLAN : []);
+
+// 📍 ฟังก์ชันจัดการเมื่อกดอัปโหลดไฟล์ PDF
+const handlePdfUpload = async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const text = await extractPdfText(file);
+    const parsedData = parsePlanText(text);
+    
+    // 📍 แปลงข้อมูลดิบจาก PDF ให้อยู่ในฟอร์แมตที่ตาราง React เข้าใจ
+    const formattedPlans = parsedData.map(p => {
+      const [dateStr, timeStr] = p.acq_start.split(' ');
+      const [y, m, d] = dateStr.split('/');
+      const [hr, min, sec] = timeStr.split(':');
+      const startDate = new Date(Date.UTC(y, m - 1, d, hr, min, parseFloat(sec)));
+      return {
+        id: p.file_nb,
+        start: startDate,
+        end: new Date(startDate.getTime() + (p.acq_duration_s || 0) * 1000), // 📍 ฟันธง: เติมเวลาจบให้แผนที่ 2D เอาไปคำนวณต่อ
+        duration: p.acq_duration_s || 0
+      };
+    });
+
+    setSourcePlans(formattedPlans);
+    
+    // 📍 เรียก Popup Sci-Fi แทน alert() แบบเก่า
+    setCustomAlert({ 
+      show: true, 
+      message: `สกัดข้อมูลสำเร็จ! พบแผนถ่ายภาพทั้งหมด ${formattedPlans.length} คิว`, 
+      type: 'success' 
+    });
+
+  } catch (error) {
+    setCustomAlert({ 
+      show: true, 
+      message: "เกิดข้อผิดพลาดในการอ่านไฟล์ PDF โปรดลองอีกครั้ง", 
+      type: 'error' 
+    });
+  }
+};
+
  const [imgPos, setImgPos] = useState({ x: 150, y: 100 });
  const [isDraggingImg, setIsDraggingImg] = useState(false);
  const dragImgRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
@@ -620,6 +872,9 @@ export default function App() {
 // 📍 ฟันธง: เพิ่มตัวแปรควบคุมระยะซูมของแผนที่ 2D (ค่าเริ่มต้น = 15 ให้เห็นกว้างระดับภูมิภาค)
 // 📍 ฟันธง: เปลี่ยนมาใช้ระบบเลนส์ซูม (Scale) เริ่มต้นที่ 1X (ระดับโลก)
 const [mapZoom, setMapZoom] = useState(1);
+
+const [imgMapOrigin, setImgMapOrigin] = useState('center center');
+
 const [tacticalZoom, setTacticalZoom] = useState(1);
 // 📍 แทรกบรรทัดนี้ลงไป:
 const [zoomOrigin, setZoomOrigin] = useState('center center');
@@ -935,57 +1190,56 @@ useEffect(() => {
     return [{ points, color: 'rgba(255, 204, 0, 0.8)', stroke: 1.0 }]; 
   }, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000)]);
 
- // 📍 ฟันธง 2: สมองกลคำนวณและวาดแถบพื้นที่ Swath (แถบพิซซ่าแนวราบแบบหนา บนลูกโลก 3D)
- const imagingSwathPaths = useMemo(() => {
+ // 📍 ฟันธง 2: ระบบวาดเส้นแดงบน 3D (อัปเกรดให้รองรับไฟล์ PDF และกันบั๊กเวลา)
+const imagingSwathPaths = useMemo(() => {
   if (!targetSatrec || selectedCatnr !== '58016') return []; 
-
   const paths = [];
-  THEOS2_IMAGING_PLAN.forEach(plan => {
+  
+  sourcePlans.forEach(plan => {
     const points = [];
-    // สแกนคำนวณพิกัดทีละ 1 วินาที เพื่อสร้างแนวเส้นอย่างละเอียด
+    // แปลงเวลาให้เป็นตัวเลข Number ที่แน่นอน ป้องกันบั๊ก String ทับซ้อน
+    const pStart = new Date(plan.start).getTime();
+    const pEnd = new Date(plan.end).getTime();
 
-    // 📍 ฟันธง: ถ้าเวลาจำลองเลยเวลาปิดกล้องไปแล้ว (หมดคิว) ให้ตัดทิ้งไม่วาดลงโลก 3D อีกต่อไป!
-    if (simulatedTimeMs > plan.end) return;
+    if (simulatedTimeMs > pEnd) return;
 
-    for (let t = plan.start; t <= plan.end; t += 1000) {
+    for (let t = pStart; t <= pEnd; t += 1000) {
       const pos = calculateSatData(new Date(t), targetSatrec);
       if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-        // 📍 ฟันธง: ดันระดับความสูงลงไปทาบติดพื้นผิวโลก (alt: 0.002) เพื่อจำลอง Ground Swath ที่แท้จริง
         points.push({ lat: pos.lat, lng: pos.lng, alt: 0.002 });
       }
     }
+    
     if (points.length >= 2) {
-      const isImagingNow = simulatedTimeMs >= plan.start && simulatedTimeMs <= plan.end;
+      const isImagingNow = simulatedTimeMs >= pStart && simulatedTimeMs <= pEnd;
       paths.push({ 
         points, 
-        // สีแดงทึบตอนกล้องเปิดทำงาน / สีส้มอมแดงโปร่งแสงตอนเป็นแค่แผนล่วงหน้า
         color: isImagingNow ? 'rgba(255, 51, 51, 1)' : 'rgba(255, 100, 51, 0.45)', 
-        // ปรับความกว้าง (Stroke) เป็น 6.0 ให้หนาเตอะดูเป็นชิ้น Plane จริงๆ
         stroke: isImagingNow ? 6.0 : 4.0 
       });
     }
   });
   return paths;
-}, [selectedCatnr, targetSatrec, simulatedTimeMs]);
+}, [selectedCatnr, targetSatrec, simulatedTimeMs, sourcePlans]);
 
 
 // 📍 ฟันธง 3: สมองกลสกัดข้อมูลพิกัด (Lat/Lng) จาก THEOS2_IMAGING_PLAN เพื่อเอาไปวาดบนหน้าต่างแผนที่ 2D
 const imagingPlansData = useMemo(() => {
   if (!satrecs['58016']) return [];
   const rec = satrecs['58016'];
-  return THEOS2_IMAGING_PLAN.map((plan, idx) => {
+  return sourcePlans.map((plan, idx) => {
     const startPos = calculateSatData(new Date(plan.start), rec);
     const endPos = calculateSatData(new Date(plan.end), rec);
     const duration = (plan.end - plan.start) / 1000;
     return {
-      id: idx,
+      id: plan.id,
       ...plan,
       startLat: startPos?.lat, startLng: startPos?.lng,
       endLat: endPos?.lat, endLng: endPos?.lng,
       duration
     };
   });
-}, [satrecs]);
+}, [satrecs, sourcePlans]);
 
   const groundTrackPath = useMemo(() => {
     if (!targetSatrec || !showGroundTrack) return [];
@@ -1227,7 +1481,7 @@ useEffect(() => {
   }, [linkActive, targetData]);
 
   const radarContainerRef = useRef(null);
-  const [radarDim, setRadarDim] = useState({ w: 360, h: 420 });
+  const [radarDim, setRadarDim] = useState({ w: 360, h: 460 });
 
   useEffect(() => {
     if (!radarContainerRef.current) return;
@@ -1240,8 +1494,9 @@ useEffect(() => {
 
   const radarLayout = useMemo(() => {
     const uiScale = Math.max(1, Math.min(1.8, radarDim.w / 360)); 
-    const topMargin = 70 * uiScale; 
-    const bottomMargin = 45 * uiScale;
+    // 📍 ฟันธง: เพิ่ม Margin บนและล่าง เพื่อสร้าง Safe Zone ให้ตัวหนังสือลอยได้อย่างอิสระ ไม่บัง UI
+    const topMargin = 95 * uiScale; 
+    const bottomMargin = 65 * uiScale;
     const sideMargin = 45 * uiScale;
     const R = Math.max(50, Math.min(radarDim.w - sideMargin * 2, radarDim.h - topMargin - bottomMargin) / 2);
     const cx = radarDim.w / 2;
@@ -1634,32 +1889,39 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
             </button>
 
             <div className="global-clock-hud" style={{ margin: 0 }}>
-              {(() => {
+              {/* 📍 บังคับจัดเรียงเวลา 3 โซนให้อยู่แนวนอนบรรทัดเดียวกันเป๊ะ! */}
+              <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                <div className="clock-item">
+                  <span>THA LOCAL</span>
+                  <strong>{formatTime(thaiTime)}</strong>
+                </div>
+                <div className="clock-item doy-item">
+                  <span>DOY</span>
+                  <strong>{pad3(getUtcDayOfYear(currentDate))}</strong>
+                </div>
+                <div className="clock-item">
+                  <span>UTC</span>
+                  <strong>{formatTime(currentDate)}</strong>
+                </div>
+              </div>
+
+            {/* 📍 ป้ายสถานะ LIVE/SIM ด้านล่างสุดของกล่อง */}
+            {(() => {
                 const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
                  return (
-                   <div className={`status-badge ${isLive ? 'live' : 'sim'}`}>
-                     {isLive ? '🔴 LIVE OPERATIONS' : '🟡 SIMULATION MODE'}
+                   <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ position: 'relative', top: '0', transform: 'none', width: '100%', marginTop: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                     {/* 📍 เปลี่ยนอีโมจิให้ตรงกับหลักสากล 🟢 = Live / 🟠 = Sim */}
+                     {isLive ? '🟢 LIVE OPERATIONS' : '🟠 SIMULATION MODE'}
                    </div>
                  );
               })()}
-              <div className="clock-item">
-                <span>THA LOCAL</span>
-                <strong>{formatTime(thaiTime)}</strong>
-              </div>
-              <div className="clock-item doy-item"> {/* ใส่คลาส doy-item */}
-                <span>DOY</span>
-                <strong>{pad3(getUtcDayOfYear(currentDate))}</strong>
-              </div>
-              <div className="clock-item">
-                <span>UTC</span>
-                <strong>{formatTime(currentDate)}</strong>
-              </div>
+
             </div>
 
           </div>
           
           {isLeftPanelOpen && (
-          <div className="left-panel" style={{ width: '425px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+         <div className="left-panel" style={{ width: '461px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '15px' }}>
             
             {/* 📍 ฟันธง: หัวข้อ SATELLITE ORBIT จัดกึ่งกลาง ขยายใหญ่ และเรืองแสง */}
             <div className="panel-box" style={{ textAlign: 'center', padding: '20px 15px', background: 'rgba(0, 10, 20, 0.45)', border: '1px solid rgba(0, 234, 255, 0.5)', borderRadius: '4px', boxShadow: '0 0 20px rgba(0, 234, 255, 0.2) inset' }}>
@@ -1668,7 +1930,28 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
             </div>
             {/* ... (โค้ดส่วนอื่นที่เป็นธงชาติ หรือ NEXT PASS ปล่อยไว้เหมือนเดิมครับ) ... */}
 
-          
+          {/* ☁️ CLOUD COVER FORECAST HUD */}
+          <div className="panel-box" style={{ padding: '15px 20px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px' }}>
+                <span style={{ fontFamily: 'Orbitron', fontSize: '13px', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px' }}>☁️ ATMOSPHERIC CLOUD COVER</span>
+                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani' }}>OPEN-METEO API</span>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase' }}>Optical Viability</div>
+                  <div style={{ fontSize: '16px', fontFamily: 'Orbitron', fontWeight: 'bold', color: cloudCover < 30 ? 'var(--green)' : (cloudCover < 70 ? 'var(--gold)' : 'var(--red)') }}>
+                    {cloudCover === null ? 'ANALYZING...' : (cloudCover < 30 ? 'NOMINAL (CLEAR)' : (cloudCover < 70 ? 'MODERATE CLOUDS' : 'HIGH OBSCUREMENT'))}
+                  </div>
+                </div>
+                
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '28px', fontFamily: 'Orbitron', fontWeight: '900', color: '#fff', textShadow: '0 0 10px var(--cyan)' }}>
+                    {isFetchingCloud ? '--' : `${cloudCover}%`}
+                  </div>
+                </div>
+              </div>
+            </div>
 
               <div className="panel-box mission-status">
                 <div className="target-header">
@@ -1815,30 +2098,61 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
           {isRightPanelOpen && (
            <div className="right-panel">
               
-           {/* กลุ่มที่ 1: การควบคุมเวลาและความเร็ว */}
-           <div className="control-group">
-             <p>TIME & PLAYBACK</p>
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '10px' }}>
-               <button className={`btn ${!isPlaying ? 'active' : ''}`} style={{ marginBottom: 0, fontSize: '13px', letterSpacing: '1px' }} onClick={() => setIsPlaying(false)}>PAUSE</button>
-               <button className={`btn ${isPlaying ? 'active' : ''}`} style={{ marginBottom: 0, fontSize: '13px', letterSpacing: '1px' }} onClick={() => setIsPlaying(true)}>PLAY</button>
-               <button className="btn" style={{ marginBottom: 0, fontSize: '13px', letterSpacing: '1px' }} onClick={() => { 
-                // 1. คืนเวลาเป็นปัจจุบัน และคืนความเร็ว 1X
-                setSimulatedTimeMs(Date.now()); 
-                setSpeedMult(1); 
-                setIsPlaying(true); 
-                
-                // 2. ปลดล็อกกล้อง และดึงมุมมองกลับมาที่ GISTDA
+        {/* กลุ่มที่ 1: การควบคุมเวลาและความเร็ว */}
+        <div className="control-group">
+              <p>TIME & PLAYBACK</p>
+              
+              {/* แถว 1: ปุ่มเครื่องเล่นเทป (Media Controls) ถอย/เดินหน้า ทีละ 30 วินาที หรือกดค้างเพื่อไถลเวลา */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                <button 
+                  className="btn media-btn" 
+                  onMouseDown={() => handleSeekDown(-30000)} 
+                  onMouseUp={() => handleSeekUp(-30000)} 
+                  onMouseLeave={() => handleSeekUp(0)} /* เผื่อลากเมาส์หลุดขอบปุ่ม */
+                  onTouchStart={() => handleSeekDown(-30000)} 
+                  onTouchEnd={() => handleSeekUp(-30000)}
+                >
+                  <span className="icon">⏪</span>
+                  <span className="label">-30S</span>
+                </button>
+                <button className={`btn media-btn btn-pause ${!isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(false)}>
+                  <span className="icon">⏸</span>
+                  <span className="label">PAUSE</span>
+                </button>
+                <button className={`btn media-btn ${isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(true)}>
+                  <span className="icon">▶</span>
+                  <span className="label">PLAY</span>
+                </button>
+                <button 
+                  className="btn media-btn" 
+                  onMouseDown={() => handleSeekDown(30000)} 
+                  onMouseUp={() => handleSeekUp(30000)} 
+                  onMouseLeave={() => handleSeekUp(0)}
+                  onTouchStart={() => handleSeekDown(30000)} 
+                  onTouchEnd={() => handleSeekUp(30000)}
+                >
+                  <span className="icon">⏩</span>
+                  <span className="label">+30S</span>
+                </button>
+              </div>
+
+              {/* แถว 2: ความเร็ว */}
+              <div className="speed-row">
+                {[1, 100, 300, 500].map(s => (
+                  <button key={s} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, fontSize: '14px'}} onClick={() => setSpeedMult(s)}>{s}X</button>
+                ))}
+              </div>
+
+              {/* แถว 3: ปุ่ม RESET ขยายเต็มความกว้าง */}
+              <button className="btn" style={{ marginBottom: 0, marginTop: '8px', fontSize: '14px', letterSpacing: '1px' }} onClick={() => {
+                setSimulatedTimeMs(Date.now());
+                setSpeedMult(1);
+                setIsPlaying(true);
                 isTrackingRef.current = false;
                 setCameraMode('FREE LOOK');
                 if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
-              }}>RESET</button>
-             </div>
-             <div className="speed-row">
-               {[1, 100, 300, 500].map(s => (
-                 <button key={s} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0}} onClick={() => setSpeedMult(s)}>{s}X</button>
-               ))}
-             </div>
-           </div>
+              }}>RESET TO LIVE</button>
+            </div>
 
            {/* กลุ่มที่ 2: การแสดงผลมุมมอง */}
            <div className="control-group">
@@ -2030,88 +2344,98 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
       </div>
       
 {/* --- SKP GISTDA GROUND STATION (ป๊อปอัปขยายได้อิสระ + Auto-Scale) --- */}
-      {isGsModalOpen && (
+{isGsModalOpen && (
         <div className="modal-box gs-modal" onMouseDownCapture={() => bringToFront('gs')} style={{ 
           position: 'fixed', 
           top: maximizedWins.gs ? '0px' : `${gsPos.y}px`, 
           left: maximizedWins.gs ? '0px' : `${gsPos.x}px`, 
-          width: maximizedWins.gs ? '100vw' : '380px', 
-          height: maximizedWins.gs ? '100vh' : '350px', 
-          minWidth: '300px', minHeight: '280px',
+          width: maximizedWins.gs ? '100vw' : '480px', /* 📍 ขยายความกว้างให้อ่านสบายตาขึ้น */
+          height: maximizedWins.gs ? '100vh' : '560px', /* 📍 ขยายความสูงเริ่มต้นเป็น 560px เพื่อให้เห็นข้อมูลครบถ้วนโดยไม่ต้องเลื่อน */
+          minWidth: '400px', minHeight: '450px',
           maxWidth: 'none', maxHeight: 'none', 
           resize: maximizedWins.gs ? 'none' : 'both', overflow: 'hidden', padding: '0',
-          background: 'rgba(0, 10, 25, 0.65)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-          border: maximizedWins.gs ? 'none' : '1px solid var(--cyan)', 
-          borderRadius: maximizedWins.gs ? '0px' : '6px',
-          boxShadow: '0 0 30px rgba(0, 234, 255, 0.15)', display: 'flex', flexDirection: 'column', containerType: 'inline-size',
+          background: 'linear-gradient(145deg, rgba(20, 5, 0, 0.92) 0%, rgba(10, 2, 0, 0.98) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+          border: maximizedWins.gs ? 'none' : '2px solid #FF6600', 
+          borderRadius: maximizedWins.gs ? '0px' : '12px',
+          boxShadow: '0 0 50px rgba(255, 102, 0, 0.4), inset 0 0 20px rgba(255, 102, 0, 0.2)', 
+          display: 'flex', flexDirection: 'column', containerType: 'inline-size',
           zIndex: windowZ?.gs || 9999,
-          transition: isDraggingGs ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)' // 📍 ฟันธง: อนิเมชันแบบ Windows
+          transition: isDraggingGs ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)' 
         }}>
+          
+          {/* 📍 ปรับสมดุลสีตามหลัก UX: แยกสีส้มและสีขาวเพื่อให้มองง่ายแยกแยะข้อมูลชัดเจน */}
           <style>{`
-            .gs-modal .gs-header-text { font-size: clamp(14px, 4.5cqw, 35px) !important; }
-            .gs-modal .gs-icon { font-size: clamp(16px, 5cqw, 40px) !important; margin-right: clamp(4px, 1.5cqw, 15px) !important; }
-            .gs-modal .gs-label { font-size: clamp(11px, 3.5cqw, 26px) !important; }
-            .gs-modal .gs-value { font-size: clamp(12px, 3.8cqw, 28px) !important; }
-            .gs-modal .gs-row { padding-bottom: clamp(6px, 1.5cqw, 20px) !important; }
-            .gs-modal .gs-status-box { padding: clamp(8px, 2cqw, 25px) !important; margin-top: clamp(5px, 1cqw, 15px) !important; }
+            .gs-modal .gs-header-text { font-size: 22px !important; }
+            .gs-modal .gs-icon { font-size: 24px !important; filter: drop-shadow(0 0 5px #FF6600); }
+            .gs-modal .gs-row { padding: 14px 0 !important; display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(255, 102, 0, 0.3) !important; align-items: center; }
+            .gs-modal .gs-row:last-child { border-bottom: none !important; }
+            .gs-modal .gs-label { font-size: 14px !important; color: rgba(255,255,255,0.7) !important; font-weight: bold; letter-spacing: 1px; }
+            .gs-modal .gs-value { font-size: 16px !important; color: #fff !important; font-weight: 900 !important; text-shadow: 0 0 8px rgba(255, 255, 255, 0.4); text-align: right; }
+            .gs-modal .gs-value.highlight { color: #FF6600 !important; text-shadow: 0 0 10px rgba(255, 102, 0, 0.6); }
             .gs-no-scroll::-webkit-scrollbar { display: none; }
             .gs-no-scroll { -ms-overflow-style: none; scrollbar-width: none; }
           `}</style>
           
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 15px', borderBottom: '1px solid rgba(0, 234, 255, 0.3)', background: 'rgba(0, 234, 255, 0.1)', cursor: maximizedWins.gs ? 'default' : (isDraggingGs ? 'grabbing' : 'grab'), flexShrink: 0 }} onMouseDown={(e) => { if(!maximizedWins.gs) handleGsMouseDown(e); }}>
-            <div style={{ color: 'var(--cyan)', fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '1px', display: 'flex', alignItems: 'center', pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-              <span className="gs-icon">📡</span> <span className="gs-header-text" style={{ textOverflow: 'ellipsis', overflow: 'hidden' }}>GROUND STATION</span>
+          <div className="modal-header" style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', cursor: maximizedWins.gs ? 'default' : (isDraggingGs ? 'grabbing' : 'grab'), flexWrap: 'nowrap', borderBottom: '2px solid rgba(255, 102, 0, 0.5)', background: 'linear-gradient(180deg, rgba(255, 102, 0, 0.15) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(255, 102, 0, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.gs) handleGsMouseDown(e); }}>
+            <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center' }}>
+               <span className="gs-icon">📡</span>
             </div>
-            {/* 📍 ฟันธง: เพิ่มปุ่ม Maximize (🗖) */}
-            <div style={{ position: 'absolute', right: '15px', display: 'flex', gap: '8px' }}>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '14px', flexShrink: 0, borderColor: 'var(--cyan)', color: 'var(--cyan)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('gs'); }}>{maximizedWins.gs ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '14px', flexShrink: 0, borderColor: 'var(--cyan)', color: 'var(--cyan)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsGsModalOpen(false); }}>✕</button>
+            
+            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(255, 102, 0, 0.1)', border: '1px solid #FF6600', padding: '6px 20px', borderRadius: '6px', margin: '0 10px', whiteSpace: 'nowrap', boxShadow: 'inset 0 0 10px rgba(255, 102, 0, 0.2)' }}>
+              <span style={{ color: '#fff', fontSize: '15px', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px #FF6600', pointerEvents: 'none' }}>
+                SKP GROUND STATION
+              </span>
+            </div>
+
+            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', flexShrink: 0, border: '1px solid #FF6600', color: '#FF6600', background: 'rgba(0,0,0,0.5)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('gs'); }}>{maximizedWins.gs ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', flexShrink: 0, border: '1px solid #FF6600', color: '#FF6600', background: 'rgba(0,0,0,0.5)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsGsModalOpen(false); }}>✕</button>
             </div>
           </div>
           
-          <div className="gs-no-scroll" style={{ padding: '15px', display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', gap: '2cqw', fontFamily: 'Rajdhani', letterSpacing: '0.5px' }}>
-            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
-              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>LOCATION:</span>
-              <span className="gs-value" style={{ color: '#fff', fontWeight: 'bold' }}>SKP Sri Racha Chonburi</span>
+          <div className="gs-no-scroll" style={{ padding: '20px 30px', display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', fontFamily: 'Rajdhani', letterSpacing: '0.5px' }}>
+            <div className="gs-row">
+              <span className="gs-label">LOCATION:</span>
+              <span className="gs-value">SKP Sri Racha Chonburi</span>
             </div>
-            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
-              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>LATITUDE:</span>
-              <span className="gs-value" style={{ color: 'var(--cyan)' }}>13.1522° N</span>
+            <div className="gs-row">
+              <span className="gs-label">LATITUDE:</span>
+              <span className="gs-value highlight">13.1522° N</span>
             </div>
-            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
-              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>LONGITUDE:</span>
-              <span className="gs-value" style={{ color: 'var(--cyan)' }}>101.1205° E</span>
+            <div className="gs-row">
+              <span className="gs-label">LONGITUDE:</span>
+              <span className="gs-value highlight">101.1205° E</span>
             </div>
-            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
-              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>ALTITUDE (ASL):</span>
-              <span className="gs-value" style={{ color: '#fff' }}>17 m</span>
+            <div className="gs-row">
+              <span className="gs-label">ALTITUDE (ASL):</span>
+              <span className="gs-value">17 m</span>
             </div>
-            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
-              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>S-BAND (TT&C):</span>
-              <span className="gs-value" style={{ color: '#fff', fontWeight: 'bold' }}>2.0 - 2.3 GHz</span>
+            <div className="gs-row">
+              <span className="gs-label">S-BAND (TT&C):</span>
+              <span className="gs-value">2.0 - 2.3 GHz</span>
             </div>
-            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
-              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>X-BAND (DOWNLINK):</span>
-              <span className="gs-value" style={{ color: '#fff', fontWeight: 'bold' }}>8.0 - 8.4 GHz</span>
+            <div className="gs-row">
+              <span className="gs-label">X-BAND (DOWNLINK):</span>
+              <span className="gs-value">8.0 - 8.4 GHz</span>
             </div>
-            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
-              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>SYSTEM HARDWARE:</span>
-              <span className="gs-value" style={{ color: '#fff' }}>VIASAT / KRATOS</span>
+            <div className="gs-row">
+              <span className="gs-label">SYSTEM HARDWARE:</span>
+              <span className="gs-value">VIASAT / KRATOS</span>
             </div>
-            <div className="gs-row" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.1)' }}>
-              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.6)' }}>HORIZON MASK:</span>
-              <span className="gs-value" style={{ color: '#fff' }}>5.0°</span>
+            <div className="gs-row">
+              <span className="gs-label">HORIZON MASK:</span>
+              <span className="gs-value">5.0°</span>
             </div>
-            <div className="gs-status-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: linkActive ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 255, 255, 0.05)', borderRadius: '4px', border: `1px solid ${linkActive ? 'var(--green)' : 'rgba(255,255,255,0.2)'}` }}>
+            
+            <div className="gs-status-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: linkActive ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 102, 0, 0.1)', borderRadius: '6px', border: `1px solid ${linkActive ? 'var(--green)' : '#FF6600'}`, boxShadow: `inset 0 0 15px ${linkActive ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 102, 0, 0.2)'}`, padding: '15px', marginTop: '15px' }}>
               <span className="gs-label" style={{ color: 'rgba(255,255,255,0.8)' }}>ANTENNA STATUS:</span>
-              <span className="gs-value" style={{ color: linkActive ? 'var(--green)' : 'var(--gold)', fontWeight: 'bold', animation: linkActive ? 'pulse-glow 2s infinite' : 'none' }}>
+              <span className="gs-value highlight" style={{ color: linkActive ? 'var(--green)' : '#FF6600', fontWeight: 'bold', textShadow: `0 0 10px ${linkActive ? 'var(--green)' : '#FF6600'}`, animation: linkActive ? 'pulse-glow 2s infinite' : 'none' }}>
                 {linkActive ? 'TRACKING (LOCKED)' : 'STANDBY'}
               </span>
             </div>
           </div>
         </div>
       )}
-
       {/* --- SATELLITE DATABASE --- */}
       {isModalOpen && (
         <div className="modal-box db-modal" onMouseDownCapture={() => bringToFront('db')} style={{ 
@@ -2122,37 +2446,61 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
           height: maximizedWins.db ? '100vh' : '600px', 
           minWidth: '400px', minHeight: '300px',
           maxWidth: 'none', maxHeight: 'none', resize: maximizedWins.db ? 'none' : 'both', overflow: 'hidden', 
-          background: 'rgba(0, 10, 25, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-          border: maximizedWins.db ? 'none' : '1px solid rgba(0, 234, 255, 0.5)', 
-          borderRadius: maximizedWins.db ? '0px' : '4px', 
-          boxShadow: '0 0 30px rgba(0, 234, 255, 0.2)', display: 'flex', flexDirection: 'column', containerType: 'inline-size',
+          background: 'linear-gradient(145deg, rgba(0, 10, 25, 0.9) 0%, rgba(0, 5, 10, 0.95) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+         border: maximizedWins.db ? 'none' : '2px solid var(--cyan)', 
+         borderRadius: maximizedWins.db ? '0px' : '12px', 
+         boxShadow: '0 0 40px rgba(0, 234, 255, 0.4), inset 0 0 20px rgba(0, 234, 255, 0.2)', display: 'flex', flexDirection: 'column', containerType: 'inline-size',
           zIndex: windowZ.db,
           transition: isDraggingDb ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
         }}>
+
+          {/* 📍 ปลดล็อกขนาดตัวอักษรไม่ให้ขยายจนล้นจอ และอัปเกรดแถบชื่อหมวดหมู่ */}
           <style>{`
-            .db-modal .modal-header h2 { font-size: clamp(16px, 2.5cqw, 40px) !important; }
-            .db-modal .modal-clear-btn { font-size: clamp(10px, 1.2cqw, 22px) !important; padding: clamp(4px, 0.5cqw, 15px) clamp(10px, 1cqw, 25px) !important; }
-            .db-modal .modal-group-title { font-size: clamp(12px, 1.5cqw, 28px) !important; }
-            .db-modal .group-toggle-btn { font-size: clamp(10px, 1.2cqw, 22px) !important; }
-            .db-modal .modal-sat-btn { font-size: clamp(13px, 1.6cqw, 30px) !important; padding: clamp(10px, 1.5cqw, 30px) clamp(15px, 2cqw, 40px) !important; }
+            .db-modal .modal-header h2 { font-size: 22px !important; }
+            .db-modal .modal-clear-btn { font-size: 12px !important; padding: 6px 15px !important; }
+            .db-modal .modal-sat-btn { font-size: 14px !important; padding: 12px 20px !important; }
+            
+            /* 📍 อัปเกรดเส้นแบ่งหมวดหมู่ดาวเทียมให้เป็นแถบ Banner เรืองแสง */
+            .db-modal .group-header-row { 
+              display: flex; justify-content: space-between; align-items: center; 
+              background: linear-gradient(90deg, rgba(0, 234, 255, 0.15) 0%, transparent 100%);
+              border-left: 4px solid var(--cyan);
+              border-bottom: 1px solid rgba(0, 234, 255, 0.3);
+              padding: 10px 15px;
+              margin-top: 10px;
+              margin-bottom: 15px;
+              border-radius: 4px;
+              box-shadow: 0 5px 15px -5px rgba(0, 234, 255, 0.2);
+            }
+            .db-modal .modal-group-title { 
+              color: #fff !important; font-size: 16px !important; font-weight: 900 !important; 
+              letter-spacing: 2px !important; text-transform: uppercase !important; 
+              font-family: 'Orbitron', sans-serif !important; 
+              text-shadow: 0 0 10px var(--cyan) !important; 
+              border: none !important; margin: 0 !important; padding: 0 !important;
+            }
           `}</style>
 
-          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', cursor: maximizedWins.db ? 'default' : (isDraggingDb ? 'grabbing' : 'grab'), flexWrap: 'nowrap' }} onMouseDown={(e) => { if(!maximizedWins.db) handleDbMouseDown(e); }}>
+          {/* Header */}
+          <div className="modal-header" style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', cursor: maximizedWins.db ? 'default' : (isDraggingDb ? 'grabbing' : 'grab'), flexWrap: 'nowrap', borderBottom: '2px solid rgba(0, 234, 255, 0.5)', background: 'linear-gradient(180deg, rgba(0, 234, 255, 0.15) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(0, 234, 255, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.db) handleDbMouseDown(e); }}>
+            
             <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center' }}>
-               <span style={{fontSize:'22px', pointerEvents: 'none'}}>🛰️</span>
+               <span style={{fontSize:'24px', pointerEvents: 'none', filter: 'drop-shadow(0 0 5px var(--cyan))'}}>🛰️</span>
             </div>
-            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(0, 234, 255, 0.1)', border: '1px solid rgba(0, 234, 255, 0.5)', padding: '4px 20px', borderRadius: '4px', margin: '0 10px', whiteSpace: 'nowrap' }}>
-              <span style={{ color: '#fff', fontSize: '15px', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
+            
+            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(0, 234, 255, 0.1)', border: '1px solid var(--cyan)', padding: '6px 25px', borderRadius: '6px', margin: '0 10px', whiteSpace: 'nowrap', boxShadow: 'inset 0 0 10px rgba(0,234,255,0.2)' }}>
+              <span style={{ color: '#fff', fontSize: '16px', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
                 SATELLITES DATABASE
               </span>
             </div>
+            
             <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
-              <button className="modal-clear-btn" style={{ margin: 0, padding: '4px 10px', fontSize: '11px', whiteSpace: 'nowrap' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setSelectedCatnrs([selectedCatnr]); }} title="Remove all secondary satellites">
+              <button className="modal-clear-btn" style={{ margin: 0, padding: '6px 12px', fontSize: '12px', whiteSpace: 'nowrap', background: 'rgba(255, 204, 0, 0.1)', color: 'var(--gold)', border: '1px solid var(--gold)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setSelectedCatnrs([selectedCatnr]); }} title="Remove all secondary satellites">
                 🧹 CLEAR
               </button>
-              {/* 📍 ฟันธง: เพิ่มปุ่ม Maximize (🗖) */}
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', flexShrink: 0, borderColor: 'var(--cyan)', color: 'var(--cyan)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('db'); }}>{maximizedWins.db ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '14px', flexShrink: 0 }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsModalOpen(false); }}>✕</button>
+              {/* 📍 แก้ปุ่มเป็นสีฟ้า Cyan ให้สว่าง ไม่ดำกลืนไปกับพื้น */}
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', flexShrink: 0, border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,0,0,0.5)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('db'); }}>{maximizedWins.db ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', flexShrink: 0, border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,0,0,0.5)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsModalOpen(false); }}>✕</button>
             </div>
           </div>
           
@@ -2220,10 +2568,10 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
           height: maximizedWins.pass ? '100vh' : '550px', 
           minWidth: '500px', minHeight: '350px',
           maxWidth: 'none', maxHeight: 'none', resize: maximizedWins.pass ? 'none' : 'both', overflow: 'hidden', 
-          background: 'rgba(0, 10, 25, 0.65)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-          border: maximizedWins.pass ? 'none' : '1px solid rgba(255, 204, 0, 0.5)', 
-          borderRadius: maximizedWins.pass ? '0px' : '4px', 
-          boxShadow: '0 0 30px rgba(255, 204, 0, 0.15)', display: 'flex', flexDirection: 'column', containerType: 'inline-size',
+          background: 'linear-gradient(145deg, rgba(20, 10, 0, 0.9) 0%, rgba(10, 5, 0, 0.95) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+         border: maximizedWins.pass ? 'none' : '2px solid var(--gold)', 
+         borderRadius: maximizedWins.pass ? '0px' : '12px', 
+         boxShadow: '0 0 40px rgba(255, 204, 0, 0.4), inset 0 0 20px rgba(255, 204, 0, 0.2)', display: 'flex', flexDirection: 'column', containerType: 'inline-size',
           zIndex: windowZ.pass,
           transition: isDraggingPass ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
         }}>
@@ -2295,65 +2643,57 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
         </div>
       )}
 
-      {/* --- RADAR SKYPLOT --- */}
-      {isRadarOpen && (
+     {/* --- RADAR SKYPLOT --- */}
+     {isRadarOpen && (
         <div ref={radarContainerRef} className="radar-perfect-scale" onMouseDownCapture={() => bringToFront('radar')} style={{
           position: 'fixed', 
           top: maximizedWins.radar ? '0px' : `${radarPos.y}px`, 
           left: maximizedWins.radar ? '0px' : `${radarPos.x}px`, 
-          width: maximizedWins.radar ? '100vw' : '360px', 
-          height: maximizedWins.radar ? '100vh' : '420px', 
-          minWidth: '300px', minHeight: '350px', overflow: 'hidden', 
+          width: maximizedWins.radar ? '100vw' : '440px', /* 📍 ขยายความกว้างเริ่มต้นจาก 360px เป็น 440px */
+          height: maximizedWins.radar ? '100vh' : '520px', /* 📍 ขยายความสูงเริ่มต้นจาก 460px เป็น 520px */
+          minWidth: '350px', minHeight: '400px', overflow: 'hidden',
           resize: maximizedWins.radar ? 'none' : 'both',
-          background: 'rgba(0, 10, 20, 0.45)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-          border: maximizedWins.radar ? 'none' : '1px solid var(--green)', 
-          borderRadius: maximizedWins.radar ? '0px' : '8px', 
-          boxShadow: '0 0 30px rgba(0, 255, 102, 0.2)',
+          background: 'linear-gradient(145deg, rgba(0, 20, 10, 0.9) 0%, rgba(0, 10, 5, 0.95) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+          border: maximizedWins.radar ? 'none' : '2px solid var(--green)', 
+          borderRadius: maximizedWins.radar ? '0px' : '12px', 
+          boxShadow: '0 0 40px rgba(0, 255, 102, 0.4), inset 0 0 20px rgba(0, 255, 102, 0.2)',
           zIndex: windowZ.radar,
           transition: isDraggingRadar ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
         }}>
           
-          <svg width="100%" height="100%" style={{ display: 'block' }}>
-            {/* Header พื้นที่ลากได้ */}
-            <rect x="0" y="0" width={radarDim.w - 40} height={40 * radarLayout.uiScale} fill="transparent" cursor={maximizedWins.radar ? 'default' : (isDraggingRadar ? 'grabbing' : 'grab')} onMouseDown={(e) => { if(!maximizedWins.radar) handleRadarMouseDown(e); }} />
-            <line x1="10" y1={40 * radarLayout.uiScale} x2={radarDim.w - 10} y2={40 * radarLayout.uiScale} stroke="var(--green)" strokeDasharray="3 3" opacity="0.5" />
-            <text x="15" y={28 * radarLayout.uiScale} fill="var(--green)" fontSize={14 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron">📡 AZ/EL</text>
-            
-            {/* ธงชาติและชื่อดาวเทียม */}
-            {(() => {
-              const sat = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr);
-              if (!sat) return null;
-              const s = radarLayout.uiScale; 
-              return (
-                <g style={{ pointerEvents: 'none' }} transform={`translate(${radarDim.w / 2}, ${20 * s})`}>
-                  <rect x={-70 * s} y={-14 * s} width={140 * s} height={28 * s} rx={4 * s} fill="rgba(0,255,102,0.2)" stroke="rgba(0,255,102,0.5)" />
-                  {sat.flag && <image href={`https://flagcdn.com/w20/${sat.flag.toLowerCase()}.png`} x={-60 * s} y={-8 * s} width={16 * s} height={16 * s} />}
-                  <text x={sat.flag ? -35 * s : 0} y={4 * s} fill="#fff" fontSize={12 * s} fontWeight="bold" fontFamily="Orbitron" textAnchor={sat.flag ? "start" : "middle"}>{sat.displayName}</text>
-                </g>
-              );
-            })()}
+          {/* 📍 1. สร้าง Header แบบ HTML เหมือนหน้าต่างอื่น แก้อาการปุ่มวิ่งหนีและซ้อนทับ! */}
+          <div className="modal-header" style={{ position: 'absolute', top: 0, left: 0, width: '100%', zIndex: 20, borderBottom: '2px solid rgba(0, 255, 102, 0.5)', padding: '12px 15px', cursor: maximizedWins.radar ? 'default' : (isDraggingRadar ? 'grabbing' : 'grab'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(0, 255, 102, 0.2) 0%, transparent 100%)', boxShadow: '0 10px 20px -5px rgba(0, 255, 102, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.radar) handleRadarMouseDown(e); }}>
+              {/* ซ้าย: ว่างไว้ดันให้ตรงกลาง */}
+              <div style={{ flex: 1 }}></div>
+              
+              {/* 📍 2. จัดกึ่งกลางชื่อดาวเทียมและธงชาติ */}
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: '18px', textShadow: '0 0 10px var(--green)', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+                {(() => {
+                  const sat = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr);
+                  if (!sat) return null;
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0, 255, 102, 0.1)', border: '1px solid rgba(0, 255, 102, 0.4)', padding: '4px 15px', borderRadius: '6px', boxShadow: '0 0 10px rgba(0, 255, 102, 0.2)' }}>
+                      {sat.flag && <img src={`https://flagcdn.com/w20/${sat.flag.toLowerCase()}.png`} style={{ width: '22px', marginRight: '10px', borderRadius: '2px', boxShadow: '0 0 5px var(--green)' }} alt="flag" />}
+                      {sat.displayName}
+                    </div>
+                  );
+                })()}
+              </div>
+              
+              {/* ขวา: ปุ่ม Audio, Maximize, Close */}
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
+                <button onClick={() => setIsMuted(!isMuted)} style={{ background: isMuted ? 'rgba(255, 51, 51, 0.15)' : 'rgba(0, 255, 102, 0.15)', border: `1px solid ${isMuted ? 'var(--red)' : 'var(--green)'}`, color: isMuted ? 'var(--red)' : 'var(--green)', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Rajdhani', fontWeight: 'bold', fontSize: '12px', transition: 'all 0.2s' }}>
+                  {isMuted ? '🔇 MUTE' : '🔊 AUDIO'}
+                </button>
+                <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', padding: 0, borderColor: 'var(--green)', color: 'var(--green)' }} onClick={() => toggleMaximize('radar')}>{maximizedWins.radar ? '🗗' : '🗖'}</button>
+                <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', padding: 0, borderColor: 'var(--green)', color: 'var(--green)' }} onClick={() => setIsRadarOpen(false)}>✕</button>
+              </div>
+          </div>
 
-              {/* 📍 ฟันธง: ขยับปุ่ม Mute ให้หลบปุ่ม Maximize */}
-              <g onClick={() => setIsMuted(!isMuted)} cursor="pointer">
-              <rect x={radarDim.w - (140 * radarLayout.uiScale)} y={10 * radarLayout.uiScale} width={65 * radarLayout.uiScale} height={24 * radarLayout.uiScale} rx={4 * radarLayout.uiScale} fill={isMuted ? "rgba(255, 51, 51, 0.15)" : "rgba(0, 255, 102, 0.15)"} stroke={isMuted ? "var(--red)" : "var(--green)"} />
-              <text x={radarDim.w - (107.5 * radarLayout.uiScale)} y={26 * radarLayout.uiScale} fill={isMuted ? "var(--red)" : "var(--green)"} fontSize={12 * radarLayout.uiScale} textAnchor="middle" fontWeight="bold" fontFamily="Rajdhani">{isMuted ? '🔇 MUTE' : '🔊 AUDIO'}</text>
-            </g>
-
-            {/* 📍 ฟันธง: เพิ่มปุ่ม Maximize ใน Radar (🗖) */}
-            <g onClick={() => toggleMaximize('radar')} cursor="pointer">
-              <rect x={radarDim.w - (65 * radarLayout.uiScale)} y={10 * radarLayout.uiScale} width={24 * radarLayout.uiScale} height={24 * radarLayout.uiScale} rx={4 * radarLayout.uiScale} fill="transparent" stroke="var(--green)" />
-              <text x={radarDim.w - (53 * radarLayout.uiScale)} y={26 * radarLayout.uiScale} fill="var(--green)" fontSize={13 * radarLayout.uiScale} textAnchor="middle" fontWeight="bold">{maximizedWins.radar ? '🗗' : '🗖'}</text>
-            </g>
-
-            {/* ปุ่มปิด (X) */}
-            <g onClick={() => setIsRadarOpen(false)} cursor="pointer">
-              <rect x={radarDim.w - (35 * radarLayout.uiScale)} y={10 * radarLayout.uiScale} width={24 * radarLayout.uiScale} height={24 * radarLayout.uiScale} rx={4 * radarLayout.uiScale} fill="transparent" stroke="var(--green)" />
-              <text x={radarDim.w - (23 * radarLayout.uiScale)} y={26 * radarLayout.uiScale} fill="var(--green)" fontSize={14 * radarLayout.uiScale} textAnchor="middle" fontWeight="bold">✕</text>
-            </g>
-
+          <svg width="100%" height="100%" style={{ display: 'block', position: 'relative', zIndex: 10 }}>
             {/* ข้อมูลมุม EL */}
-            <text x="15" y={65 * radarLayout.uiScale} fill="var(--cyan)" fontSize={11 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron" textAnchor="start">EL: {radarCurrentPos && radarCurrentPos.el ? Math.max(0, radarCurrentPos.el).toFixed(1) : '0.0'}°</text>
-            <text x={radarDim.w - 15} y={65 * radarLayout.uiScale} fill="var(--cyan)" fontSize={11 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron" textAnchor="end">MAX EL: {radarData.maxEl !== 'N/A' ? `${radarData.maxEl}°` : 'N/A'}</text>
+            <text x="15" y={75 * radarLayout.uiScale} fill="var(--cyan)" fontSize={11 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron" textAnchor="start">EL: {radarCurrentPos && radarCurrentPos.el ? Math.max(0, radarCurrentPos.el).toFixed(1) : '0.0'}°</text>
+            <text x={radarDim.w - 15} y={75 * radarLayout.uiScale} fill="var(--cyan)" fontSize={11 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron" textAnchor="end">MAX EL: {radarData.maxEl !== 'N/A' ? `${radarData.maxEl}°` : 'N/A'}</text>
 
             {/* วงแหวนเรดาร์และเส้น Grid */}
             <g style={{ pointerEvents: 'none' }}>
@@ -2370,21 +2710,23 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                        const x2 = cx + R * Math.sin((az * Math.PI) / 180);
                        const y2 = cy - R * Math.cos((az * Math.PI) / 180);
                        const isMain = az % 90 === 0;
-                       return <line key={`az-${az}`} x1={cx} y1={cy} x2={x2} y2={y2} stroke="rgba(0, 255, 102, 0.45)" strokeWidth={isMain ? "1.5" : "0.8"} strokeDasharray={isMain ? "none" : "3 3"} />
+                       {/* 📍 3. เพิ่มความเข้มเส้นแฉก */}
+                       return <line key={`az-${az}`} x1={cx} y1={cy} x2={x2} y2={y2} stroke="rgba(0, 255, 102, 0.85)" strokeWidth={isMain ? "1.8" : "1.0"} strokeDasharray={isMain ? "none" : "3 3"} />
                     })}
 
                     {rings.map(el => {
                       const r = R * ((90 - el) / 90);
                       return (
                         <React.Fragment key={`el-${el}`}>
-                          <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(0, 255, 102, 0.55)" strokeWidth="1.2" strokeDasharray="4 4" />
-                          {R > 120 && el % 30 === 0 && ( <text x={cx + 2} y={cy - r + (9 * uiScale)} fill="rgba(0,255,102,0.8)" fontSize={9 * uiScale} fontWeight="bold">{el}°</text> )}
+                          {/* 📍 3. เพิ่มความเข้มวงแหวน */}
+                          <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(0, 255, 102, 0.9)" strokeWidth="1.5" strokeDasharray="4 4" />
+                          {R > 120 && el % 30 === 0 && ( <text x={cx + 2} y={cy - r + (9 * uiScale)} fill="rgba(0,255,102,0.9)" fontSize={10 * uiScale} fontWeight="bold">{el}°</text> )}
                         </React.Fragment>
                       )
                     })}
                     
                     {/* ขอบเรดาร์วงนอกสุด */}
-                    <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(0, 255, 102, 0.8)" strokeWidth="2" />
+                    <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(0, 255, 102, 1)" strokeWidth="2.5" />
                     
                     {[0, 45, 90, 135, 180, 225, 270, 315].map(az => {
                       const isMain = az % 90 === 0;
@@ -2398,7 +2740,7 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                       let dy = "0.3em"; if (az === 0) dy = "0em"; if (az === 180) dy = "0.8em";
 
                       return (
-                        <text key={`az-label-${az}`} x={lx} y={ly} dy={dy} fill={isMain ? "var(--green)" : "rgba(0,255,102,0.6)"} fontSize={isMain ? 12 * uiScale : 10 * uiScale} fontWeight={isMain ? "bold" : "normal"} textAnchor={anchor} >
+                        <text key={`az-label-${az}`} x={lx} y={ly} dy={dy} fill={isMain ? "var(--green)" : "rgba(0,255,102,0.8)"} fontSize={isMain ? 12 * uiScale : 10 * uiScale} fontWeight={isMain ? "bold" : "normal"} textAnchor={anchor} >
                           {label}
                         </text>
                       );
@@ -2407,24 +2749,45 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 );
               })()}
 
-              {/* ชิ้นพิซซ่า */}
-              {radarData.sectorEdgePoints && radarData.sectorEdgePoints.length > 0 && radarData.aosAz !== null && (
+             {/* ชิ้นพิซซ่า */}
+             {radarData.sectorEdgePoints && radarData.sectorEdgePoints.length > 0 && radarData.aosAz !== null && (
                 <g>
-                  <polygon points={`${radarLayout.cx},${radarLayout.cy} ${radarData.sectorEdgePoints.join(' ')}`} fill="rgba(0, 255, 102, 0.08)" />
+                  <polygon points={`${radarLayout.cx},${radarLayout.cy} ${radarData.sectorEdgePoints.join(' ')}`} fill="rgba(0, 255, 102, 0.15)" />
                   {(() => {
                     const s = radarLayout.uiScale;
-                    const aosX = radarLayout.cx + radarLayout.R * Math.sin((radarData.aosAz * Math.PI) / 180); const aosY = radarLayout.cy - radarLayout.R * Math.cos((radarData.aosAz * Math.PI) / 180);
-                    const losX = radarLayout.cx + radarLayout.R * Math.sin((radarData.losAz * Math.PI) / 180); const losY = radarLayout.cy - radarLayout.R * Math.cos((radarData.losAz * Math.PI) / 180);
-                    return (
-                      <>
-                        <line x1={radarLayout.cx} y1={radarLayout.cy} x2={aosX} y2={aosY} stroke="var(--gold)" strokeWidth={2 * s} strokeDasharray="4 4" />
-                        <line x1={radarLayout.cx} y1={radarLayout.cy} x2={losX} y2={losY} stroke="var(--red)" strokeWidth={2 * s} strokeDasharray="4 4" />
-                        <rect x={aosX - (25 * s)} y={aosY - (10 * s)} width={50 * s} height={20 * s} rx={4 * s} fill="rgba(255, 204, 0, 0.2)" stroke="var(--gold)" />
-                        <text x={aosX} y={aosY + (4 * s)} fill="var(--gold)" fontSize={11 * s} fontWeight="bold" fontFamily="Orbitron" textAnchor="middle">{radarData.aosAz.toFixed(1)}°</text>
-                        <rect x={losX - (25 * s)} y={losY - (10 * s)} width={50 * s} height={20 * s} rx={4 * s} fill="rgba(255, 51, 51, 0.2)" stroke="var(--red)" />
-                        <text x={losX} y={losY + (4 * s)} fill="var(--red)" fontSize={11 * s} fontWeight="bold" fontFamily="Orbitron" textAnchor="middle">{radarData.losAz.toFixed(1)}°</text>
-                      </>
-                    );
+                    
+                    const aosX = radarLayout.cx + radarLayout.R * Math.sin((radarData.aosAz * Math.PI) / 180); 
+                    const aosY = radarLayout.cy - radarLayout.R * Math.cos((radarData.aosAz * Math.PI) / 180);
+                    const losX = radarLayout.cx + radarLayout.R * Math.sin((radarData.losAz * Math.PI) / 180); 
+                    const losY = radarLayout.cy - radarLayout.R * Math.cos((radarData.losAz * Math.PI) / 180);
+                    
+                    const getPad = (az) => {
+                     if (az > 150 && az < 210) return 38 * s; 
+                     if (az > 330 || az < 30) return 30 * s;  
+                     if ((az > 60 && az < 120) || (az > 240 && az < 300)) return 34 * s; 
+                     return 22 * s; 
+                   };
+                   
+                   const padAos = getPad(radarData.aosAz);
+                   const padLos = getPad(radarData.losAz);
+
+                   const textAosX = radarLayout.cx + (radarLayout.R + padAos) * Math.sin((radarData.aosAz * Math.PI) / 180);
+                   const textAosY = radarLayout.cy - (radarLayout.R + padAos) * Math.cos((radarData.aosAz * Math.PI) / 180);
+                   const textLosX = radarLayout.cx + (radarLayout.R + padLos) * Math.sin((radarData.losAz * Math.PI) / 180);
+                   const textLosY = radarLayout.cy - (radarLayout.R + padLos) * Math.cos((radarData.losAz * Math.PI) / 180);
+
+                   return (
+                       <>
+                         <line x1={radarLayout.cx} y1={radarLayout.cy} x2={aosX} y2={aosY} stroke="var(--gold)" strokeWidth={2 * s} strokeDasharray="4 4" />
+                         <line x1={radarLayout.cx} y1={radarLayout.cy} x2={losX} y2={losY} stroke="var(--red)" strokeWidth={2 * s} strokeDasharray="4 4" />
+                         
+                         <circle cx={aosX} cy={aosY} r={4 * s} fill="var(--gold)" style={{ filter: 'drop-shadow(0 0 8px var(--gold))' }} />
+                         <circle cx={losX} cy={losY} r={4 * s} fill="var(--red)" style={{ filter: 'drop-shadow(0 0 8px var(--red))' }} />
+
+                         <text x={textAosX} y={textAosY} fill="var(--gold)" fontSize={12 * s} fontWeight="bold" fontFamily="Orbitron" textAnchor="middle" alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--gold)' }}>AOS {radarData.aosAz.toFixed(1)}°</text>
+                         <text x={textLosX} y={textLosY} fill="var(--red)" fontSize={12 * s} fontWeight="bold" fontFamily="Orbitron" textAnchor="middle" alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--red)' }}>LOS {radarData.losAz.toFixed(1)}°</text>
+                       </>
+                     );
                   })()}
                 </g>
               )}
@@ -2433,16 +2796,16 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
               {radarData.segments.map((seg, i) => ( <line key={i} x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2} stroke={seg.color} strokeWidth={seg.width} strokeDasharray={seg.dash} /> ))}
               
               {/* ตำแหน่งดาวเทียมปัจจุบัน */}
-              {radarCurrentPos && ( <circle cx={radarCurrentPos.x} cy={radarCurrentPos.y} r={6 * radarLayout.uiScale} fill="#ff9900" stroke="#ffffff" strokeWidth={1.5 * radarLayout.uiScale} style={{ filter: `drop-shadow(0 0 ${10 * radarLayout.uiScale}px #ff9900)` }} /> )}
+              {radarCurrentPos && ( <circle cx={radarCurrentPos.x} cy={radarCurrentPos.y} r={7 * radarLayout.uiScale} fill="#ff9900" stroke="#ffffff" strokeWidth={2 * radarLayout.uiScale} style={{ filter: `drop-shadow(0 0 ${12 * radarLayout.uiScale}px #ff9900)` }} /> )}
               {/* จุดกึ่งกลาง (สถานีรับสัญญาณ) */}
-              <circle cx={radarLayout.cx} cy={radarLayout.cy} r={3 * radarLayout.uiScale} fill="var(--red)" />
+              <circle cx={radarLayout.cx} cy={radarLayout.cy} r={4 * radarLayout.uiScale} fill="var(--red)" style={{ filter: `drop-shadow(0 0 8px var(--red))` }} />
             </g>
 
             {/* Legend ด้านล่าง */}
-            <text x={radarDim.w / 2} y={radarDim.h - (12 * radarLayout.uiScale)} fontSize={10 * radarLayout.uiScale} fontFamily="Orbitron" textAnchor="middle">
-              <tspan fill="rgba(0, 234, 255, 0.4)">- - DEPARTED</tspan>
-              <tspan dx={15 * radarLayout.uiScale} fill="var(--gold)">- - APPROACH</tspan>
-              <tspan dx={15 * radarLayout.uiScale} fill="var(--cyan)">━━ VISIBLE</tspan>
+            <text x={radarDim.w / 2} y={radarDim.h - (15 * radarLayout.uiScale)} fontSize={11 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron" textAnchor="middle">
+              <tspan fill="rgba(0, 234, 255, 0.6)">- - DEPARTED</tspan>
+              <tspan dx={20 * radarLayout.uiScale} fill="var(--gold)">- - APPROACH</tspan>
+              <tspan dx={20 * radarLayout.uiScale} fill="var(--cyan)">━━ VISIBLE</tspan>
             </text>
           </svg>
 
@@ -2454,14 +2817,14 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
               background: 'conic-gradient(from 0deg, rgba(0, 255, 102, 0) 30%, rgba(0, 255, 102, 0.15) 70%, rgba(0, 255, 102, 0.6) 98%, rgba(0, 255, 102, 1) 100%)',
               animation: linkActive ? 'none' : 'radar-sweep 3s infinite linear',
               transform: linkActive && targetData && !isNaN(targetData.azimuthDeg) ? `rotate(${targetData.azimuthDeg}deg)` : 'none',
-              pointerEvents: 'none', zIndex: 10, opacity: linkActive ? 0.5 : 1,
+              pointerEvents: 'none', zIndex: 5, opacity: linkActive ? 0.5 : 1,
               transition: 'transform 0.1s linear, opacity 0.3s'
             }} />
         </div>
       )}
 
-      {/* --- IMAGING PLAN VIEWER --- */}
-      {isImgOpen && (
+     {/* --- IMAGING PLAN VIEWER --- */}
+     {isImgOpen && (
         <div className="modal-box img-modal" onMouseDownCapture={() => bringToFront('img')} style={{ 
           position: 'fixed', 
           top: maximizedWins.img ? '0px' : `${imgPos.y}px`, 
@@ -2470,114 +2833,265 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
           height: maximizedWins.img ? '100vh' : '550px', 
           minWidth: '600px', minHeight: '400px',
           maxWidth: 'none', maxHeight: 'none', resize: maximizedWins.img ? 'none' : 'both', overflow: 'hidden', 
-          background: 'rgba(0, 10, 25, 0.85)', backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)',
-          border: maximizedWins.img ? 'none' : '1px solid rgba(255, 51, 51, 0.5)', 
-          borderRadius: maximizedWins.img ? '0px' : '4px',
-          boxShadow: '0 0 40px rgba(255, 51, 51, 0.3)', display: 'flex', flexDirection: 'column',
+          background: 'rgba(2, 6, 23, 0.85)', backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)',
+          border: '2px solid #FF4500',
+          boxSizing: 'border-box', 
+          borderRadius: maximizedWins.img ? '0px' : '12px',
+          boxShadow: '0 0 50px rgba(255, 69, 0, 0.5), inset 0 0 30px rgba(255, 69, 0, 0.3)',
+          display: 'flex', flexDirection: 'column',
           zIndex: windowZ.img || 10000,
           transition: isDraggingImg ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
         }}>
-          {/* Header */}
-          <div className="modal-header" style={{ borderBottom: '1px solid rgba(255, 51, 51, 0.5)', padding: '12px 15px', cursor: maximizedWins.img ? 'default' : (isDraggingImg ? 'grabbing' : 'grab'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(255, 51, 51, 0.1) 0%, transparent 100%)' }} onMouseDown={(e) => { if(!maximizedWins.img) handleImgMouseDown(e); }}>
-            <div style={{ color: '#ff3333', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: '18px', textShadow: '0 0 10px #ff3333', pointerEvents: 'none' }}>
-              📷 IMAGING PLAN VIEWER <span style={{ fontSize: '12px', color: '#fff', marginLeft: '10px' }}>ORBIT 269</span>
+
+          {/* 📍 เอฟเฟกต์แสงแฟลร์ (Background Flare) */}
+          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '120%', height: '120%', background: 'radial-gradient(circle, rgba(255, 69, 0, 0.15) 0%, transparent 60%)', filter: 'blur(80px)', pointerEvents: 'none', zIndex: 0, animation: 'pulse 4s infinite' }}></div>
+
+          {/* 📍 POPUP SCI-FI ALERT (อัปเกรดแสงแฟลร์เป็นสีเขียว/แดง ตามสถานะ) */}
+          {customAlert.show && (
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(2, 6, 15, 0.85)', backdropFilter: 'blur(10px)', zIndex: 99999, display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: 'inherit' }}>
+              <div style={{ 
+                background: 'linear-gradient(135deg, rgba(0, 20, 10, 0.95), rgba(0, 5, 2, 0.95))', 
+                border: `2px solid ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, 
+                boxShadow: `0 0 50px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.4)' : 'rgba(255, 51, 51, 0.4)'}, inset 0 0 20px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`, 
+                borderRadius: '8px', padding: '35px 50px', textAlign: 'center', minWidth: '420px', position: 'relative', overflow: 'hidden',
+                animation: 'slideInRight 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)' 
+              }}>
+                
+                {/* เอฟเฟกต์แสงแฟลร์ (Flare) เปลี่ยนสีอัตโนมัติตามสถานะ */}
+                <div style={{ position: 'absolute', top: '-50%', left: '-50%', width: '200%', height: '200%', background: `radial-gradient(circle at center, ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.15)' : 'rgba(255, 51, 51, 0.15)'} 0%, transparent 60%)`, pointerEvents: 'none', animation: 'pulse 2.5s infinite' }}></div>
+                
+                <h2 style={{ fontFamily: 'Orbitron', color: customAlert.type === 'success' ? 'var(--green)' : 'var(--red)', fontSize: '28px', margin: '0 0 15px 0', textShadow: `0 0 20px ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, letterSpacing: '2px', position: 'relative', zIndex: 1 }}>
+                  {customAlert.type === 'success' ? '🚀 SYSTEM SUCCESS' : '❌ SYSTEM ERROR'}
+                </h2>
+                <p style={{ fontFamily: 'Rajdhani', color: '#fff', fontSize: '20px', marginBottom: '30px', letterSpacing: '1.5px', fontWeight: 'bold', textShadow: '0 0 10px rgba(255, 255, 255, 0.5)', position: 'relative', zIndex: 1 }}>{customAlert.message}</p>
+                
+                <button 
+                  onClick={() => setCustomAlert({ show: false, message: '', type: 'success' })} 
+                  style={{ 
+                    background: customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 51, 51, 0.1)', 
+                    border: `1px solid ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, 
+                    color: customAlert.type === 'success' ? 'var(--green)' : 'var(--red)', 
+                    padding: '12px 50px', fontSize: '18px', fontFamily: 'Orbitron', fontWeight: '900', cursor: 'pointer', borderRadius: '4px', letterSpacing: '3px', transition: 'all 0.2s', position: 'relative', zIndex: 1,
+                    boxShadow: `0 0 15px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`
+                  }}
+                  onMouseOver={(e) => { 
+                    e.currentTarget.style.background = customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'; 
+                    e.currentTarget.style.color = '#000'; 
+                    e.currentTarget.style.boxShadow = `0 0 30px ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`; 
+                    e.currentTarget.style.transform = 'scale(1.05)';
+                  }}
+                  onMouseOut={(e) => { 
+                    e.currentTarget.style.background = customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 51, 51, 0.1)'; 
+                    e.currentTarget.style.color = customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'; 
+                    e.currentTarget.style.boxShadow = `0 0 15px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`;
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                >
+                  ACKNOWLEDGE
+                </button>
+              </div>
             </div>
-            {/* 📍 ฟันธง: เพิ่มปุ่ม Maximize (🗖) */}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', borderColor: 'var(--red)', color: 'var(--red)', fontSize: '15px' }} onClick={() => toggleMaximize('img')}>{maximizedWins.img ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => setIsImgOpen(false)}>✕</button>
+          )}
+
+          {/* Header */}
+          <div className="modal-header" style={{ position: 'relative', zIndex: 10, borderBottom: '2px solid #FF4500', padding: '12px 20px', cursor: maximizedWins.img ? 'default' : (isDraggingImg ? 'grabbing' : 'grab'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(255, 69, 0, 0.2) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(255, 69, 0, 0.5)' }} onMouseDown={(e) => { if(!maximizedWins.img) handleImgMouseDown(e); }}>
+            {/* กล่องซ้าย */}
+            <div style={{ flex: 1 }}></div>
+            
+            {/* กล่องกลาง (หัวข้อ) */}
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff3333', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: '24px', textShadow: '0 0 10px #ff3333', pointerEvents: 'none', whiteSpace: 'nowrap', letterSpacing: '1px' }}>
+              📸 IMAGING PLAN VIEWER 
+              <span style={{ fontSize: '18px', color: 'var(--gold)', background: 'rgba(0,0,0,0.5)', border: '1px solid #ffffff', padding: '2px 12px', borderRadius: '4px', marginLeft: '15px', textShadow: '0 0 10px var(--gold)', boxShadow: '0 0 8px rgba(255,255,255,0.5), inset 0 0 8px rgba(255,255,255,0.2)', letterSpacing: '2px' }}>
+                ORBIT 269
+              </span>
+            </div>
+            
+           {/* กล่องขวา (ปุ่มปิด) */}
+           <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              {/* 📍 แก้ปุ่มดำ: คืนค่าสีขอบและตัวอักษรเป็นสีส้มแดง ให้มองเห็นชัดเจนตั้งแต่แรกเปิด! */}
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', padding: 0, border: '1px solid #FF4500', color: '#FF4500' }} onClick={() => toggleMaximize('img')}>{maximizedWins.img ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', padding: 0, border: '1px solid #FF4500', color: '#FF4500' }} onClick={() => setIsImgOpen(false)}>✕</button>
             </div>
           </div>
 
           {/* Body */}
-          <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '15px', gap: '15px' }}>
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '20px', gap: '20px', position: 'relative', zIndex: 10 }}>
             
             {/* ซ้าย: ตารางคิวถ่ายภาพ */}
-            <div style={{ flex: '1', overflowY: 'auto', borderRight: '1px dashed rgba(255,51,51,0.3)', paddingRight: '15px' }} className="gs-no-scroll">
-               <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', fontSize: '15px', color: '#fff' }}>
+            <div style={{ flex: '0 0 clamp(380px, 40vw, 500px)', display: 'flex', flexDirection: 'column', borderRight: '1px dashed rgba(255,69,0,0.5)', paddingRight: '20px' }}>
+              <style>{`.img-hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+              <div style={{ flex: '1', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="img-hide-scrollbar">
+                <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontFamily: 'Rajdhani', color: '#fff' }}>
                   <thead>
-                     <tr style={{ color: 'rgba(255,255,255,0.6)', borderBottom: '1px solid rgba(255,51,51,0.4)', textAlign: 'left' }}>
-                        <th style={{padding: '10px 4px'}}>PLAN START (UTC)</th>
-                        <th style={{padding: '10px 4px'}}>DURATION</th>
-                        <th style={{padding: '10px 4px'}}>ACTION</th>
-                     </tr>
+                    <tr style={{ color: 'rgba(255,255,255,0.6)', borderBottom: '1px solid rgba(255,69,0,0.6)' }}>
+                      <th style={{ padding: '12px 10px', width: '55%', textAlign: 'left', fontSize: 'clamp(12px, 1.2vw, 15px)', letterSpacing: '1px' }}>DATE & TIME (UTC)</th>
+                      <th style={{ padding: '12px 10px', width: '25%', textAlign: 'center', fontSize: 'clamp(12px, 1.2vw, 15px)', letterSpacing: '1px' }}>DURATION</th>
+                      <th style={{ padding: '12px 10px', width: '20%', textAlign: 'center', fontSize: 'clamp(12px, 1.2vw, 15px)', letterSpacing: '1px' }}>ACTION</th>
+                    </tr>
                   </thead>
                   <tbody>
-                     {imagingPlansData.map(plan => {
-                        const dStart = new Date(plan.start);
-                        const isSelected = selectedPlanId === plan.id;
-                        return (
-                          <tr key={plan.id} 
-                              style={{ borderBottom: '1px dashed rgba(255,255,255,0.1)', cursor: 'pointer', background: isSelected ? 'rgba(255,51,51,0.2)' : 'transparent', transition: 'background 0.2s' }}
-                              onClick={() => setSelectedPlanId(plan.id)}>
-                             <td style={{padding: '12px 4px', fontWeight: isSelected ? 'bold' : 'normal'}}>{pad2(dStart.getUTCHours())}:{pad2(dStart.getUTCMinutes())}:{pad2(dStart.getUTCSeconds())}</td>
-                             <td style={{padding: '12px 4px', color: 'var(--gold)'}}>{plan.duration.toFixed(0)} s</td>
-                             <td style={{padding: '12px 4px'}}>
-                             <button style={{ background: 'rgba(0,234,255,0.1)', border: '1px solid var(--cyan)', color: 'var(--cyan)', padding: '4px 10px', borderRadius: '2px', cursor: 'pointer', fontSize:'12px', fontWeight: 'bold' }}
-                                        onClick={(e) => { 
-                                          e.stopPropagation(); 
-                                          setSimulatedTimeMs(plan.start - 5000); 
-                                          setSpeedMult(1); 
-                                          setIsPlaying(true); 
-                                          setSelectedPlanId(plan.id); 
-                                          setMapZoom(6); 
-                                        }}>
-                                   ▶ SIMULATE
-                                </button>
-                             </td>
-                          </tr>
-                        )
-                     })}
+                    {imagingPlansData.map(plan => {
+                      const dStart = new Date(plan.start);
+                      const isSelected = selectedPlanId === plan.id;
+                      return (
+                        <tr key={plan.id}
+                            style={{ 
+                              borderBottom: '1px dashed rgba(255,255,255,0.1)', 
+                              cursor: 'pointer', 
+                              background: isSelected ? 'linear-gradient(90deg, rgba(255, 69, 0, 0.25) 0%, transparent 100%)' : 'transparent',
+                              borderLeft: isSelected ? '4px solid #FF4500' : '4px solid transparent',
+                              transition: 'all 0.3s ease'
+                            }}
+                            onMouseOver={(e) => { if(!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; }}
+                            onMouseOut={(e) => { if(!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                            onClick={() => setSelectedPlanId(isSelected ? null : plan.id)}>
+                          
+                          <td style={{ padding: '15px 10px', textAlign: 'left', fontWeight: 'bold', fontSize: 'clamp(14px, 1.5vw, 18px)', whiteSpace: 'nowrap' }}>
+                            <span style={{ color: 'rgba(255,255,255,0.4)', marginRight: '10px', fontSize: '0.85em', fontWeight: '600' }}>
+                              {dStart.getUTCFullYear()}-{pad2(dStart.getUTCMonth() + 1)}-{pad2(dStart.getUTCDate())}
+                            </span>
+                            <span style={{ color: isSelected ? '#fff' : '#e0e0e0', textShadow: isSelected ? '0 0 10px rgba(255,255,255,0.5)' : 'none' }}>
+                              {pad2(dStart.getUTCHours())}:{pad2(dStart.getUTCMinutes())}:{pad2(dStart.getUTCSeconds())}
+                            </span>
+                          </td>
+                          
+                          <td style={{ padding: '15px 10px', color: 'var(--gold)', textAlign: 'center', fontWeight: 'bold', fontSize: 'clamp(16px, 1.8vw, 20px)' }}>
+                            {plan.duration.toFixed(0)} <span style={{ fontSize: '0.65em', color: 'rgba(255,204,0,0.6)' }}>s</span>
+                          </td>
+                          
+                          <td style={{ padding: '15px 10px', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', justifyContent: 'center' }}>
+                              <button style={{ 
+                                background: isSelected ? 'linear-gradient(135deg, #FF4500, #ff8c00)' : 'rgba(255, 69, 0, 0.1)', 
+                                border: `1px solid ${isSelected ? '#FF4500' : 'rgba(255, 69, 0, 0.5)'}`, 
+                                color: isSelected ? '#fff' : '#FF4500', 
+                                width: '42px', height: '34px', 
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                borderRadius: '6px', cursor: 'pointer', fontSize: '14px', 
+                                transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)', 
+                                boxShadow: isSelected ? '0 0 20px rgba(255, 69, 0, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.3)' : 'none',
+                                transform: isSelected ? 'scale(1.05)' : 'scale(1)'
+                              }}
+                                      onMouseOver={(e) => { 
+                                        e.currentTarget.style.background = 'linear-gradient(135deg, #FF4500, #ff8c00)'; 
+                                        e.currentTarget.style.color = '#fff'; 
+                                        e.currentTarget.style.boxShadow = '0 0 25px rgba(255, 69, 0, 0.9)'; 
+                                        e.currentTarget.style.transform = 'scale(1.1)'; 
+                                      }}
+                                      onMouseOut={(e) => { 
+                                        e.currentTarget.style.background = isSelected ? 'linear-gradient(135deg, #FF4500, #ff8c00)' : 'rgba(255, 69, 0, 0.1)'; 
+                                        e.currentTarget.style.color = isSelected ? '#fff' : '#FF4500'; 
+                                        e.currentTarget.style.boxShadow = isSelected ? '0 0 20px rgba(255, 69, 0, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.3)' : 'none'; 
+                                        e.currentTarget.style.transform = isSelected ? 'scale(1.05)' : 'scale(1)';
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedPlanId(plan.id);
+                                        setSimulatedTimeMs(new Date(plan.start).getTime() - 5000);
+                                        setSpeedMult(1);
+                                      }}>
+                                ▶
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
-               </table>
+                </table>
+              </div>
+
+              {/* ปุ่ม Upload */}
+              <div style={{ position: 'relative', zIndex: 10, marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed rgba(255, 69, 0, 0.3)', textAlign: 'center' }}>
+                 <label style={{ 
+                   display: 'inline-block', width: '85%', 
+                   background: 'linear-gradient(90deg, rgba(34, 211, 238, 0.1) 0%, rgba(34, 211, 238, 0.2) 50%, rgba(34, 211, 238, 0.1) 100%)', 
+                   border: '2px dashed var(--cyan)', color: 'var(--cyan)', 
+                   padding: '14px 20px', borderRadius: '8px', cursor: 'pointer', 
+                   fontSize: '16px', fontFamily: 'Orbitron', fontWeight: 'bold', 
+                   letterSpacing: '2px', transition: 'all 0.3s ease',
+                   boxShadow: '0 0 15px rgba(34, 211, 238, 0.1)'
+                 }}
+                        onMouseOver={(e) => { 
+                          e.currentTarget.style.background = 'var(--cyan)'; 
+                          e.currentTarget.style.color = '#000';
+                          e.currentTarget.style.boxShadow = '0 0 30px rgba(34, 211, 238, 0.8), inset 0 0 15px rgba(255,255,255,0.5)'; 
+                          e.currentTarget.style.transform = 'scale(1.02)';
+                        }}
+                        onMouseOut={(e) => { 
+                          e.currentTarget.style.background = 'linear-gradient(90deg, rgba(34, 211, 238, 0.1) 0%, rgba(34, 211, 238, 0.2) 50%, rgba(34, 211, 238, 0.1) 100%)'; 
+                          e.currentTarget.style.color = 'var(--cyan)'; 
+                          e.currentTarget.style.boxShadow = '0 0 15px rgba(34, 211, 238, 0.1)'; 
+                          e.currentTarget.style.transform = 'scale(1)';
+                        }}>
+                    📂 UPLOAD NEW MISSION PLAN
+                    <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={handlePdfUpload} />
+                 </label>
+              </div>
+
             </div>
 
-           {/* ขวา: แผนที่ 2D แบบสมมาตร 2:1 */}
-           <div 
-              style={{ flex: '1.5', position: 'relative', border: '1px solid var(--cyan)', borderRadius: '4px', background: '#000', overflow: 'hidden', boxShadow: 'inset 0 0 20px rgba(0, 234, 255, 0.2)', cursor: 'crosshair', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              onWheel={(e) => { setMapZoom(prev => Math.max(1, Math.min(30, prev + (e.deltaY < 0 ? 1 : -1)))); }}
-            >
-               {(() => {
-                  let tOrigin = "50% 50%"; 
-                  if (selectedPlanId !== null) {
-                     const p = imagingPlansData.find(x => x.id === selectedPlanId);
-                     if (p && !isNaN(p.startLng) && !isNaN(p.endLng)) {
-                        const cx_deg = (p.startLng + p.endLng) / 2; const cy_deg = (p.startLat + p.endLat) / 2;
-                        const cx_pct = (cx_deg + 180) / 360 * 100; const cy_pct = (90 - cy_deg) / 180 * 100;
-                        tOrigin = `${cx_pct}% ${cy_pct}%`; 
-                     }
-                  }
-                  return (
+            {/* ขวา: แผนที่ 2D */}
+            <div 
+               style={{ flex: 1, position: 'relative', border: '1px solid var(--cyan)', borderRadius: '4px', background: '#000', overflow: 'hidden', boxShadow: 'inset 0 0 20px rgba(0, 234, 255, 0.2)', cursor: 'crosshair', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+               onWheel={(e) => { 
+                 const rect = e.currentTarget.getBoundingClientRect();
+                 const x = ((e.clientX - rect.left) / rect.width) * 100;
+                 const y = ((e.clientY - rect.top) / rect.height) * 100;
+                 setMapZoom(prev => {
+                    const newZoom = Math.max(1, Math.min(30, prev + (e.deltaY < 0 ? 1 : -1)));
+                    if (newZoom === 1) setImgMapOrigin('center center');
+                    else if (selectedPlanId === null && prev === 1) setImgMapOrigin(`${x}% ${y}%`);
+                    return newZoom;
+                 });
+               }}
+             >
+                {(() => {
+                   let tOrigin = imgMapOrigin; 
+                   if (selectedPlanId !== null) {
+                      const p = imagingPlansData.find(x => x.id === selectedPlanId);
+                      if (p && !isNaN(p.startLng) && !isNaN(p.endLng)) {
+                         const cx_deg = (p.startLng + p.endLng) / 2; const cy_deg = (p.startLat + p.endLat) / 2;
+                         const cx_pct = (cx_deg + 180) / 360 * 100; const cy_pct = (90 - cy_deg) / 180 * 100;
+                         tOrigin = `${cx_pct}% ${cy_pct}%`; 
+                      }
+                   }
+                   return (
                      <div style={{
-                        width: '100%', 
-                        aspectRatio: '2 / 1', 
-                        position: 'relative',
-                        transformOrigin: tOrigin, 
-                        transform: `scale(${mapZoom})`, 
-                        transition: 'transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)'
-                     }}>
-                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
+                       width: '100%',
+                       height: 'auto',
+                       maxWidth: '100%',
+                       maxHeight: '100%',
+                       aspectRatio: '2 / 1',
+                       margin: 'auto',
+                       position: 'relative',
+                       transformOrigin: tOrigin,
+                       transform: `scale(${mapZoom})`,
+                       transition: 'transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)'
+                   }}>
+                       <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block', backgroundColor: '#040608' }}>
                            <image href="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg" x="0" y="0" width="100" height="100" preserveAspectRatio="none" />
-                           {imagingPlansData.map(p => {
-                              if(isNaN(p.startLng) || isNaN(p.endLng)) return null;
-                              if (simulatedTimeMs > p.end) return null; 
 
-                              const x1 = (p.startLng + 180) / 360 * 100; const y1 = (90 - p.startLat) / 180 * 100;
-                              const x2 = (p.endLng + 180) / 360 * 100; const y2 = (90 - p.endLat) / 180 * 100;
-                              const isSel = selectedPlanId === p.id;
-                              
-                              const sw1 = (isSel ? 1.5 : 0.5) / mapZoom;
-                              const sw2 = (isSel ? 0.1 : 0.05) / mapZoom;
-                              const rDot = 0.5 / mapZoom;
+                            {imagingPlansData.map(p => {
+                               if(isNaN(p.startLng) || isNaN(p.endLng)) return null;
+                               if (simulatedTimeMs > p.end) return null; 
 
-                              return (
-                                 <g key={p.id}>
-                                    <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSel ? "rgba(255, 51, 51, 0.8)" : "rgba(255, 100, 51, 0.4)"} strokeWidth={sw1} strokeLinecap="round" />
-                                    <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSel ? "#fff" : "#ff9900"} strokeWidth={sw2} strokeDasharray={`${0.2/mapZoom} ${0.2/mapZoom}`} />
-                                    {isSel && <circle cx={x1} cy={y1} r={rDot} fill="#fff" stroke="#ff3333" strokeWidth={sw2} />}
-                                 </g>
-                              );
-                           })}
+                               const x1 = (p.startLng + 180) / 360 * 100; const y1 = (90 - p.startLat) / 180 * 100;
+                               const x2 = (p.endLng + 180) / 360 * 100; const y2 = (90 - p.endLat) / 180 * 100;
+                               const isSel = selectedPlanId === p.id;
+                               
+                               const sw1 = (isSel ? 1.5 : 0.5) / mapZoom;
+                               const sw2 = (isSel ? 0.1 : 0.05) / mapZoom;
+                               const rDot = 0.5 / mapZoom;
+
+                               return (
+                                  <g key={p.id}>
+                                     <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSel ? "rgba(255, 51, 51, 0.8)" : "rgba(255, 100, 51, 0.4)"} strokeWidth={sw1} strokeLinecap="round" />
+                                     <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSel ? "#fff" : "#ff9900"} strokeWidth={sw2} strokeDasharray={`${0.2/mapZoom} ${0.2/mapZoom}`} />
+                                     {isSel && <circle cx={x1} cy={y1} r={rDot} fill="#fff" stroke="#ff3333" strokeWidth={sw2} />}
+                                  </g>
+                               );
+                            })}
                         </svg>
                      </div>
                   )
