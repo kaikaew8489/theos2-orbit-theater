@@ -235,14 +235,19 @@ const injectStyles = () => {
     
     .ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; display: flex; justify-content: space-between; padding: 25px; box-sizing: border-box; z-index: 10; }
     
-    .left-container { display: flex; flex-direction: column; align-items: flex-start; pointer-events: none; height: 100%; z-index: 20; }
-    .menu-toggle-btn-left { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(0,234,255,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--cyan); color: var(--cyan); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(0,234,255,0.6), inset 0 0 10px rgba(0,234,255,0.3); }
+    .left-container { display: flex; flex-direction: column; align-items: flex-start; pointer-events: none; height: 100%; z-index: 20; overflow: hidden; }
+    .menu-toggle-btn-left { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(0,234,255,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--cyan); color: var(--cyan); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(0,234,255,0.6), inset 0 0 10px rgba(0,234,255,0.3); flex-shrink: 0; }
     .menu-toggle-btn-left:hover { background: var(--cyan); color: #000; box-shadow: 0 0 30px var(--cyan); transform: scale(1.1); }
     
-    /* 📍 ล็อกความกว้างแผงซ้ายให้คำนวณรวมปุ่มเมนูและช่องว่าง (460 + 42 + 15 = 517px) ขอบขวาจะตรงกันเป๊ะ! */
     .left-panel { width: 517px !important; box-sizing: border-box !important; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
     .left-panel::-webkit-scrollbar { display: none; }
     @keyframes slideInLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
+
+    .info-list { list-style: none; padding: 20px 0 0 0; margin: 20px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 15px; line-height: 1.8; }
+    .info-list li { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 5px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px; margin-bottom: 8px; }
+    .info-list li:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .info-list span { color: rgba(255, 255, 255, 0.55); font-weight: 600; letter-spacing: 0.5px; flex: 1 1 auto; }
+    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-align: right; font-size: 16px; flex: 0 0 auto; word-break: break-word; }
 
     /* 📍 อัปเกรดแสงแฟลร์สีฟ้า (Cyan Flare) ของแผงข้อมูลให้สว่างวาบยิ่งขึ้น */
     .panel-box { 
@@ -270,51 +275,39 @@ const injectStyles = () => {
     /* 📍 อัปเกรดนาฬิกาเป็น "ส้มเรืองแสง (Orange Flare)" และปรับขนาดฟอนต์เพื่อลดอาการตาล้าตามหลัก UI/UX */
     .global-clock-hud { 
       display: flex; flex-direction: column; width: 460px !important; box-sizing: border-box !important; 
-      background: linear-gradient(180deg, rgba(30, 10, 0, 0.9), rgba(5, 0, 0, 0.95)); 
-      backdrop-filter: blur(15px); 
-      border: 2px solid #FF4500; /* เปลี่ยนขอบเป็นสีส้มแดง */
-      border-radius: 10px; padding: 15px 20px 12px 20px; 
-      box-shadow: 0 0 60px rgba(255, 69, 0, 0.4), inset 0 0 30px rgba(255, 69, 0, 0.2); /* แสงแฟลร์สีส้ม */
-      pointer-events: auto; position: relative; margin-top: 10px; gap: 12px; 
+      background: linear-gradient(180deg, rgba(20, 5, 0, 0.95), rgba(5, 0, 0, 0.98)); 
+      backdrop-filter: blur(20px); 
+      border: 1px solid rgba(255, 69, 0, 0.5); border-top: 2px solid #FF4500;
+      border-radius: 8px; padding: 15px 20px 15px 20px; 
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8), inset 0 0 20px rgba(255, 69, 0, 0.15);
+      pointer-events: auto; position: relative; margin-top: 10px; gap: 15px; 
     }
-    .clock-row { display: flex; justify-content: space-between; width: 100%; }
-    .global-clock-hud .clock-item { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 130px; }
+    .clock-row { display: flex; justify-content: space-between; width: 100%; align-items: center; }
+    .global-clock-hud .clock-item { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 33%; }
     
-    /* 📍 ขยายหัวข้อ (THA LOCAL, DOY, UTC) เป็น 14px สีขาวหม่นเพื่อความสบายตา */
     .global-clock-hud .clock-item span { 
-      font-size: 14px; 
-      color: rgba(255, 255, 255, 0.7); 
-      font-weight: 800; letter-spacing: 2px; margin-bottom: 6px; text-transform: uppercase; 
-      text-shadow: 0 0 5px rgba(0, 0, 0, 0.8); 
+      font-size: 13px; color: rgba(255, 255, 255, 0.5); font-weight: 800; letter-spacing: 2px; margin-bottom: 4px; text-transform: uppercase; 
     }
     
-    /* 📍 ขยายตัวเลขเวลาเป็น 28px และเปลี่ยนเป็นสีส้มสว่างเรืองแสง */
     .global-clock-hud .clock-item strong { 
-      font-family: 'Orbitron', sans-serif; 
-      font-size: 28px; 
-      color: #FF6600; 
-      font-weight: 900; font-variant-numeric: tabular-nums; 
-      text-shadow: 0 0 20px #FF4500, 0 0 40px rgba(255, 69, 0, 0.6); 
-      letter-spacing: 1px; line-height: 1; 
+      font-family: 'Orbitron', sans-serif; font-size: 26px; color: #FF8800; font-weight: 900; font-variant-numeric: tabular-nums; 
+      text-shadow: 0 0 15px rgba(255, 69, 0, 0.8); letter-spacing: 1.5px; line-height: 1; 
     }
     
-    /* 📍 เปลี่ยน DOY ให้เป็นสีฟ้า Cyan เรืองแสง ตัดกับสีส้มอย่างลงตัว */
     .global-clock-hud .clock-item.doy-item strong { 
-      color: var(--cyan); 
-      text-shadow: 0 0 20px var(--cyan), 0 0 40px rgba(0, 234, 255, 0.6); 
+      color: #00eaff; text-shadow: 0 0 15px rgba(0, 234, 255, 0.6); 
     }
-    .global-clock-hud .clock-item.doy-item span {
-      color: var(--cyan); 
-      text-shadow: 0 0 10px rgba(0, 234, 255, 0.5);
+    .global-clock-hud .clock-item.doy-item span { color: rgba(0, 234, 255, 0.7); }
+    
+    /* 📍 จัดกึ่งกลางป้าย Status โดดเด่น ชัดเจน ทรงพลัง */
+    .status-badge { 
+      width: 100%; display: flex; justify-content: center; align-items: center; gap: 10px;
+      padding: 8px 0; border-radius: 4px; font-size: 13px; font-weight: 900; font-family: 'Orbitron', sans-serif; 
+      letter-spacing: 3px; border: 1px solid; text-transform: uppercase; 
     }
     
-    .status-badge { width: 100%; text-align: center; padding: 6px 0; border-radius: 6px; font-size: 13px; font-weight: 900; font-family: 'Orbitron', sans-serif; letter-spacing: 3px; border: 1px solid; text-transform: uppercase; }
-    
-    /* 📍 LIVE OPERATIONS: สีเขียวนีออน (Nominal/Safe) ตัวหนังสือสีขาวอ่านง่าย */
-    .status-badge.live { background: linear-gradient(90deg, rgba(0, 180, 70, 0.85), rgba(0, 80, 25, 0.95)); border-color: #00ff66; color: #ffffff; box-shadow: 0 0 20px rgba(0, 255, 102, 0.5); text-shadow: 0 0 5px rgba(0,0,0,0.8); }
-    
-    /* 📍 SIMULATION MODE: สีส้มอำพัน (Warning/Test) เปลี่ยนตัวหนังสือเป็นสีขาวพร้อมเงาดำ */
-    .status-badge.sim { background: linear-gradient(90deg, rgba(255, 120, 0, 0.85), rgba(180, 60, 0, 0.95)); border-color: #ffaa00; color: #ffffff; box-shadow: 0 0 20px rgba(255, 153, 0, 0.5); text-shadow: 0 0 5px rgba(0,0,0,0.8); }
+    .status-badge.live { background: rgba(0, 255, 102, 0.1); border-color: #00ff66; color: #00ff66; box-shadow: inset 0 0 15px rgba(0, 255, 102, 0.2); }
+    .status-badge.sim { background: rgba(255, 171, 46, 0.1); border-color: #ffab2e; color: #ffab2e; box-shadow: inset 0 0 15px rgba(255, 171, 46, 0.2); }
 
     /* 📍 แก้ข้อ 2: บังคับธงชาติและชื่อดาวเทียมให้อยู่ตรงกลางและบรรทัดเดียวกันเป๊ะๆ */
     .target-header { display: flex; flex-direction: row !important; align-items: center; justify-content: center; gap: 15px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px dashed rgba(0,234,255,0.4); }
@@ -361,6 +354,27 @@ const injectStyles = () => {
     .speed-row { display: flex; gap: 8px; margin-bottom: 8px; }
 
     /* ⏱️ กลุ่มที่ 1: TIME & PLAYBACK (ขอบทอง / ปุ่มแดง-ทอง) */
+
+    /* 📍 สไตล์ของ TIME SCRUB BAR (Slide Bar) */
+    .time-scrubber-container { margin-top: 15px; padding-top: 15px; border-top: 1px dashed rgba(0, 234, 255, 0.4); position: relative; }
+    
+    input[type=range].sci-fi-slider { -webkit-appearance: none; width: 100%; background: transparent; margin: 10px 0; }
+    input[type=range].sci-fi-slider:focus { outline: none; }
+    input[type=range].sci-fi-slider::-webkit-slider-runnable-track {
+      width: 100%; height: 8px; cursor: pointer;
+      background: rgba(255,255,255,0.05);
+      border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    input[type=range].sci-fi-slider::-webkit-slider-thumb {
+      height: 22px; width: 14px; border-radius: 4px;
+      background: var(--thumb-color, #00eaff);
+      cursor: grab; -webkit-appearance: none; margin-top: -8px;
+      border: 2px solid #fff;
+      box-shadow: 0 0 15px var(--thumb-glow, #00eaff), inset 0 0 5px rgba(0,0,0,0.5);
+      transition: transform 0.1s;
+    }
+    input[type=range].sci-fi-slider::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.2); }
+
     .control-group:nth-child(1) { border-color: var(--gold); border-top-color: var(--gold); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(255, 204, 0, 0.15), inset 0 0 20px rgba(255, 204, 0, 0.05); }
     .control-group:nth-child(1) p { color: var(--gold); border-bottom-color: rgba(255, 204, 0, 0.5); text-shadow: 0 0 10px var(--gold); }
     
@@ -586,6 +600,9 @@ export default function App() {
   const [selectedCatnrs, setSelectedCatnrs] = useState([SATELLITE_OPTIONS[0].catnr]); 
   
   const [simulatedTimeMs, setSimulatedTimeMs] = useState(Date.now());
+  
+  const [sliderMode, setSliderMode] = useState('DAILY');
+
 // 📍 สมองกลควบคุมการกดค้างปุ่มข้ามเวลา (Hold to Seek)
 const seekRef = useRef({ isHolding: false, interval: null, timeout: null });
 
@@ -1876,20 +1893,19 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
 
       <div className="ui-layer">
 
-       <div className="left-container">
-          {/* 📍 แถวควบคุมหลักด้านบนซ้าย: ประกอบร่างปุ่มเมนู ☰ และแผงนาฬิกาเข้าด้วยกัน */}
-          <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', pointerEvents: 'none', marginBottom: '15px', zIndex: 100 }}>
+      <div className="left-container">
+          {/* 📍 แถวควบคุมหลักด้านบนซ้าย: เพิ่ม flexShrink: 0 ป้องกันเมนูบีบตัว */}
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', pointerEvents: 'none', marginBottom: '15px', zIndex: 100, flexShrink: 0 }}>
             
             <button 
               className="menu-toggle-btn-left"
               onClick={toggleLeftPanel}
-              style={{ pointerEvents: 'auto', marginBottom: 0 }} // ล้าง margin เดิม เพื่อให้แนวระดับเป๊ะ
+              style={{ pointerEvents: 'auto', marginBottom: 0 }}
             >
               {isLeftPanelOpen ? '✕' : '☰'}
             </button>
 
             <div className="global-clock-hud" style={{ margin: 0 }}>
-              {/* 📍 บังคับจัดเรียงเวลา 3 โซนให้อยู่แนวนอนบรรทัดเดียวกันเป๊ะ! */}
               <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
                 <div className="clock-item">
                   <span>THA LOCAL</span>
@@ -1905,47 +1921,42 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 </div>
               </div>
 
-            {/* 📍 ป้ายสถานะ LIVE/SIM ด้านล่างสุดของกล่อง */}
-            {(() => {
+              {(() => {
                 const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
                  return (
                    <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ position: 'relative', top: '0', transform: 'none', width: '100%', marginTop: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                     {/* 📍 เปลี่ยนอีโมจิให้ตรงกับหลักสากล 🟢 = Live / 🟠 = Sim */}
                      {isLive ? '🟢 LIVE OPERATIONS' : '🟠 SIMULATION MODE'}
                    </div>
                  );
               })()}
-
             </div>
-
           </div>
           
+          {/* 📍 ปลดล็อก Scrollbar ให้แผงซ้าย */}
           {isLeftPanelOpen && (
-         <div className="left-panel" style={{ width: '461px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          <div className="left-panel" style={{ width: '517px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '15px', flex: 1, overflowY: 'auto', paddingBottom: '30px', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
             
-            {/* 📍 ฟันธง: หัวข้อ SATELLITE ORBIT จัดกึ่งกลาง ขยายใหญ่ และเรืองแสง */}
             <div className="panel-box" style={{ textAlign: 'center', padding: '20px 15px', background: 'rgba(0, 10, 20, 0.45)', border: '1px solid rgba(0, 234, 255, 0.5)', borderRadius: '4px', boxShadow: '0 0 20px rgba(0, 234, 255, 0.2) inset' }}>
               <h1 style={{ margin: '0 0 8px 0', fontFamily: 'Orbitron, sans-serif', fontSize: '30px', fontWeight: '900', color: '#ffffff', textShadow: '0 0 15px #00eaff, 0 0 30px #00eaff', letterSpacing: '2px' }}>SATELLITE ORBIT</h1>
               <span style={{ display: 'block', fontSize: '13px', color: '#ffffff', fontWeight: '600', letterSpacing: '2px', textShadow: '0 0 8px rgba(255,255,255,0.6)', textTransform: 'uppercase' }}>Thailand Satellite Ground Station</span>
             </div>
-            {/* ... (โค้ดส่วนอื่นที่เป็นธงชาติ หรือ NEXT PASS ปล่อยไว้เหมือนเดิมครับ) ... */}
 
-          {/* ☁️ CLOUD COVER FORECAST HUD */}
-          <div className="panel-box" style={{ padding: '15px 20px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px' }}>
-                <span style={{ fontFamily: 'Orbitron', fontSize: '13px', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px' }}>☁️ ATMOSPHERIC CLOUD COVER</span>
-                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani' }}>OPEN-METEO API</span>
+            {/* ☁️ CLOUD COVER FORECAST HUD */}
+            <div className="panel-box" style={{ padding: '15px 20px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px', flexWrap: 'wrap', gap: '5px' }}>
+                <span style={{ fontFamily: 'Orbitron', fontSize: '13px', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px', flex: '1 1 auto' }}>☁️ ATMOSPHERIC CLOUD COVER</span>
+                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani', whiteSpace: 'nowrap' }}>OPEN-METEO API</span>
               </div>
               
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ flex: '1 1 auto', minWidth: '150px' }}>
                   <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase' }}>Optical Viability</div>
-                  <div style={{ fontSize: '16px', fontFamily: 'Orbitron', fontWeight: 'bold', color: cloudCover < 30 ? 'var(--green)' : (cloudCover < 70 ? 'var(--gold)' : 'var(--red)') }}>
+                  <div style={{ fontSize: '16px', fontFamily: 'Orbitron', fontWeight: 'bold', color: cloudCover < 30 ? 'var(--green)' : (cloudCover < 70 ? 'var(--gold)' : 'var(--red)'), lineHeight: '1.2', marginTop: '4px', wordBreak: 'break-word' }}>
                     {cloudCover === null ? 'ANALYZING...' : (cloudCover < 30 ? 'NOMINAL (CLEAR)' : (cloudCover < 70 ? 'MODERATE CLOUDS' : 'HIGH OBSCUREMENT'))}
                   </div>
                 </div>
                 
-                <div style={{ textAlign: 'right' }}>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <div style={{ fontSize: '28px', fontFamily: 'Orbitron', fontWeight: '900', color: '#fff', textShadow: '0 0 10px var(--cyan)' }}>
                     {isFetchingCloud ? '--' : `${cloudCover}%`}
                   </div>
@@ -1953,137 +1964,81 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
               </div>
             </div>
 
-              <div className="panel-box mission-status">
-                <div className="target-header">
-                  {targetConfig.flag ? <img src={`https://flagcdn.com/w40/${targetConfig.flag}.png`} alt="flag" /> : <span style={{fontSize: '30px'}}>🛰️</span>}
-                  <h2>{targetConfig.displayName}</h2>
-                </div>
-
-                {/* 📍 ฟันธง Gimmick 1: เอฟเฟกต์ Pulse Glow หายใจเข้าออกตอนจับเป้าได้ */}
-                <style>{`
-                  @keyframes pulse-glow {
-                    0% { box-shadow: 0 0 15px rgba(0, 234, 255, 0.4), inset 0 0 10px rgba(0, 234, 255, 0.2); }
-                    50% { box-shadow: 0 0 30px rgba(0, 234, 255, 1), inset 0 0 20px rgba(0, 234, 255, 0.8); }
-                    100% { box-shadow: 0 0 15px rgba(0, 234, 255, 0.4), inset 0 0 10px rgba(0, 234, 255, 0.2); }
-                  }
-                  .status-banner.active { animation: pulse-glow 2s infinite ease-in-out; }
-                `}</style>
-
-                {/* 📍 ฟันธง: ป้าย Status Banner อัปเกรดใหม่ แสดง Countdown และ Max EL */}
-                <div className={`status-banner ${linkActive ? 'active' : 'standby'}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '15px 10px' }}>
-                {linkActive ? (
-                <>
-                  <span style={{ fontSize: '14px', fontWeight: '900', color: 'rgba(255,255,255,0.8)' }}>SIGNAL ACQUIRED</span>
-                  
-                  {/* 📍 ฟันธง: เพิ่มเวลานับถอยหลัง (Time to LOS) สีเขียวสว่าง */}
-                  <span style={{ fontSize: '32px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', color: 'var(--green)', textShadow: '0 0 20px rgba(0, 255, 102, 0.6)', margin: '2px 0' }}>
-                    {(() => {
-                      // คำนวณเวลาที่เหลือก่อนจบ Pass
-                      const activePass = passSchedule.find(p => simulatedTimeMs >= p.aosTime && simulatedTimeMs <= p.losTime);
-                      if (activePass) {
-                        const diffMs = activePass.losTime - simulatedTimeMs;
-                        const mins = Math.floor(diffMs / 60000);
-                        const secs = Math.floor((diffMs % 60000) / 1000);
-                        return `- ${pad2(mins)}m ${pad2(secs)}s`;
-                      }
-                      return "TRACKING...";
-                    })()}
-                  </span>
-                  <span style={{ fontSize: '12px', color: 'var(--green)', letterSpacing: '2px' }}>TIME TO LOS (END OF PASS)</span>
-                </>
-                  ) : nextPassTimestamp && nextPassTimestamp.time && (nextPassTimestamp.time > simulatedTimeMs) ? (
-                     <>
-                       <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', letterSpacing: '1px' }}>NEXT PASS (AOS) IN</span>
-                       <span style={{ fontSize: '28px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', color: 'var(--gold)', textShadow: '0 0 15px rgba(255, 204, 0, 0.5)', margin: '2px 0' }}>
-                         {(() => {
-                           const diffMs = nextPassTimestamp.time - simulatedTimeMs;
-                           const hrs = Math.floor(diffMs / 3600000);
-                           const mins = Math.floor((diffMs % 3600000) / 60000);
-                           const secs = Math.floor((diffMs % 60000) / 1000);
-                           // 📍 ฟันธง: เติมตัวอักษร h, m, s กำกับหน่วยเวลา ป้องกันความสับสนของ Operator
-                           return `- ${pad2(hrs)}h ${pad2(mins)}m ${pad2(secs)}s`;
-                         })()}
-                       </span>
-                       <span style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.6)' }}>EXPECTED MAX EL: <strong style={{color: 'var(--cyan)', fontSize: '16px'}}>{nextPassTimestamp.maxEl.toFixed(1)}°</strong></span>
-                     </>
-                  ) : (
-                     <span style={{ fontSize: '16px' }}>NO UPCOMING PASS</span>
-                  )}
-                </div>
-
-                <div className="telemetry-grid">
-                  <div className="t-box">
-                    <span>LATITUDE</span>
-                    <strong>{targetData && !isNaN(targetData.lat) ? targetData.lat.toFixed(4) : '---'}°</strong>
-                  </div>
-                  <div className="t-box">
-                    <span>LONGITUDE</span>
-                    <strong>{targetData && !isNaN(targetData.lng) ? targetData.lng.toFixed(4) : '---'}°</strong>
-                  </div>
-                  <div className={`t-box ${linkActive ? 'highlight' : ''}`}>
-                    <span>ELEVATION</span>
-                    <strong>{targetData && !isNaN(targetData.elevationDeg) ? targetData.elevationDeg.toFixed(2) : '---'}°</strong>
-                  </div>
-                  <div className="t-box">
-                    <span>AZIMUTH</span>
-                    <strong>{targetData && !isNaN(targetData.azimuthDeg) ? targetData.azimuthDeg.toFixed(2) : '---'}°</strong>
-                  </div>
-                  <div className="t-box">
-                    <span>SLANT RANGE</span>
-                    <strong>{targetData && !isNaN(targetData.rangeKm) ? Math.round(targetData.rangeKm).toLocaleString() : '---'} km</strong>
-                  </div>
-                  <div className="t-box">
-                    <span>ALTITUDE</span>
-                    <strong>{targetData && !isNaN(targetData.altKm) ? targetData.altKm.toFixed(0) : '---'} km</strong>
-                  </div>
-                  <div className="t-box">
-                    <span>ORBITAL SPEED</span>
-                    <strong>{targetData && !isNaN(targetData.speedKmS) ? targetData.speedKmS.toFixed(2) : '---'} km/s</strong>
-                  </div>
-                  <div className="t-box">
-                    <span>INCLINATION</span>
-                    <strong>{tles[selectedCatnr] ? getInclinationDeg(tles[selectedCatnr].line2).toFixed(2) : '---'}°</strong>
-                  </div>
-                </div>
-
-                <ul className="info-list">
-                  <li>
-                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Operator / Agency:</span> 
-                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.operator || 'Unknown'}</strong>
-                  </li>
-                  <li>
-                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Mission Type:</span> 
-                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.mission || 'Various'}</strong>
-                  </li>
-                  <li>
-                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Orbit Class:</span> 
-                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetData?.altKm > 2000 ? (targetData?.altKm > 30000 ? 'GEO' : 'MEO') : 'LEO'}</strong>
-                  </li>
-                  
-                  <li>
-                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Station Mask:</span> 
-                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{PASS_MIN_ELEVATION_DEG.toFixed(1)}°</strong>
-                  </li>
-                  <li>
-                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Telemetry (TT&C):</span> 
-                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.telemetry || 'N/A'}</strong>
-                  </li>
-                  <li>
-                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Payload Downlink:</span> 
-                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.payload || 'N/A'}</strong>
-                  </li>
-                  
-                  <li>
-                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span> 
-                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong>
-                  </li>
-                  <li>
-                    <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span> 
-                    <strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{tleSource}</strong>
-                  </li>
-                </ul>
+            <div className="panel-box mission-status">
+              <div className="target-header">
+                {targetConfig.flag ? <img src={`https://flagcdn.com/w40/${targetConfig.flag}.png`} alt="flag" /> : <span style={{fontSize: '30px'}}>🛰️</span>}
+                <h2>{targetConfig.displayName}</h2>
               </div>
+
+              <style>{`
+                @keyframes pulse-glow {
+                  0% { box-shadow: 0 0 15px rgba(0, 234, 255, 0.4), inset 0 0 10px rgba(0, 234, 255, 0.2); }
+                  50% { box-shadow: 0 0 30px rgba(0, 234, 255, 1), inset 0 0 20px rgba(0, 234, 255, 0.8); }
+                  100% { box-shadow: 0 0 15px rgba(0, 234, 255, 0.4), inset 0 0 10px rgba(0, 234, 255, 0.2); }
+                }
+                .status-banner.active { animation: pulse-glow 2s infinite ease-in-out; }
+              `}</style>
+
+              <div className={`status-banner ${linkActive ? 'active' : 'standby'}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '15px 10px' }}>
+              {linkActive ? (
+              <>
+                <span style={{ fontSize: '14px', fontWeight: '900', color: 'rgba(255,255,255,0.8)' }}>SIGNAL ACQUIRED</span>
+                <span style={{ fontSize: '32px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', color: 'var(--green)', textShadow: '0 0 20px rgba(0, 255, 102, 0.6)', margin: '2px 0' }}>
+                  {(() => {
+                    const activePass = passSchedule.find(p => simulatedTimeMs >= p.aosTime && simulatedTimeMs <= p.losTime);
+                    if (activePass) {
+                      const diffMs = activePass.losTime - simulatedTimeMs;
+                      const mins = Math.floor(diffMs / 60000);
+                      const secs = Math.floor((diffMs % 60000) / 1000);
+                      return `- ${pad2(mins)}m ${pad2(secs)}s`;
+                    }
+                    return "TRACKING...";
+                  })()}
+                </span>
+                <span style={{ fontSize: '12px', color: 'var(--green)', letterSpacing: '2px' }}>TIME TO LOS (END OF PASS)</span>
+              </>
+                ) : nextPassTimestamp && nextPassTimestamp.time && (nextPassTimestamp.time > simulatedTimeMs) ? (
+                   <>
+                     <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', letterSpacing: '1px' }}>NEXT PASS (AOS) IN</span>
+                     <span style={{ fontSize: '28px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', color: 'var(--gold)', textShadow: '0 0 15px rgba(255, 204, 0, 0.5)', margin: '2px 0' }}>
+                       {(() => {
+                         const diffMs = nextPassTimestamp.time - simulatedTimeMs;
+                         const hrs = Math.floor(diffMs / 3600000);
+                         const mins = Math.floor((diffMs % 3600000) / 60000);
+                         const secs = Math.floor((diffMs % 60000) / 1000);
+                         return `- ${pad2(hrs)}h ${pad2(mins)}m ${pad2(secs)}s`;
+                       })()}
+                     </span>
+                     <span style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.6)' }}>EXPECTED MAX EL: <strong style={{color: 'var(--cyan)', fontSize: '16px'}}>{nextPassTimestamp.maxEl.toFixed(1)}°</strong></span>
+                   </>
+                ) : (
+                   <span style={{ fontSize: '16px' }}>NO UPCOMING PASS</span>
+                )}
+              </div>
+
+              <div className="telemetry-grid">
+                <div className="t-box"><span>LATITUDE</span><strong>{targetData && !isNaN(targetData.lat) ? targetData.lat.toFixed(4) : '---'}°</strong></div>
+                <div className="t-box"><span>LONGITUDE</span><strong>{targetData && !isNaN(targetData.lng) ? targetData.lng.toFixed(4) : '---'}°</strong></div>
+                <div className={`t-box ${linkActive ? 'highlight' : ''}`}><span>ELEVATION</span><strong>{targetData && !isNaN(targetData.elevationDeg) ? targetData.elevationDeg.toFixed(2) : '---'}°</strong></div>
+                <div className="t-box"><span>AZIMUTH</span><strong>{targetData && !isNaN(targetData.azimuthDeg) ? targetData.azimuthDeg.toFixed(2) : '---'}°</strong></div>
+                <div className="t-box"><span>SLANT RANGE</span><strong>{targetData && !isNaN(targetData.rangeKm) ? Math.round(targetData.rangeKm).toLocaleString() : '---'} km</strong></div>
+                <div className="t-box"><span>ALTITUDE</span><strong>{targetData && !isNaN(targetData.altKm) ? targetData.altKm.toFixed(0) : '---'} km</strong></div>
+                <div className="t-box"><span>ORBITAL SPEED</span><strong>{targetData && !isNaN(targetData.speedKmS) ? targetData.speedKmS.toFixed(2) : '---'} km/s</strong></div>
+                <div className="t-box"><span>INCLINATION</span><strong>{tles[selectedCatnr] ? getInclinationDeg(tles[selectedCatnr].line2).toFixed(2) : '---'}°</strong></div>
+              </div>
+
+              <ul className="info-list">
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Operator / Agency:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.operator || 'Unknown'}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Mission Type:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.mission || 'Various'}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Orbit Class:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetData?.altKm > 2000 ? (targetData?.altKm > 30000 ? 'GEO' : 'MEO') : 'LEO'}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Station Mask:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{PASS_MIN_ELEVATION_DEG.toFixed(1)}°</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Telemetry (TT&C):</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.telemetry || 'N/A'}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Payload Downlink:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.payload || 'N/A'}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{tleSource}</strong></li>
+              </ul>
             </div>
+          </div>
           )}
         </div>
 
@@ -2143,8 +2098,8 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 ))}
               </div>
 
-              {/* แถว 3: ปุ่ม RESET ขยายเต็มความกว้าง */}
-              <button className="btn" style={{ marginBottom: 0, marginTop: '8px', fontSize: '14px', letterSpacing: '1px' }} onClick={() => {
+             {/* แถว 3: ปุ่ม RESET ขยายเต็มความกว้าง */}
+             <button className="btn" style={{ marginBottom: 0, marginTop: '8px', fontSize: '14px', letterSpacing: '1px' }} onClick={() => {
                 setSimulatedTimeMs(Date.now());
                 setSpeedMult(1);
                 setIsPlaying(true);
@@ -2152,6 +2107,92 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 setCameraMode('FREE LOOK');
                 if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
               }}>RESET TO LIVE</button>
+
+              {/* 📍 แถว 4: TIME SCRUB BAR (แบบ Dynamic Scale 2 In 1) ฟันธง! */}
+              <div className="time-scrubber-container">
+                <div className="scrubber-labels" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ width: '70px', textAlign: 'left', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>
+                    {sliderMode === 'DAILY' ? '00:00 UTC' : 'AOS -5m'}
+                  </span>
+                  
+                  {/* 📍 ปุ่มสลับโหมดสเกลเวลา (Dynamic Scale Toggle) */}
+                  <button 
+                    onClick={() => setSliderMode(sliderMode === 'DAILY' ? 'PASS' : 'DAILY')}
+                    style={{ 
+                      background: sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.1)' : 'rgba(255, 204, 0, 0.15)', 
+                      border: `1px solid ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`, 
+                      color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', 
+                      borderRadius: '4px', padding: '4px 10px', fontSize: '11px',
+                      cursor: 'pointer', fontFamily: 'Orbitron', fontWeight: 'bold',
+                      letterSpacing: '1px', transition: 'all 0.3s',
+                      boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.2)' : 'rgba(255, 204, 0, 0.3)'}`
+                    }}
+                  >
+                    MODE: {sliderMode === 'DAILY' ? '🌍 24H GLOBAL' : '🎯 ACTIVE PASS'} ⟲
+                  </button>
+
+                  <span style={{ width: '70px', textAlign: 'right', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>
+                    {sliderMode === 'DAILY' ? '23:59 UTC' : 'LOS +5m'}
+                  </span>
+                </div>
+                
+                {(() => {
+                  const currentSimDate = new Date(simulatedTimeMs);
+                  let minTime = Date.UTC(currentSimDate.getUTCFullYear(), currentSimDate.getUTCMonth(), currentSimDate.getUTCDate(), 0, 0, 0);
+                  let maxTime = minTime + 86400000 - 1; // 24 Hours
+
+                  // 📍 สมองกลคำนวณช่วงเวลาของ Pass ที่ใกล้ที่สุด (โหมดเจาะจง)
+                  if (sliderMode === 'PASS' && passSchedule.length > 0) {
+                    let targetPass = passSchedule.find(p => simulatedTimeMs >= p.aosTime - 300000 && simulatedTimeMs <= p.losTime + 300000);
+                    // ถ้าไม่อยู่ในช่วง Pass ใดๆ เลย ให้จับคู่กับ Pass ที่ใกล้ที่สุดแทน
+                    if (!targetPass) {
+                      targetPass = passSchedule.reduce((prev, curr) => Math.abs(curr.peakTime - simulatedTimeMs) < Math.abs(prev.peakTime - simulatedTimeMs) ? curr : prev);
+                    }
+                    if (targetPass) {
+                      minTime = targetPass.aosTime - 300000; // เริ่มก่อน AOS 5 นาที
+                      maxTime = targetPass.losTime + 300000; // จบหลัง LOS 5 นาที
+                    }
+                  }
+                  
+                  // คำนวณเปอร์เซ็นต์สำหรับแถบ Progress
+                  const progressPct = ((simulatedTimeMs - minTime) / (maxTime - minTime)) * 100;
+
+                  return (
+                    <div style={{ position: 'relative' }}>
+                      {/* วาดแถบเส้น Progress สีวิ่งตามหัว Thumb */}
+                      <div style={{ 
+                        position: 'absolute', top: '10px', left: 0, height: '8px', 
+                        width: `${Math.max(0, Math.min(100, progressPct))}%`, 
+                        background: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', 
+                        borderRadius: '4px', pointerEvents: 'none',
+                        boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`
+                      }}></div>
+                      
+                      <input 
+                        type="range" 
+                        min={minTime} 
+                        max={maxTime} 
+                        value={simulatedTimeMs}
+                        className="sci-fi-slider"
+                        style={{ 
+                          // เปลี่ยนลูกเล่นสีสไลด์บาร์ตาม Mode ทันที
+                          '--thumb-color': sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)',
+                          '--thumb-glow': sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.8)' : 'rgba(255, 204, 0, 0.8)'
+                        }}
+                        onMouseDown={() => {
+                          // ฟันธง: ทันทีที่จับสไลด์บาร์ ต้องตัดระบบออกจากสถานะ Live อัตโนมัติ (เข้าสู่โหมดจำลอง)
+                          setIsPlaying(false);
+                        }}
+                        onChange={(e) => setSimulatedTimeMs(Number(e.target.value))}
+                      />
+                    </div>
+                  );
+                })()}
+                
+                <div style={{ textAlign: 'center', fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginTop: '5px', fontVariantNumeric: 'tabular-nums' }}>
+                  CURRENT SIM: <strong style={{ color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', fontSize: '14px', textShadow: `0 0 5px ${sliderMode === 'DAILY' ? 'rgba(0,234,255,0.5)' : 'rgba(255,204,0,0.5)'}` }}>{formatTime(new Date(simulatedTimeMs))} UTC</strong>
+                </div>
+              </div>
             </div>
 
            {/* กลุ่มที่ 2: การแสดงผลมุมมอง */}
@@ -2607,13 +2648,19 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
             ) : (
               <table className="hide-scroll" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', fontSize: '18px', color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255, 204, 0, 0.4)', color: 'rgba(255, 255, 255, 0.6)', textAlign: 'left', letterSpacing: '1px' }}>
-                    <th>DATE (UTC)</th> <th>AOS</th> <th>MAX EL TIME</th> <th>LOS</th> <th>DURATION</th> <th>MAX EL</th> <th>AOS / LOS AZ</th>
+                  <tr style={{ borderBottom: '2px solid rgba(255, 204, 0, 0.6)', color: 'rgba(255, 255, 255, 0.7)', textAlign: 'center', letterSpacing: '1.5px', fontSize: '14px', textTransform: 'uppercase' }}>
+                    <th style={{ padding: '12px 5px' }}>DATE (UTC)</th> 
+                    <th style={{ padding: '12px 5px' }}>AOS</th> 
+                    <th style={{ padding: '12px 5px' }}>MAX EL TIME</th> 
+                    <th style={{ padding: '12px 5px' }}>LOS</th> 
+                    <th style={{ padding: '12px 5px' }}>DURATION</th> 
+                    <th style={{ padding: '12px 5px' }}>MAX EL</th> 
+                    <th style={{ padding: '12px 5px' }}>AOS / LOS AZ</th>
                   </tr>
                 </thead>
                 <tbody>
                   {passSchedule.length === 0 ? (
-                    <tr><td colSpan={7} style={{ padding: '25px', textAlign: 'center', color: 'var(--red)' }}>NO PASSES IN NEXT 3 DAYS OR GEO</td></tr>
+                    <tr><td colSpan={7} style={{ padding: '30px', textAlign: 'center', color: 'var(--red)', fontWeight: 'bold', letterSpacing: '2px' }}>NO PASSES IN NEXT 3 DAYS OR GEO</td></tr>
                   ) : (
                     passSchedule.map((pass, idx) => {
                       const aosD = new Date(pass.aosTime); const losD = new Date(pass.losTime); const peakD = new Date(pass.peakTime); 
@@ -2621,17 +2668,17 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                       return (
                         <tr key={idx} 
                           onClick={() => { setSimulatedTimeMs(pass.aosTime - 60000); setSpeedMult(30); setIsPlaying(true); bringToFront('radar'); }}
-                          style={{ borderBottom: '1px dashed rgba(255,255,255,0.15)', backgroundColor: 'transparent', cursor: 'pointer', transition: 'background-color 0.2s' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.2)'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          style={{ borderBottom: '1px dashed rgba(255,255,255,0.1)', backgroundColor: 'transparent', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'center' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.15)'; e.currentTarget.style.transform = 'scale(1.01)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.transform = 'scale(1)'; }}
                         >
-                          <td style={{ color: 'rgba(255,255,255,0.9)' }}>{aosD.toISOString().split('T')[0]}</td>
-                          <td style={{ color: 'var(--green)', fontWeight: 'bold' }}>{pad2(aosD.getUTCHours())}:{pad2(aosD.getUTCMinutes())}:{pad2(aosD.getUTCSeconds())}</td>
-                          <td style={{ color: 'var(--gold)', fontWeight: 'bold' }}>{pad2(peakD.getUTCHours())}:{pad2(peakD.getUTCMinutes())}:{pad2(peakD.getUTCSeconds())}</td>
-                          <td style={{ color: 'var(--red)', fontWeight: 'bold' }}>{pad2(losD.getUTCHours())}:{pad2(losD.getUTCMinutes())}:{pad2(losD.getUTCSeconds())}</td>
-                          <td style={{ color: 'rgba(255,255,255,0.9)' }}>{durMins}m {pad2(durSecs)}s</td>
-                          <td style={{ color: 'var(--cyan)', fontWeight: 'bold' }}>{pass.maxEl.toFixed(2)}°</td>
-                          <td style={{ color: 'rgba(255,255,255,0.6)' }}>{pass.aosAz.toFixed(1)}° → {pass.losAz.toFixed(1)}°</td>
+                          <td style={{ color: 'rgba(255,255,255,0.9)', padding: '12px 5px' }}>{aosD.toISOString().split('T')[0]}</td>
+                          <td style={{ color: 'var(--green)', fontWeight: 'bold', padding: '12px 5px' }}>{pad2(aosD.getUTCHours())}:{pad2(aosD.getUTCMinutes())}:{pad2(aosD.getUTCSeconds())}</td>
+                          <td style={{ color: 'var(--gold)', fontWeight: 'bold', padding: '12px 5px' }}>{pad2(peakD.getUTCHours())}:{pad2(peakD.getUTCMinutes())}:{pad2(peakD.getUTCSeconds())}</td>
+                          <td style={{ color: 'var(--red)', fontWeight: 'bold', padding: '12px 5px' }}>{pad2(losD.getUTCHours())}:{pad2(losD.getUTCMinutes())}:{pad2(losD.getUTCSeconds())}</td>
+                          <td style={{ color: '#00eaff', fontWeight: 'bold', padding: '12px 5px' }}>{durMins}m {pad2(durSecs)}s</td>
+                          <td style={{ color: '#ffffff', fontWeight: '900', padding: '12px 5px', textShadow: '0 0 8px rgba(255,255,255,0.5)' }}>{pass.maxEl.toFixed(2)}°</td>
+                          <td style={{ color: 'rgba(255,255,255,0.6)', padding: '12px 5px' }}>{pass.aosAz.toFixed(1)}° → {pass.losAz.toFixed(1)}°</td>
                         </tr>
                       );
                     })
@@ -2921,12 +2968,12 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
             <div style={{ flex: '0 0 clamp(380px, 40vw, 500px)', display: 'flex', flexDirection: 'column', borderRight: '1px dashed rgba(255,69,0,0.5)', paddingRight: '20px' }}>
               <style>{`.img-hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
               <div style={{ flex: '1', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="img-hide-scrollbar">
-                <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontFamily: 'Rajdhani', color: '#fff' }}>
+              <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontFamily: 'Rajdhani', color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
                   <thead>
-                    <tr style={{ color: 'rgba(255,255,255,0.6)', borderBottom: '1px solid rgba(255,69,0,0.6)' }}>
-                      <th style={{ padding: '12px 10px', width: '55%', textAlign: 'left', fontSize: 'clamp(12px, 1.2vw, 15px)', letterSpacing: '1px' }}>DATE & TIME (UTC)</th>
-                      <th style={{ padding: '12px 10px', width: '25%', textAlign: 'center', fontSize: 'clamp(12px, 1.2vw, 15px)', letterSpacing: '1px' }}>DURATION</th>
-                      <th style={{ padding: '12px 10px', width: '20%', textAlign: 'center', fontSize: 'clamp(12px, 1.2vw, 15px)', letterSpacing: '1px' }}>ACTION</th>
+                    <tr style={{ color: 'rgba(255,255,255,0.7)', borderBottom: '2px solid rgba(255,69,0,0.8)' }}>
+                      <th style={{ padding: '12px 5px', width: '50%', textAlign: 'center', fontSize: 'clamp(12px, 1.2vw, 15px)', letterSpacing: '1.5px' }}>DATE & TIME (UTC)</th>
+                      <th style={{ padding: '12px 5px', width: '25%', textAlign: 'center', fontSize: 'clamp(12px, 1.2vw, 15px)', letterSpacing: '1.5px' }}>DURATION</th>
+                      <th style={{ padding: '12px 5px', width: '25%', textAlign: 'center', fontSize: 'clamp(12px, 1.2vw, 15px)', letterSpacing: '1.5px' }}>ACTION</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2936,54 +2983,44 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                       return (
                         <tr key={plan.id}
                             style={{ 
-                              borderBottom: '1px dashed rgba(255,255,255,0.1)', 
+                              borderBottom: '1px solid rgba(255,255,255,0.05)', 
                               cursor: 'pointer', 
                               background: isSelected ? 'linear-gradient(90deg, rgba(255, 69, 0, 0.25) 0%, transparent 100%)' : 'transparent',
                               borderLeft: isSelected ? '4px solid #FF4500' : '4px solid transparent',
-                              transition: 'all 0.3s ease'
+                              transition: 'all 0.2s ease',
+                              textAlign: 'center'
                             }}
                             onMouseOver={(e) => { if(!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; }}
                             onMouseOut={(e) => { if(!isSelected) e.currentTarget.style.background = 'transparent'; }}
                             onClick={() => setSelectedPlanId(isSelected ? null : plan.id)}>
                           
-                          <td style={{ padding: '15px 10px', textAlign: 'left', fontWeight: 'bold', fontSize: 'clamp(14px, 1.5vw, 18px)', whiteSpace: 'nowrap' }}>
-                            <span style={{ color: 'rgba(255,255,255,0.4)', marginRight: '10px', fontSize: '0.85em', fontWeight: '600' }}>
-                              {dStart.getUTCFullYear()}-{pad2(dStart.getUTCMonth() + 1)}-{pad2(dStart.getUTCDate())}
-                            </span>
-                            <span style={{ color: isSelected ? '#fff' : '#e0e0e0', textShadow: isSelected ? '0 0 10px rgba(255,255,255,0.5)' : 'none' }}>
-                              {pad2(dStart.getUTCHours())}:{pad2(dStart.getUTCMinutes())}:{pad2(dStart.getUTCSeconds())}
-                            </span>
+                          <td style={{ padding: '16px 5px', fontWeight: 'bold', fontSize: 'clamp(14px, 1.5vw, 17px)', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                              <span style={{ color: isSelected ? '#ffffff' : '#e0e0e0', textShadow: isSelected ? '0 0 10px rgba(255,69,0,0.8)' : 'none', letterSpacing: '1px' }}>
+                                {pad2(dStart.getUTCHours())}:{pad2(dStart.getUTCMinutes())}:{pad2(dStart.getUTCSeconds())}
+                              </span>
+                              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8em', fontWeight: '600', marginTop: '4px' }}>
+                                {dStart.getUTCFullYear()}-{pad2(dStart.getUTCMonth() + 1)}-{pad2(dStart.getUTCDate())}
+                              </span>
+                            </div>
                           </td>
                           
-                          <td style={{ padding: '15px 10px', color: 'var(--gold)', textAlign: 'center', fontWeight: 'bold', fontSize: 'clamp(16px, 1.8vw, 20px)' }}>
-                            {plan.duration.toFixed(0)} <span style={{ fontSize: '0.65em', color: 'rgba(255,204,0,0.6)' }}>s</span>
+                          <td style={{ padding: '16px 5px', color: isSelected ? '#ffffff' : 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(16px, 1.8vw, 20px)' }}>
+                            {plan.duration.toFixed(0)} <span style={{ fontSize: '0.65em', color: isSelected ? 'rgba(255,255,255,0.6)' : 'rgba(255,204,0,0.6)' }}>s</span>
                           </td>
                           
-                          <td style={{ padding: '15px 10px', textAlign: 'center' }}>
+                          <td style={{ padding: '16px 5px' }}>
                             <div style={{ display: 'flex', justifyContent: 'center' }}>
                               <button style={{ 
                                 background: isSelected ? 'linear-gradient(135deg, #FF4500, #ff8c00)' : 'rgba(255, 69, 0, 0.1)', 
-                                border: `1px solid ${isSelected ? '#FF4500' : 'rgba(255, 69, 0, 0.5)'}`, 
+                                border: `1px solid ${isSelected ? '#FF4500' : 'rgba(255, 69, 0, 0.4)'}`, 
                                 color: isSelected ? '#fff' : '#FF4500', 
-                                width: '42px', height: '34px', 
+                                width: '48px', height: '36px', 
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                                borderRadius: '6px', cursor: 'pointer', fontSize: '14px', 
-                                transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)', 
-                                boxShadow: isSelected ? '0 0 20px rgba(255, 69, 0, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.3)' : 'none',
-                                transform: isSelected ? 'scale(1.05)' : 'scale(1)'
+                                borderRadius: '4px', cursor: 'pointer', fontSize: '14px', 
+                                transition: 'all 0.2s', 
+                                boxShadow: isSelected ? '0 0 15px rgba(255, 69, 0, 0.6)' : 'none',
                               }}
-                                      onMouseOver={(e) => { 
-                                        e.currentTarget.style.background = 'linear-gradient(135deg, #FF4500, #ff8c00)'; 
-                                        e.currentTarget.style.color = '#fff'; 
-                                        e.currentTarget.style.boxShadow = '0 0 25px rgba(255, 69, 0, 0.9)'; 
-                                        e.currentTarget.style.transform = 'scale(1.1)'; 
-                                      }}
-                                      onMouseOut={(e) => { 
-                                        e.currentTarget.style.background = isSelected ? 'linear-gradient(135deg, #FF4500, #ff8c00)' : 'rgba(255, 69, 0, 0.1)'; 
-                                        e.currentTarget.style.color = isSelected ? '#fff' : '#FF4500'; 
-                                        e.currentTarget.style.boxShadow = isSelected ? '0 0 20px rgba(255, 69, 0, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.3)' : 'none'; 
-                                        e.currentTarget.style.transform = isSelected ? 'scale(1.05)' : 'scale(1)';
-                                      }}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setSelectedPlanId(plan.id);
