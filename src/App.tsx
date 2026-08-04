@@ -1030,45 +1030,108 @@ useEffect(() => {
     }
   }, [simulatedTimeMs, selectedCatnr, isFlatMap, isPlaying, satrecs]);
 
-  // REAL-TIME DAY/NIGHT ENGINE
-  useEffect(() => {
-    if (!globeRef.current) return;
-    const globe = globeRef.current;
-    
-    if (!globe.scene || !globe.camera) return;
-    const scene = globe.scene();
-    const camera = globe.camera();
-    if (!scene || !camera || !scene.children || !camera.children) return;
+// REAL-TIME DAY/NIGHT ENGINE (NASA Cinematic Lighting & Cloud Update - FINAL)
+useEffect(() => {
+  if (!globeRef.current) return;
+  const globe = globeRef.current;
+  
+  if (typeof globe.scene !== 'function' || typeof globe.camera !== 'function') return;
+  const scene = globe.scene();
+  if (!scene || !scene.children) return;
 
-    const camLight = camera.children.find(c => c.type === 'DirectionalLight');
-    if (camLight) camLight.intensity = realtimeSun ? 0 : 2.5;
+  // --- 1. 💡 ระบบแสงสว่างระดับ Cinematic (Lighting) ---
+  const ambient = scene.children.find(c => c.type === 'AmbientLight');
+  if (ambient) {
+    // 📍 ฟันธง: เปลี่ยนสีเงามืดจากสีดำ/เทา เป็น "สีน้ำเงินอวกาศ (Deep Space Blue)"
+    ambient.intensity = realtimeSun ? 0.6 : 1.2; 
+    ambient.color.setHex(realtimeSun ? 0x112244 : 0xffffff);
+  }
 
-    const ambient = scene.children.find(c => c.type === 'AmbientLight');
-    // ฟันธง: ปรับแสงช่วงกลางคืนจาก 0.02 เป็น 0.2 ให้เป็นโหมด Twilight (ไม่มืดสนิท)
-    if (ambient) ambient.intensity = realtimeSun ? 0.2 : 0.8;
+  let sunLight = scene.children.find(c => c.name === 'SunLight');
+  if (!sunLight) {
+    // 📍 ฟันธง: แสงแดดสีอมเหลืองทองนิดๆ (0xfff5e6) ลดความแรงลงมาที่ 2.8 ไม่ให้สีแผนที่ไหม้
+    sunLight = new THREE.DirectionalLight(0xfff5e6, 2.8); 
+    sunLight.name = 'SunLight';
+    scene.add(sunLight);
+  }
 
-    let sunLight = scene.children.find(c => c.name === 'SunLight');
-    
-    if (!sunLight) {
-      sunLight = new THREE.DirectionalLight(0xffffff, 5.0); 
-      sunLight.name = 'SunLight';
-      scene.add(sunLight);
-    }
+  // 📍 ฟันธงทีเด็ด: เพิ่มแสง Hemisphere สะท้อนขั้วโลก ทำให้ทวีปสีสดเด้งขึ้น และน้ำทะเลสวยขึ้น
+  let hemiLight = scene.children.find(c => c.name === 'HemiLight');
+  if (!hemiLight) {
+    hemiLight = new THREE.HemisphereLight(0x00eaff, 0x000000, 0.4); 
+    hemiLight.name = 'HemiLight';
+    scene.add(hemiLight);
+  }
+  hemiLight.visible = realtimeSun;
 
-    if (realtimeSun) {
-      try {
-        if (typeof globe.getCoords === 'function') {
-          const sunPos = globe.getCoords(currentSunPos.lat, currentSunPos.lng, 100); 
-          if (sunPos) {
-            sunLight.position.set(sunPos.x, sunPos.y, sunPos.z);
-            sunLight.visible = true;
-          }
+  if (realtimeSun) {
+    try {
+      if (typeof globe.getCoords === 'function') {
+        const sunPos = globe.getCoords(currentSunPos.lat, currentSunPos.lng, 100); 
+        if (sunPos) {
+          sunLight.position.set(sunPos.x, sunPos.y, sunPos.z);
+          sunLight.visible = true;
         }
-      } catch(e) { sunLight.visible = false; }
-    } else {
-      sunLight.visible = false;
+      }
+    } catch(e) { sunLight.visible = false; }
+  } else {
+    sunLight.visible = false;
+  }
+
+  // --- 2. 🌊 ระบบสะท้อนแสงผิวน้ำ (Specular Map) ---
+  try {
+    if (typeof globe.globeMaterial === 'function') {
+      const globeMat = globe.globeMaterial();
+      if (globeMat) {
+        globeMat.color = new THREE.Color(0xffffff);
+        globeMat.bumpScale = 12; // ภูเขานูนกำลังดี
+        
+        if (globeMat.map) {
+          globeMat.map.generateMipmaps = true;
+          globeMat.map.minFilter = THREE.LinearMipMapLinearFilter;
+          globeMat.map.anisotropy = 16; 
+        }
+
+        new THREE.TextureLoader().load('//unpkg.com/three-globe/example/img/earth-water.png', texture => {
+          globeMat.specularMap = texture;
+          globeMat.specular = new THREE.Color('grey'); 
+          globeMat.shininess = 20; // น้ำทะเลแวววาวสู้แดด
+        });
+      }
     }
-  }, [realtimeSun, currentSunPos]);
+  } catch (err) {}
+
+  // --- 3. ☁️ ระบบชั้นเมฆ 3D (แก้ก้อนขาวทึบแสง!) ---
+  try {
+    if (!scene.getObjectByName('atmosphericClouds')) {
+      new THREE.TextureLoader().load('//raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_clouds_1024.png', cloudTexture => {
+        const radius = typeof globe.getGlobeRadius === 'function' ? globe.getGlobeRadius() : 100;
+        const cloudGeo = new THREE.SphereGeometry(radius * 1.008, 64, 64);
+        
+        // 📍 ฟันธง: เปลี่ยนจาก MeshPhong/Additive มาใช้ MeshLambert และ NormalBlending
+        // เมฆจะนุ่ม โปร่งแสง มีเงาตกกระทบ ไม่สว่างจ้าเป็นดวงๆ อีกต่อไป!
+        const cloudMat = new THREE.MeshLambertMaterial({
+          map: cloudTexture,
+          transparent: true,
+          opacity: 0.45, // ลดความทึบลงให้เห็นแผนที่ข้างล่าง
+          blending: THREE.NormalBlending, 
+          depthWrite: false,
+          side: THREE.FrontSide
+        });
+        const cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
+        cloudMesh.name = 'atmosphericClouds';
+        scene.add(cloudMesh);
+
+        (function animateClouds() {
+          if (cloudMesh) {
+            cloudMesh.rotation.y += 0.0002;
+            requestAnimationFrame(animateClouds);
+          }
+        })();
+      });
+    }
+  } catch (err) {}
+}, [realtimeSun, currentSunPos]);
 
   const currentDate = new Date(simulatedTimeMs);
   const targetSatrec = selectedCatnr ? satrecs[selectedCatnr] : null;
@@ -1615,12 +1678,15 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
       <Globe
         ref={globeRef} width={size.width} height={size.height}
         backgroundColor="#000000"
-        globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-        bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-        backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
-        showAtmosphere={true}
-        atmosphereColor="#00eaff"
-        atmosphereAltitude={0.05}
+       /* 📍 อัปเกรดพื้นผิวโลก (สีสดสมจริง) */
+       globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
+       /* 📍 ฟันธง: ใช้ Topology Map เพื่อให้โลกเรียบเนียน สะท้อนแสง และมีรอยหยักแค่ตรงภูเขาจริงๆ */
+       bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
+       backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+       /* 📍 อัปเกรดชั้นบรรยากาศให้เป็นสีฟ้าออโรร่าสมจริงแบบ NASA */
+       showAtmosphere={true}
+       atmosphereColor="#00b3ff"
+       atmosphereAltitude={0.15}
         objectsData={[...allSatObjects]}
         objectLat="lat" objectLng="lng" objectAltitude="altitude"
         objectThreeObject={(d) => createSatelliteModel(d.isTarget)}
@@ -3107,7 +3173,12 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                        transition: 'transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)'
                    }}>
                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block', backgroundColor: '#040608' }}>
-                           <image href="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg" x="0" y="0" width="100" height="100" preserveAspectRatio="none" />
+                           {/* 📍 ฟันธง: แก้จอหลุมดำ! เปลี่ยนกลับมาใช้ High-Res URL ผ่าน CDN ที่โหลดติด 100% พร้อมดันสีให้สดแบบ Tactical */}
+                    <image 
+                      href="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg" 
+                      x="0" y="0" width="100" height="100" preserveAspectRatio="none" 
+                      style={{ filter: 'saturate(1.5) brightness(1.15) contrast(1.2)' }} 
+                    />
 
                             {imagingPlansData.map(p => {
                                if(isNaN(p.startLng) || isNaN(p.endLng)) return null;
