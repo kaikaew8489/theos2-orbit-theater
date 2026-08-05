@@ -671,11 +671,6 @@ const mapThemes = [
     filter: 'none' 
   },
   { 
-    name: 'NASA NO CLOUDS (CLEAR)', 
-    url: '/textures/Earth_noClouds.webp', 
-    filter: 'none' 
-  },
-  { 
     name: 'NASA ATMOSPHERE (VISUAL)', 
     url: '/textures/Flat_earth_Largest.webp', 
     filter: 'contrast(1.1) saturate(1.1)' 
@@ -1146,36 +1141,7 @@ useEffect(() => {
     }
   } catch (err) {}
 
-  // --- 3. ☁️ ระบบชั้นเมฆ 3D (แก้ก้อนขาวทึบแสง!) ---
-  try {
-    if (!scene.getObjectByName('atmosphericClouds')) {
-      new THREE.TextureLoader().load('//raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_clouds_1024.png', cloudTexture => {
-        const radius = typeof globe.getGlobeRadius === 'function' ? globe.getGlobeRadius() : 100;
-        const cloudGeo = new THREE.SphereGeometry(radius * 1.008, 64, 64);
-        
-        // 📍 ฟันธง: เปลี่ยนจาก MeshPhong/Additive มาใช้ MeshLambert และ NormalBlending
-        // เมฆจะนุ่ม โปร่งแสง มีเงาตกกระทบ ไม่สว่างจ้าเป็นดวงๆ อีกต่อไป!
-        const cloudMat = new THREE.MeshLambertMaterial({
-          map: cloudTexture,
-          transparent: true,
-          opacity: 0.45, // ลดความทึบลงให้เห็นแผนที่ข้างล่าง
-          blending: THREE.NormalBlending, 
-          depthWrite: false,
-          side: THREE.FrontSide
-        });
-        const cloudMesh = new THREE.Mesh(cloudGeo, cloudMat);
-        cloudMesh.name = 'atmosphericClouds';
-        scene.add(cloudMesh);
-
-        (function animateClouds() {
-          if (cloudMesh) {
-            cloudMesh.rotation.y += 0.0002;
-            requestAnimationFrame(animateClouds);
-          }
-        })();
-      });
-    }
-  } catch (err) {}
+  
 }, [realtimeSun, currentSunPos]);
 
   const currentDate = new Date(simulatedTimeMs);
