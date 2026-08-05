@@ -258,6 +258,7 @@ const injectStyles = () => {
       border-radius: 10px; padding: 20px; 
       box-shadow: 0 0 60px rgba(0, 234, 255, 0.45), inset 0 0 30px rgba(0, 234, 255, 0.25) !important; 
       position: relative; overflow: hidden;
+      flex-shrink: 0 !important; /* 📍 ฟันธง: ล็อกห้ามกล่องโดนบีบความสูง ป้องกันตัวหนังสือแหว่ง 100% */
     }
 
     .control-group { 
@@ -267,6 +268,7 @@ const injectStyles = () => {
       border-radius: 8px; padding: 20px; 
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 234, 255, 0.3), inset 0 0 20px rgba(0, 234, 255, 0.15); 
       position: relative; overflow: hidden;
+      flex-shrink: 0; /* 📍 ฟันธง: บังคับไม่ให้กล่องหดตัวตามความสูงหน้าจอ ป้องกันปุ่มแหว่ง! */
     }
     
     .main-title h1 { margin: 0 0 8px 0; font-family: 'Orbitron', sans-serif; font-size: 30px; font-weight: 900; color: #ffffff; text-shadow: 0 0 20px #00eaff, 0 0 40px #00eaff; letter-spacing: 2px; }
@@ -338,9 +340,9 @@ const injectStyles = () => {
     .menu-toggle-btn { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(255,204,0,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--gold); color: var(--gold); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(255,204,0,0.6), inset 0 0 10px rgba(255,204,0,0.3); }
     .menu-toggle-btn:hover { background: var(--gold); color: #000; box-shadow: 0 0 30px var(--gold); transform: scale(1.1); }
     
-    /* 📍 ขยายความกว้างแผงขวาจาก 300px เป็น 440px ให้สมมาตรกับฝั่งซ้าย */
-    .right-panel { width: 440px !important; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); }
-    @keyframes slideInRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    /* 📍 ขยายความกว้างแผงขวาจาก 300px เป็น 440px พร้อมเปิดระบบไถสกอร์ลแบบไร้ขอบ */
+    .right-panel { width: 440px !important; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
+    .right-panel::-webkit-scrollbar { display: none; } /* 📍 ซ่อน Scrollbar ให้ UI ดูคลีนสไตล์ Sci-Fi */
 
     /* 📍 จัดหัวข้อเมนูให้อยู่กึ่งกลางตามหลักสมาตร UI/UX */
     .control-group p { text-align: center; margin: 0 0 18px 0; font-size: 18px !important; font-weight: 900; letter-spacing: 4px !important; border-bottom: 1px dashed rgba(0, 234, 255, 0.4); padding-bottom: 10px !important; color: var(--cyan); text-shadow: 0 0 10px var(--cyan); }
@@ -639,6 +641,34 @@ const handleSeekUp = (amount) => {
   const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true); 
   const [cameraMode, setCameraMode] = useState('FREE LOOK');
 
+
+// 📍 สมองกลควบคุม Theme แผนที่ 2D (อัปเกรดเป็น 4 โหมด รักพี่เสียดายน้อง จัดไป!)
+const [mapThemeIdx, setMapThemeIdx] = useState(0);
+const mapThemes = [
+  { 
+    name: 'BLUE MARBLE (TRUE COLOR)', 
+    url: '/textures/blue_marble_depth.webp', 
+    filter: 'none' /* 📍 สีน้ำเงินเข้มตามรูปต้นฉบับ ไม่ปรับแต่ง */
+  },
+
+  { 
+    name: 'NATURAL DAYMAP', 
+    url: '/textures/8k_earth_daymap.webp', 
+    filter: 'none' /* 📍 สีสว่างธรรมชาติ ไม่ปรับแต่ง */
+  },
+  { 
+    name: 'TACTICAL DEPTH (ENHANCED)', 
+    url: '/textures/blue_marble_depth.webp', 
+    filter: 'saturate(1.3) brightness(1.05) contrast(1.35)' /* 📍 สีแต่งซิ่ง เรนเดอร์จัดจ้านสไตล์ Tactical */
+  },
+  { 
+    name: 'NIGHT CITY LIGHTS', 
+    url: '/textures/Earth_nightmap.webp', 
+    /* 📍 ฟันธง: ดันความสดให้ไฟเป็นสีทอง (1.8) ดึงความสว่างให้เห็นขอบทวีป (1.45) และอัดคอนทราสต์ให้ไฟพุ่งทะลุจอ (1.5) */
+    filter: 'none' /* 📍 สีสว่างธรรมชาติ ไม่ปรับแต่ง */
+  }
+];
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // 📍 สมองกลดึงข้อมูลเปอร์เซ็นต์เมฆจาก Open-Meteo API
@@ -704,13 +734,15 @@ const handleSeekUp = (amount) => {
       
       const now = new Date(simulatedTimeMs);
       const daysToPredict = 3; 
-      // 📍 ฟันธง: กำหนดเวลาถอยหลัง (Lookback) 24 ชั่วโมง เพื่อดึง Pass ในอดีตของรอบวันกลับมา
       const lookBackMs = 24 * 60 * 60 * 1000; 
       const stepMs = 10000; 
-      const startTime = now.getTime() - lookBackMs;
-      const maxTime = now.getTime() + (daysToPredict * 24 * 60 * 60 * 1000);
 
-      // 📍 ฟันธง: สั่งให้ลูปสแกนเริ่มจากอดีต (startTime) แทนที่จะเริ่มจากปัจจุบัน (now)
+      // 📍 ฟันธง: ล็อก Start Time ให้หาร stepMs ลงตัวเป๊ะๆ (Snap to Grid) 
+      // เพื่อให้จุดคำนวณวงโคจรคงที่เสมอ ไม่ขยับไปมาตามมิลลิวินาทีของ Date.now()
+      const startTime = Math.floor((now.getTime() - lookBackMs) / stepMs) * stepMs;
+      const maxTime = startTime + (daysToPredict * 24 * 60 * 60 * 1000) + lookBackMs;
+
+      // 📍 สั่งให้ลูปสแกนเริ่มจากอดีต (startTime) แทนที่จะเริ่มจากปัจจุบัน (now)
       for (let t = startTime; t < maxTime; t += stepMs) {
         const d = new Date(t);
         const pos = calculateSatData(d, rec);
@@ -1157,10 +1189,15 @@ const [notifiedPasses, setNotifiedPasses] = useState({});
 
 // 📍 2. สมองกลเซนเซอร์จับเวลาล่วงหน้า 10 นาที (Pre-AOS Trigger)
 useEffect(() => {
-  if (!nextPassTimestamp || !nextPassTimestamp.time || speedMult !== 1) return;
+  // ฟันธง: ต้องเช็ค isPlaying ด้วย เพื่อไม่ให้แจ้งเตือนทำงานตอนเรากด Pause ทิ้งไว้!
+  if (!nextPassTimestamp || !nextPassTimestamp.time || speedMult !== 1 || !isPlaying) return;
+  
   const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
   const TEN_MINUTES_MS = 600000; 
-  const passId = `${selectedCatnr}-${nextPassTimestamp.time}`;
+  
+  // 📍 สร้าง ID แจ้งเตือนแบบปัดเศษทิ้งเหลือระดับ "นาที" ป้องกันบั๊กมิลลิวินาทีแกว่ง
+  const stableAosTime = Math.floor(nextPassTimestamp.time / 60000) * 60000;
+  const passId = `AOS-${selectedCatnr}-${stableAosTime}`;
 
   if (timeToAos <= TEN_MINUTES_MS && timeToAos > 0 && !notifiedPasses[passId]) {
     const upcomingPass = passSchedule.find(p => p.aosTime === nextPassTimestamp.time);
@@ -1190,23 +1227,30 @@ useEffect(() => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
         body: JSON.stringify(payloadData) 
       })
-      .then(response => console.log("LINE แจ้งเตือน 10 นาที สำเร็จ!"))
+      .then(response => console.log(`[LINE] ยิงแจ้งเตือน 10 นาที (AOS) สำเร็จ! ID: ${passId}`))
       .catch(err => console.error("LINE Notify Error:", err));
 
+      // บันทึกประวัติว่าแจ้งเตือนแล้ว จะได้ไม่ยิงซ้ำ!
       setNotifiedPasses(prev => ({ ...prev, [passId]: true }));
     }
   }
-}, [simulatedTimeMs, nextPassTimestamp, selectedCatnr, notifiedPasses, targetConfig, speedMult, passSchedule]);
+}, [simulatedTimeMs, nextPassTimestamp, selectedCatnr, notifiedPasses, targetConfig, speedMult, isPlaying, passSchedule]);
+
 
 // 📍 3. สมองกลเซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)"
 useEffect(() => {
-  if (passSchedule.length === 0 || speedMult !== 1) return;
+  if (passSchedule.length === 0 || speedMult !== 1 || !isPlaying) return;
 
   passSchedule.forEach(pass => {
-    const passIdLos = `${selectedCatnr}-${pass.losTime}-los`;
+    // 📍 สร้าง ID แจ้งเตือนแบบปัดเศษระดับ "นาที" เช่นกัน
+    const stableLosTime = Math.floor(pass.losTime / 60000) * 60000;
+    const passIdLos = `LOS-${selectedCatnr}-${stableLosTime}`;
+    
     const timeSinceLos = simulatedTimeMs - pass.losTime;
     
-    if (timeSinceLos >= 0 && timeSinceLos <= 5000 && !notifiedPasses[passIdLos]) {
+    // 📍 ฟันธง: ขยายหน้าต่างจาก 5 วินาที เป็น 15 วินาที (15000ms) 
+    // เพื่อให้เซนเซอร์ไม่พลาดจังหวะแม้เครื่องจะกระตุก และรับประกันว่ายิงแค่รอบเดียวด้วย ID
+    if (timeSinceLos >= 0 && timeSinceLos <= 15000 && !notifiedPasses[passIdLos]) {
       
       const flagUrl = targetConfig.flag ? `https://flagcdn.com/w40/${targetConfig.flag}.png` : 'https://raw.githubusercontent.com/line/line-bot-sdk-nodejs/master/examples/kitchensink/public/logo.png';
       const doyStr = String(getUtcDayOfYear(new Date(pass.aosTime))).padStart(3, '0');
@@ -1232,13 +1276,13 @@ useEffect(() => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
         body: JSON.stringify(payloadData)
       })
-      .then(response => console.log("LINE LOS แจ้งเตือน สำเร็จ!"))
+      .then(response => console.log(`[LINE] ยิงแจ้งเตือน LOS (PASS COMPLETE) สำเร็จ! ID: ${passIdLos}`))
       .catch(err => console.error("LINE Notify Error:", err));
 
       setNotifiedPasses(prev => ({ ...prev, [passIdLos]: true }));
     }
   });
-}, [simulatedTimeMs, passSchedule, selectedCatnr, notifiedPasses, targetConfig, speedMult]);
+}, [simulatedTimeMs, passSchedule, selectedCatnr, notifiedPasses, targetConfig, speedMult, isPlaying]);
 
   const allSatObjects = useMemo(() => {
     return SATELLITE_OPTIONS.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
@@ -1798,15 +1842,14 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
               transformOrigin: (cameraMode === 'TRACKING' && targetData && !isNaN(targetData.lng)) 
                 ? `${(targetData.lng + 180) / 360 * 100}% ${(90 - targetData.lat) / 180 * 100}%` 
                 : zoomOrigin,
-              transition: 'transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
-              backgroundImage: `
-                linear-gradient(rgba(0, 234, 255, 0.15) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 234, 255, 0.15) 1px, transparent 1px),
-                url('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
-              `,
-              backgroundSize: '4% 8%, 4% 8%, cover',
-              backgroundPosition: 'center'
-            }}>
+                transition: 'transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), filter 0.5s ease-in-out',
+                /* 📍 ฟันธง: ดึงรูป 8K จาก Public/textures และทำตารางกริดตาข่าย 20px */
+                /* 📍 ฟันธง: ถอด Grid ออกให้หมด โชว์ความสวยงามของภาพแผนที่ล้วนๆ */
+              backgroundImage: `url('${mapThemes[mapThemeIdx].url}')`,
+              backgroundSize: '100% 100%', /* บังคับภาพให้กางเต็มจอพอดี */
+                backgroundPosition: 'center',
+                filter: mapThemes[mapThemeIdx].filter
+              }}>
               
               {realtimeSun && (() => {
                 const nightLng = currentSunPos.lng > 0 ? currentSunPos.lng - 180 : currentSunPos.lng + 180;
@@ -2009,21 +2052,23 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
 
             {/* ☁️ CLOUD COVER FORECAST HUD */}
             <div className="panel-box" style={{ padding: '15px 20px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px', flexWrap: 'wrap', gap: '5px' }}>
-                <span style={{ fontFamily: 'Orbitron', fontSize: '13px', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px', flex: '1 1 auto' }}>☁️ ATMOSPHERIC CLOUD COVER</span>
-                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani', whiteSpace: 'nowrap' }}>OPEN-METEO API</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px', gap: '5px' }}>
+                <span style={{ fontFamily: 'Orbitron', fontSize: '13px', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>☁️ ATMOSPHERIC CLOUD COVER</span>
+                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani', whiteSpace: 'nowrap', flexShrink: 0 }}>OPEN-METEO API</span>
               </div>
               
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-                <div style={{ flex: '1 1 auto', minWidth: '150px' }}>
-                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase' }}>Optical Viability</div>
-                  <div style={{ fontSize: '16px', fontFamily: 'Orbitron', fontWeight: 'bold', color: cloudCover < 30 ? 'var(--green)' : (cloudCover < 70 ? 'var(--gold)' : 'var(--red)'), lineHeight: '1.2', marginTop: '4px', wordBreak: 'break-word' }}>
+              {/* 📍 ฟันธง: แก้ flexWrap ออก บังคับให้อยู่บรรทัดเดียวกันเสมอ และจัด align ให้ชิดขอบล่าง (flex-end) */}
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px' }}>
+                <div style={{ flex: '1', overflow: 'hidden' }}>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', marginBottom: '4px' }}>Optical Viability</div>
+                  {/* 📍 ฟันธง: ใช้ clamp() เพื่อให้ฟอนต์หดตัวอัตโนมัติเมื่อจอแคบ ป้องกันตัวหนังสือล้นกรอบ */}
+                  <div style={{ fontSize: 'clamp(12px, 1.2vw, 16px)', fontFamily: 'Orbitron', fontWeight: 'bold', color: cloudCover < 30 ? 'var(--green)' : (cloudCover < 70 ? 'var(--gold)' : 'var(--red)'), lineHeight: '1.2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {cloudCover === null ? 'ANALYZING...' : (cloudCover < 30 ? 'NOMINAL (CLEAR)' : (cloudCover < 70 ? 'MODERATE CLOUDS' : 'HIGH OBSCUREMENT'))}
                   </div>
                 </div>
                 
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: '28px', fontFamily: 'Orbitron', fontWeight: '900', color: '#fff', textShadow: '0 0 10px var(--cyan)' }}>
+                  <div style={{ fontSize: 'clamp(22px, 2vw, 28px)', fontFamily: 'Orbitron', fontWeight: '900', color: '#fff', textShadow: '0 0 10px var(--cyan)', lineHeight: '1' }}>
                     {isFetchingCloud ? '--' : `${cloudCover}%`}
                   </div>
                 </div>
@@ -2263,59 +2308,67 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
 
            {/* กลุ่มที่ 2: การแสดงผลมุมมอง */}
            <div className="control-group">
-             <p>DISPLAY CONTROLS</p>
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-               <button 
-                 className={`btn ${realtimeSun ? 'active' : ''}`} 
-                 style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
-                 onClick={() => setRealtimeSun(!realtimeSun)}
-               >
-                 {realtimeSun ? 'DAY/NIGHT' : 'SUN OFF'}
-               </button>
-               
-               <button 
-                 className={`btn ${isFlatMap ? 'active' : ''}`} 
-                 style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
-                 onClick={() => setIsFlatMap(!isFlatMap)}
-               >
-                 {isFlatMap ? '2D TACTICAL' : '3D GLOBE'}
-               </button>
+              <p>DISPLAY CONTROLS</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <button 
+                  className={`btn ${realtimeSun ? 'active' : ''}`} 
+                  style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
+                  onClick={() => setRealtimeSun(!realtimeSun)}
+                >
+                  {realtimeSun ? 'DAY/NIGHT' : 'SUN OFF'}
+                </button>
+                
+                <button 
+                  className={`btn ${isFlatMap ? 'active' : ''}`} 
+                  style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
+                  onClick={() => setIsFlatMap(!isFlatMap)}
+                >
+                  {isFlatMap ? '2D TACTICAL' : '3D GLOBE'}
+                </button>
 
-               <button 
-                 className={`btn ${showGroundTrack ? 'active' : ''}`} 
-                 style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
-                 onClick={() => setShowGroundTrack(!showGroundTrack)}
-               >
-                 GROUND TRACK
-               </button>
+                <button 
+                  className={`btn ${showGroundTrack ? 'active' : ''}`} 
+                  style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
+                  onClick={() => setShowGroundTrack(!showGroundTrack)}
+                >
+                  GROUND TRACK
+                </button>
 
-               <button 
-  className={`btn ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
-  style={{ marginBottom: 0, fontSize: '15px', padding: '14px 5px', letterSpacing: '0.5px' }} 
-  onClick={() => {
-    const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
-    setCameraMode(newMode);
-    isTrackingRef.current = (newMode === 'TRACKING');
-    
-    if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
-      try {
-        const rec = satrecs[selectedCatnr];
-        if (rec) {
-            const pos = calculateSatData(new Date(simulatedTimeMs), rec);
-            if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-              // ฟันธง: ซูมกล้องตอนกด Target Lock ให้สัมพันธ์กับความสูง GEO/LEO
-              const camAlt = Math.max(0.4, (pos.altKm / EARTH_RADIUS_KM) + 0.5);
-              globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: camAlt }, 1000);
-            }
-        }
-      } catch (err) {}
-    }
-  }}
->
-  TARGET LOCK
-</button>
-             </div>
-           </div>
+                <button 
+                  className={`btn ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
+                  style={{ marginBottom: 0, fontSize: '15px', padding: '14px 5px', letterSpacing: '0.5px' }} 
+                  onClick={() => {
+                    const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
+                    setCameraMode(newMode);
+                    isTrackingRef.current = (newMode === 'TRACKING');
+                    
+                    if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
+                      try {
+                        const rec = satrecs[selectedCatnr];
+                        if (rec) {
+                            const pos = calculateSatData(new Date(simulatedTimeMs), rec);
+                            if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+                              const camAlt = Math.max(0.4, (pos.altKm / EARTH_RADIUS_KM) + 0.5);
+                              globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: camAlt }, 1000);
+                            }
+                        }
+                      } catch (err) {}
+                    }
+                  }}
+                >
+                  TARGET LOCK
+                </button>
+
+                {/* 📍 ปุุ่มใหม่: สลับ Theme แผนที่ 2D (กดแล้ววนลูปไปเรื่อยๆ) */}
+                <button 
+                  className="btn" 
+                  style={{ marginBottom: 0, fontSize: '13px', padding: '12px 5px', letterSpacing: '1.5px', gridColumn: 'span 2', borderColor: 'var(--cyan)', color: 'var(--cyan)', textShadow: '0 0 8px var(--cyan)' }} 
+                  onClick={() => setMapThemeIdx((prev) => (prev + 1) % mapThemes.length)}
+                >
+                  🗺️ THEME: {mapThemes[mapThemeIdx].name}
+                </button>
+              </div>
+            </div>
 
            {/* กลุ่มที่ 3: ข้อมูลและเครื่องมือพิเศษ */}
            <div className="control-group" style={{ paddingBottom: '15px' }}>
@@ -3174,10 +3227,13 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                    }}>
                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block', backgroundColor: '#040608' }}>
                            {/* 📍 ฟันธง: แก้จอหลุมดำ! เปลี่ยนกลับมาใช้ High-Res URL ผ่าน CDN ที่โหลดติด 100% พร้อมดันสีให้สดแบบ Tactical */}
-                    <image 
-                      href="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg" 
+                           <image 
+                      href={mapThemes[mapThemeIdx].url} 
                       x="0" y="0" width="100" height="100" preserveAspectRatio="none" 
-                      style={{ filter: 'saturate(1.5) brightness(1.15) contrast(1.2)' }} 
+                      style={{ 
+                        filter: mapThemes[mapThemeIdx].filter,
+                        transition: 'filter 0.5s ease-in-out'
+                      }} 
                     />
 
                             {imagingPlansData.map(p => {
