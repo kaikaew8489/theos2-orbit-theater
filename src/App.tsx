@@ -642,30 +642,43 @@ const handleSeekUp = (amount) => {
   const [cameraMode, setCameraMode] = useState('FREE LOOK');
 
 
-// 📍 สมองกลควบคุม Theme แผนที่ 2D (อัปเกรดเป็น 4 โหมด รักพี่เสียดายน้อง จัดไป!)
+// 📍 สมองกลควบคุม Theme แผนที่ 2D & 3D
 const [mapThemeIdx, setMapThemeIdx] = useState(0);
 const mapThemes = [
   { 
     name: 'BLUE MARBLE (TRUE COLOR)', 
-    url: '/textures/blue_marble_depth.webp', 
-    filter: 'none' /* 📍 สีน้ำเงินเข้มตามรูปต้นฉบับ ไม่ปรับแต่ง */
+    url: '/textures/Blue_marble_depth.webp', /* 📍 ฟันธง: แก้ตัว B เป็นพิมพ์ใหญ่ ให้ตรงกับไฟล์ในเครื่องเป๊ะๆ */
+    filter: 'none' 
   },
-
   { 
     name: 'NATURAL DAYMAP', 
     url: '/textures/8k_earth_daymap.webp', 
-    filter: 'none' /* 📍 สีสว่างธรรมชาติ ไม่ปรับแต่ง */
+    filter: 'none' 
   },
   { 
     name: 'TACTICAL DEPTH (ENHANCED)', 
-    url: '/textures/blue_marble_depth.webp', 
-    filter: 'saturate(1.3) brightness(1.05) contrast(1.35)' /* 📍 สีแต่งซิ่ง เรนเดอร์จัดจ้านสไตล์ Tactical */
+    url: '/textures/Blue_marble_depth.webp', /* 📍 ฟันธง: แก้ตัว B เป็นพิมพ์ใหญ่ ให้ตรงกับไฟล์ในเครื่องเป๊ะๆ */
+    filter: 'saturate(1.3) brightness(1.05) contrast(1.35)' 
   },
   { 
     name: 'NIGHT CITY LIGHTS', 
     url: '/textures/Earth_nightmap.webp', 
-    /* 📍 ฟันธง: ดันความสดให้ไฟเป็นสีทอง (1.8) ดึงความสว่างให้เห็นขอบทวีป (1.45) และอัดคอนทราสต์ให้ไฟพุ่งทะลุจอ (1.5) */
-    filter: 'none' /* 📍 สีสว่างธรรมชาติ ไม่ปรับแต่ง */
+    filter: 'none' 
+  },
+  { 
+    name: 'DEEP SPACE MARBLE', 
+    url: '/textures/Blue_Marble_BG.webp', 
+    filter: 'none' 
+  },
+  { 
+    name: 'NASA NO CLOUDS (CLEAR)', 
+    url: '/textures/Earth_noClouds.webp', 
+    filter: 'none' 
+  },
+  { 
+    name: 'NASA ATMOSPHERE (VISUAL)', 
+    url: '/textures/Flat_earth_Largest.webp', 
+    filter: 'contrast(1.1) saturate(1.1)' 
   }
 ];
   
@@ -1722,15 +1735,18 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
       <Globe
         ref={globeRef} width={size.width} height={size.height}
         backgroundColor="#000000"
-       /* 📍 อัปเกรดพื้นผิวโลก (สีสดสมจริง) */
-       globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-       /* 📍 ฟันธง: ใช้ Topology Map เพื่อให้โลกเรียบเนียน สะท้อนแสง และมีรอยหยักแค่ตรงภูเขาจริงๆ */
-       bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-       backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
-       /* 📍 อัปเกรดชั้นบรรยากาศให้เป็นสีฟ้าออโรร่าสมจริงแบบ NASA */
-       showAtmosphere={true}
-       atmosphereColor="#00b3ff"
-       atmosphereAltitude={0.15}
+        
+        /* 📍 ฟันธง: ปลดล็อก 3D Globe ให้ดึงรูปจากระบบ Theme ตามที่ Commander สั่ง! */
+        globeImageUrl={mapThemes[mapThemeIdx].url}
+        
+        /* 📍 รักษาระบบภูมิประเทศภูเขา (Bump Map) ให้สมจริงเหมือนเดิม */
+        bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
+        backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+        
+        /* 📍 รักษาออร่าชั้นบรรยากาศสีฟ้าให้คงอยู่เหมือนเดิม */
+        showAtmosphere={true}
+        atmosphereColor="#00b3ff"
+        atmosphereAltitude={0.15}
         objectsData={[...allSatObjects]}
         objectLat="lat" objectLng="lng" objectAltitude="altitude"
         objectThreeObject={(d) => createSatelliteModel(d.isTarget)}
