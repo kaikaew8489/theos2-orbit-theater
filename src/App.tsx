@@ -96,7 +96,6 @@ function parsePlanText(text) {
 // 1. DATA & CONFIGURATION
 // ==========================================
 const GROUND_STATION = { lat: 13.16, lng: 100.93, name: 'GISTDA', color: '#00eaff' };
-const PASS_MIN_ELEVATION_DEG = 5;
 const EARTH_RADIUS_KM = 6371;
 
 // 📍 ฟันธง 1: ฐานข้อมูลคิวถ่ายภาพ THEOS-2 (สกัดจากไฟล์ MPLN_T2V PDF)
@@ -243,12 +242,6 @@ const injectStyles = () => {
     .left-panel::-webkit-scrollbar { display: none; }
     @keyframes slideInLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
 
-    .info-list { list-style: none; padding: 20px 0 0 0; margin: 20px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 15px; line-height: 1.8; }
-    .info-list li { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 5px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px; margin-bottom: 8px; }
-    .info-list li:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-    .info-list span { color: rgba(255, 255, 255, 0.55); font-weight: 600; letter-spacing: 0.5px; flex: 1 1 auto; }
-    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-align: right; font-size: 16px; flex: 0 0 auto; word-break: break-word; }
-
     /* 📍 อัปเกรดแสงแฟลร์สีฟ้า (Cyan Flare) ของแผงข้อมูลให้สว่างวาบยิ่งขึ้น */
     .panel-box { 
       box-sizing: border-box !important;
@@ -296,10 +289,17 @@ const injectStyles = () => {
       text-shadow: 0 0 15px rgba(255, 69, 0, 0.8); letter-spacing: 1.5px; line-height: 1; 
     }
     
-    .global-clock-hud .clock-item.doy-item strong { 
-      color: #00eaff; text-shadow: 0 0 15px rgba(0, 234, 255, 0.6); 
+    /* 📍 ฟันธง: อัปเกรด DOY (วันที่) ขยายไซส์ให้เป็นจุดศูนย์กลางและเปลี่ยนเป็นสีทอง Golden Amber สไตล์ Sci-Fi */
+    .global-clock-hud .clock-item.doy-item strong {
+      color: #ffcc00 !important; /* สีเหลืองทองสว่าง */
+      font-size: 35px !important; /* ขยายให้ใหญ่กระแทกตากว่าเวลาปกติ (26px -> 35px) */
+      text-shadow: 0 0 20px rgba(255, 204, 0, 0.8), 0 0 10px rgba(255, 255, 255, 0.5) !important; /* แสงออร่าสีทองเปล่งประกาย */
+      line-height: 0.85; /* จัดระเบียบบรรทัดไม่ให้ดันกล่องสูงเกินไป */
     }
-    .global-clock-hud .clock-item.doy-item span { color: rgba(0, 234, 255, 0.7); }
+    .global-clock-hud .clock-item.doy-item span { 
+      color: rgba(255, 204, 0, 0.8) !important; /* เปลี่ยนป้ายตัวอักษร DOY เป็นสีทองให้เข้าชุดกัน */
+      letter-spacing: 3px !important;
+    }
     
     /* 📍 จัดกึ่งกลางป้าย Status โดดเด่น ชัดเจน ทรงพลัง */
     .status-badge { 
@@ -329,12 +329,12 @@ const injectStyles = () => {
     .t-box span { font-size: 13px; color: rgba(255, 255, 255, 0.6); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
     .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 22px; color: #ffffff; margin-top: 6px; text-shadow: 0 0 10px rgba(255, 255, 255, 0.4); letter-spacing: 1px; }
 
-    /* 📍 แก้ไขกรอบวงสีเหลือง (Info List): ขยายฟอนต์ให้อ่านสบายตา ปรับ Contrast สี และเพิ่มเส้นคั่นนำสายตา */
-    .info-list { list-style: none; padding: 20px 0 0 0; margin: 20px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 15px; line-height: 2.6; }
-    .info-list li { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px; margin-bottom: 6px; }
-    .info-list li:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-    .info-list span { color: rgba(255, 255, 255, 0.55); font-weight: 600; letter-spacing: 0.5px; }
-    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-align: right; font-size: 16px; }
+    /* 📍 อัปเกรด Info List (ข้อมูลดาวเทียม): ถอดเส้นคั่น ขยายฟอนต์ และกระชับบรรทัด */
+    .info-list { list-style: none; padding: 15px 0 0 0; margin: 15px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 16px; line-height: 1.6; }
+    .info-list li { display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 2px; margin-bottom: 6px; }
+    .info-list li:last-child { margin-bottom: 0; padding-bottom: 0; }
+    .info-list span { color: rgba(255, 255, 255, 0.65); font-weight: 600; letter-spacing: 0.5px; }
+    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-align: right; font-size: 18px; letter-spacing: 1px; }
 
     .right-container { display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; height: 100%; z-index: 20; }
     .menu-toggle-btn { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(255,204,0,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--gold); color: var(--gold); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(255,204,0,0.6), inset 0 0 10px rgba(255,204,0,0.3); }
@@ -344,8 +344,11 @@ const injectStyles = () => {
     .right-panel { width: 440px !important; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
     .right-panel::-webkit-scrollbar { display: none; } /* 📍 ซ่อน Scrollbar ให้ UI ดูคลีนสไตล์ Sci-Fi */
 
-    /* 📍 จัดหัวข้อเมนูให้อยู่กึ่งกลางตามหลักสมาตร UI/UX */
-    .control-group p { text-align: center; margin: 0 0 18px 0; font-size: 18px !important; font-weight: 900; letter-spacing: 4px !important; border-bottom: 1px dashed rgba(0, 234, 255, 0.4); padding-bottom: 10px !important; color: var(--cyan); text-shadow: 0 0 10px var(--cyan); }
+    /* 📍 ฟันธง: อัปเกรดหัวข้อแผงขวา เปลี่ยนฟอนต์เป็นสีขาวล้วนให้ลอยเด่น และแยกแสงออร่าตามกรุ๊ป */
+    .control-group p { text-align: center; margin: 0 0 18px 0; font-size: 18px !important; font-weight: 900; letter-spacing: 4px !important; padding-bottom: 10px !important; color: #ffffff !important; }
+    .control-group:nth-child(1) p { border-bottom: 1px dashed rgba(255, 204, 0, 0.5); text-shadow: 0 0 12px rgba(255, 204, 0, 0.8); }
+    .control-group:nth-child(2) p { border-bottom: 1px dashed rgba(0, 255, 102, 0.5); text-shadow: 0 0 12px rgba(0, 255, 102, 0.8); }
+    .control-group:nth-child(3) p { border-bottom: 1px dashed rgba(0, 234, 255, 0.5); text-shadow: 0 0 12px rgba(0, 234, 255, 0.8); }
     
     /* 📍 ขยายขนาดปุ่มทั้งหมด: Padding จาก 12px เป็น 16px และขยายฟอนต์จาก 15px เป็น 18px */
     .btn { display: block; width: 100%; background: rgba(0, 15, 30, 0.5); border: 1px solid rgba(0, 234, 255, 0.5); color: var(--cyan); padding: 16px !important; margin-bottom: 12px; font-family: 'Rajdhani', sans-serif; font-size: 18px !important; font-weight: 800; cursor: pointer; text-align: center; border-radius: 6px; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); letter-spacing: 2px !important; text-transform: uppercase; text-shadow: 0 0 8px rgba(0, 234, 255, 0.6); box-shadow: 0 5px 15px rgba(0,0,0,0.4); position: relative; overflow: hidden; }
@@ -393,31 +396,31 @@ const injectStyles = () => {
     .control-group:nth-child(1) .btn.btn-pause { border-color: rgba(255,51,51,0.6) !important; color: var(--red) !important; text-shadow: 0 0 8px var(--red) !important; background: rgba(255,51,51,0.05) !important; }
     .control-group:nth-child(1) .btn.btn-pause:hover, .control-group:nth-child(1) .btn.btn-pause.active { background: linear-gradient(135deg, #ff3333, #aa0000) !important; color: #fff !important; border-color: #fff !important; box-shadow: 0 0 25px var(--red) !important; text-shadow: 0 0 8px rgba(0,0,0,0.8) !important; }
 
-    /* 📍 สไตล์ปุ่มเครื่องเล่นเทป (Media Controls) */
-    .media-btn { display: flex !important; flex-direction: column; align-items: center; justify-content: center; padding: 10px 5px !important; gap: 6px; }
-    .media-btn .icon { font-size: 26px; line-height: 1; filter: drop-shadow(0 0 8px currentColor); }
-    .media-btn .label { font-size: 11px; font-weight: 900; opacity: 0.9; letter-spacing: 1.5px; }
+    /* 📍 สไตล์ปุ่มเครื่องเล่นเทป (Media Controls) - ซ่อนข้อความ ขยายไอคอน */
+    .media-btn { display: flex !important; flex-direction: row; align-items: center; justify-content: center; padding: 14px !important; }
+    .media-btn .icon { font-size: 32px; line-height: 1; filter: drop-shadow(0 0 10px currentColor); }
 
-    /* 🖥️ กลุ่มที่ 2: DISPLAY CONTROLS (ขอบเขียว / ปุ่มเขียวนีออนเรืองแสง) */
+    /* 🖥️ กลุ่มที่ 2: DISPLAY CONTROLS (ขอบเขียว) */
     .control-group:nth-child(2) { border-color: var(--green); border-top-color: var(--green); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(0, 255, 102, 0.15), inset 0 0 20px rgba(0, 255, 102, 0.05); }
     .control-group:nth-child(2) p { color: var(--green); border-bottom-color: rgba(0, 255, 102, 0.4); text-shadow: 0 0 10px var(--green); }
-    .control-group:nth-child(2) .btn { border-color: rgba(0, 255, 102, 0.4) !important; color: var(--green) !important; background: rgba(0, 255, 102, 0.05) !important; text-shadow: 0 0 8px rgba(0, 255, 102, 0.6) !important; }
-    .control-group:nth-child(2) .btn:hover { background: linear-gradient(135deg, #00ff66, #009933) !important; color: #000 !important; border-color: #fff !important; text-shadow: none !important; box-shadow: 0 0 25px rgba(0, 255, 102, 0.8) !important; }
-    .control-group:nth-child(2) .btn.active { background: linear-gradient(135deg, #00ff66, #00b34a) !important; color: #000 !important; box-shadow: 0 0 30px rgba(0, 255, 102, 0.9), inset 0 0 10px rgba(255, 255, 255, 0.5) !important; border-color: #fff !important; }
 
-    /* 🛠️ กลุ่มที่ 3: DATA & TOOLS (ขอบฟ้า / Hover สีส้มการ์เดียนตามบัญชา!) */
+    /* 🌟 เพิ่มคลาสปุ่มสีทอง (Gold) สำหรับ PASS SCHEDULE */
+    .btn-gold { background: rgba(255, 204, 0, 0.05) !important; border: 1px solid rgba(255, 204, 0, 0.5) !important; color: var(--gold) !important; text-shadow: 0 0 8px var(--gold) !important; }
+    .btn-gold:hover, .btn-gold.active { background: var(--gold) !important; color: #000 !important; border-color: #fff !important; text-shadow: none !important; box-shadow: 0 0 25px var(--gold) !important; transform: scale(1.02) !important; }
+
+    /* 🛠️ กลุ่มที่ 3: DATA & TOOLS (ล้าง Hover สีส้มทิ้ง สร้างคลาสสีมาตรฐาน Invert Color) */
     .control-group:nth-child(3) { border-color: var(--cyan); border-top-color: var(--cyan); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 30px rgba(0, 234, 255, 0.2), inset 0 0 20px rgba(0, 234, 255, 0.1); }
     .control-group:nth-child(3) p { color: var(--cyan); border-bottom-color: rgba(0, 234, 255, 0.4); text-shadow: 0 0 10px var(--cyan); }
+    .control-group:nth-child(3) button { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important; }
     
-    /* ปุ่มมาตรฐานใน Data & Tools (Cyan -> Hover ส้มสว่าง) */
-    .control-group:nth-child(3) button { background: rgba(0, 15, 30, 0.6) !important; border: 1px solid rgba(0, 234, 255, 0.4) !important; color: var(--cyan) !important; text-shadow: 0 0 8px rgba(0, 234, 255, 0.5) !important; box-shadow: inset 0 0 10px rgba(0, 234, 255, 0.05) !important; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important; }
-    .control-group:nth-child(3) button:hover { background: linear-gradient(135deg, #ff8800, #ff3300) !important; border-color: #fff !important; color: #fff !important; box-shadow: 0 0 30px rgba(255, 102, 0, 0.9), inset 0 0 15px rgba(255, 255, 255, 0.5) !important; text-shadow: 0 0 10px #fff !important; transform: translateY(-2px) !important; }
-    
-    /* รักษาเอกลักษณ์ปุ่ม IMAGING PLAN (สีแดง) และ RADAR (สีเขียว) ไว้ไม่ให้เสียทรง */
-    .control-group:nth-child(3) button:nth-of-type(2) { border-color: rgba(255, 51, 51, 0.5) !important; color: var(--red) !important; text-shadow: 0 0 8px var(--red) !important; background: rgba(255,51,51,0.05) !important; }
-    .control-group:nth-child(3) button:nth-of-type(2):hover { background: linear-gradient(135deg, #ff3333, #aa0000) !important; border-color: #fff !important; color: #fff !important; box-shadow: 0 0 25px rgba(255, 51, 51, 0.9) !important; text-shadow: none !important; }
-    .control-group:nth-child(3) > button:last-of-type { border-color: rgba(0, 255, 102, 0.5) !important; color: var(--green) !important; text-shadow: 0 0 8px var(--green) !important; background: rgba(0,255,102,0.05) !important; }
-    .control-group:nth-child(3) > button:last-of-type:hover { background: linear-gradient(135deg, #00ff66, #009933) !important; border-color: #fff !important; color: #fff !important; box-shadow: 0 0 25px rgba(0, 255, 102, 0.9) !important; text-shadow: none !important; }
+    .btn-cyan { background: rgba(0, 15, 30, 0.6) !important; border: 1px solid rgba(0, 234, 255, 0.5) !important; color: var(--cyan) !important; text-shadow: 0 0 8px rgba(0, 234, 255, 0.5) !important; box-shadow: inset 0 0 10px rgba(0, 234, 255, 0.05) !important; }
+    .btn-cyan:hover, .btn-cyan.active { background: var(--cyan) !important; color: #000 !important; border-color: #fff !important; text-shadow: none !important; box-shadow: 0 0 25px var(--cyan) !important; transform: scale(1.02) !important; }
+
+    .btn-red { background: rgba(255, 51, 51, 0.05) !important; border: 1px solid rgba(255, 51, 51, 0.5) !important; color: var(--red) !important; text-shadow: 0 0 8px var(--red) !important; }
+    .btn-red:hover, .btn-red.active { background: var(--red) !important; color: #000 !important; border-color: #fff !important; text-shadow: none !important; box-shadow: 0 0 30px var(--red) !important; transform: scale(1.02) !important; }
+
+    .btn-green { background: rgba(0, 255, 102, 0.05) !important; border: 1px solid rgba(0, 255, 102, 0.5) !important; color: var(--green) !important; text-shadow: 0 0 8px var(--green) !important; }
+    .btn-green:hover, .btn-green.active { background: var(--green) !important; color: #000 !important; border-color: #fff !important; text-shadow: none !important; box-shadow: 0 0 25px var(--green) !important; transform: scale(1.02) !important; }
 
     /* 🗓️ ปุ่มล่างสุด PASS SCHEDULE (ขอบทอง -> Hover ทองอร่าม) ขยายให้ใหญ่สมส่วน */
     .right-panel > button:last-child { background: linear-gradient(145deg, rgba(30, 15, 0, 0.8), rgba(10, 5, 0, 0.9)) !important; border: 2px solid var(--gold) !important; color: var(--gold) !important; padding: 18px !important; font-size: 20px !important; font-weight: 900 !important; letter-spacing: 3px !important; box-shadow: 0 0 20px rgba(255, 204, 0, 0.2), inset 0 0 10px rgba(255, 204, 0, 0.1) !important; margin-top: 5px; }
@@ -582,6 +585,8 @@ export default function App() {
   const globeRef = useRef(null);
   const fileInputRef = useRef(null); 
   const isTrackingRef = useRef(false);
+  // 📍 ฟันธง: ประกาศ State ควบคุม Station Mask (มุมเงยรับสัญญาณ)
+  const [stationMask, setStationMask] = useState(5);
 
   
 
@@ -647,7 +652,7 @@ const [mapThemeIdx, setMapThemeIdx] = useState(0);
 const mapThemes = [
   { 
     name: 'BLUE MARBLE (TRUE COLOR)', 
-    url: '/textures/Blue_marble_depth.webp', /* 📍 ฟันธง: แก้ตัว B เป็นพิมพ์ใหญ่ ให้ตรงกับไฟล์ในเครื่องเป๊ะๆ */
+    url: '/textures/Blue_marble_depth.webp', 
     filter: 'none' 
   },
   { 
@@ -657,7 +662,7 @@ const mapThemes = [
   },
   { 
     name: 'TACTICAL DEPTH (ENHANCED)', 
-    url: '/textures/Blue_marble_depth.webp', /* 📍 ฟันธง: แก้ตัว B เป็นพิมพ์ใหญ่ ให้ตรงกับไฟล์ในเครื่องเป๊ะๆ */
+    url: '/textures/Blue_marble_depth.webp', 
     filter: 'saturate(1.3) brightness(1.05) contrast(1.35)' 
   },
   { 
@@ -722,77 +727,83 @@ const mapThemes = [
   const [passSchedule, setPassSchedule] = useState([]);
   const [isCalculatingPass, setIsCalculatingPass] = useState(false);
 
+  // 📍 ตัวแปรควบคุมระยะเวลาคำนวณ Pass Schedule (ค่าเริ่มต้น = 3 วัน)
+  const [passPredictionDays, setPassPredictionDays] = useState(3);
+
   // 📍 1. ฟันธง: เพิ่มตัวแปรบรรทัดนี้ลงไปเพื่อเก็บค่าว่ากำลังคลิกเลือก Pass ไหนอยู่
   const [selectedPassIndex, setSelectedPassIndex] = useState(null);
 
-  // ฟังก์ชันสมองกล: คำนวณหา AOS/LOS ล่วงหน้า 3 วัน
-  const calculateFuturePasses = (catnr) => {
-    setIsCalculatingPass(true);
+ // ฟังก์ชันสมองกล: คำนวณหา AOS/LOS แบบเลือกวันได้
+ const calculateFuturePasses = (catnr, days = passPredictionDays) => {
+  setIsCalculatingPass(true);
+  setSelectedPassIndex(null);
+  
+  const rec = satrecs[catnr];
+  if (!rec) { setIsCalculatingPass(false); return; }
 
-    // 📍 2. ฟันธง: เพิ่มบรรทัดนี้ เพื่อเคลียร์หน้าจอฝั่งขวาทุกครั้งที่กดคำนวณใหม่
-    setSelectedPassIndex(null);
+  setTimeout(() => {
+    const passes = [];
+    let isPassActive = false;
+    let currentPass = null;
     
-    const rec = satrecs[catnr];
-    if (!rec) { setIsCalculatingPass(false); return; }
+    const now = new Date(simulatedTimeMs);
+    
+    // 📍 ฟันธง: ดึงค่า days ที่ผู้ใช้เลือกมาคำนวณทั้งย้อนหลัง (อดีต) และล่วงหน้า (อนาคต)
+    const lookBackMs = days * 24 * 60 * 60 * 1000; 
+    const stepMs = 10000; 
 
-    setTimeout(() => {
-      const passes = [];
-      let isPassActive = false;
-      let currentPass = null;
+    const startTime = Math.floor((now.getTime() - lookBackMs) / stepMs) * stepMs;
+    const maxTime = startTime + (days * 2 * 24 * 60 * 60 * 1000); // ย้อนหลัง + ล่วงหน้า
+
+    for (let t = startTime; t < maxTime; t += stepMs) {
+      const d = new Date(t);
+      const pos = calculateSatData(d, rec);
       
-      const now = new Date(simulatedTimeMs);
-      const daysToPredict = 3; 
-      const lookBackMs = 24 * 60 * 60 * 1000; 
-      const stepMs = 10000; 
+      if (!pos || isNaN(pos.elevationDeg)) continue;
 
-      // 📍 ฟันธง: ล็อก Start Time ให้หาร stepMs ลงตัวเป๊ะๆ (Snap to Grid) 
-      // เพื่อให้จุดคำนวณวงโคจรคงที่เสมอ ไม่ขยับไปมาตามมิลลิวินาทีของ Date.now()
-      const startTime = Math.floor((now.getTime() - lookBackMs) / stepMs) * stepMs;
-      const maxTime = startTime + (daysToPredict * 24 * 60 * 60 * 1000) + lookBackMs;
-
-      // 📍 สั่งให้ลูปสแกนเริ่มจากอดีต (startTime) แทนที่จะเริ่มจากปัจจุบัน (now)
-      for (let t = startTime; t < maxTime; t += stepMs) {
-        const d = new Date(t);
-        const pos = calculateSatData(d, rec);
-        
-        if (!pos || isNaN(pos.elevationDeg)) continue;
-
-        if (pos.elevationDeg >= PASS_MIN_ELEVATION_DEG) {
-          if (!isPassActive) {
-            isPassActive = true;
-            currentPass = { 
-              aosTime: t, 
-              aosAz: pos.azimuthDeg, // 📍 เก็บค่า AOS Azimuth
-              maxEl: pos.elevationDeg, 
-              peakTime: t 
-            };
-          } else {
-            if (pos.elevationDeg > currentPass.maxEl) {
-              currentPass.maxEl = pos.elevationDeg;
-              currentPass.peakTime = t; // 📍 เวลา MAX EL TIME จะอัปเดตตลอดจนกว่าจะถึงจุดสูงสุด
-            }
-          }
+      if (pos.elevationDeg >= stationMask) {
+        if (!isPassActive) {
+          isPassActive = true;
+          currentPass = { 
+            aosTime: t, 
+            aosAz: pos.azimuthDeg, 
+            maxEl: pos.elevationDeg, 
+            peakTime: t 
+          };
         } else {
-          if (isPassActive) {
-            isPassActive = false;
-            currentPass.losTime = t;
-            currentPass.losAz = pos.azimuthDeg; // 📍 เก็บค่า LOS Azimuth
-            currentPass.durationMs = currentPass.losTime - currentPass.aosTime;
-            passes.push(currentPass);
+          if (pos.elevationDeg > currentPass.maxEl) {
+            currentPass.maxEl = pos.elevationDeg;
+            currentPass.peakTime = t; 
           }
         }
+      } else {
+        if (isPassActive) {
+          isPassActive = false;
+          currentPass.losTime = t;
+          currentPass.losAz = pos.azimuthDeg; 
+          currentPass.durationMs = currentPass.losTime - currentPass.aosTime;
+          passes.push(currentPass);
+        }
       }
-      setPassSchedule(passes);
-      setIsCalculatingPass(false);
-    }, 100);
-  };
+    }
+    setPassSchedule(passes);
+    setIsCalculatingPass(false);
+  }, 100);
+};
 
- // 📍 ฟันธง: สั่งให้คำนวณตาราง Pass อัตโนมัติทุกครั้งที่เปลี่ยนดาวเทียม (เพื่อให้ป้ายนับถอยหลังดึงไปใช้ได้ทันที)
+// 📍 สั่งให้คำนวณใหม่ทุกครั้งที่ผู้ใช้กดเปลี่ยนจำนวนวัน หรือ เปลี่ยน Station Mask
+useEffect(() => {
+  if (selectedCatnr && isPassModalOpen) {
+    calculateFuturePasses(selectedCatnr, passPredictionDays);
+  }
+}, [passPredictionDays, stationMask]); // <-- ฟันธง: เติม stationMask
+
+ // 📍 สั่งให้คำนวณตาราง Pass อัตโนมัติทุกครั้งที่เปลี่ยนดาวเทียม หรือ เปลี่ยน Station Mask
  useEffect(() => {
   if (selectedCatnr) {
     calculateFuturePasses(selectedCatnr);
   }
-}, [selectedCatnr]);
+}, [selectedCatnr, stationMask]); // <-- ฟันธง: เติม stationMask
 
   // ฟันธง: ตัวแปรควบคุมการเปิดปิดหน้าจอ Radar Skyplot
   const [isRadarOpen, setIsRadarOpen] = useState(false);
@@ -1141,14 +1152,96 @@ useEffect(() => {
     }
   } catch (err) {}
 
+  // --- 3. 🌑 ระบบแสดงแสงไฟเมืองฝั่งกลางคืน (NASA 3D Terminator Line) ---
+  let nightMesh = scene.children.find(c => c.name === 'NightLights');
   
+  if (!nightMesh) {
+    try {
+      const radius = typeof globe.getGlobeRadius === 'function' ? globe.getGlobeRadius() : 100;
+      // 📍 สร้างทรงกลมครอบโลกให้ใหญ่กว่าเดิมนิดเดียว (1.002x) เพื่อเป็น Layer แสงไฟ
+      const geometry = new THREE.SphereGeometry(radius * 1.002, 64, 64);
+      // 📍 หมุนแกน Y -90 องศา เพื่อให้พิกัด UV ตรงกับแผนที่หลักของ react-globe.gl เป๊ะๆ
+      geometry.rotateY(-Math.PI / 2);
+
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          tNight: { value: new THREE.TextureLoader().load('/textures/Earth_nightmap.webp') },
+          sunDirection: { value: new THREE.Vector3(1, 0, 0) }
+        },
+        vertexShader: `
+          varying vec3 vWorldNormal;
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform sampler2D tNight;
+          uniform vec3 sunDirection;
+          varying vec3 vWorldNormal;
+          varying vec2 vUv;
+          void main() {
+            // 1. คำนวณมุมตกกระทบของแสงอาทิตย์
+            float intensity = dot(normalize(vWorldNormal), normalize(sunDirection));
+            
+            // 2. สร้างเส้นแบ่งเวลา (Terminator Line) ให้ไล่เฉดสมูทแบบ Twilight Zone
+            float nightMix = smoothstep(0.1, -0.15, intensity);
+            
+            // 3. ดึงแผนที่แสงไฟเมือง
+            vec4 nightTex = texture2D(tNight, vUv);
+            
+            // 4. บูสต์แสงไฟเมืองให้เป็นสีทอง (NASA Style)
+            vec3 cityLights = nightTex.rgb * vec3(1.3, 1.1, 0.7);
+            
+            // 5. สร้างเงามืด (Deep Space Shadow) สำหรับฝั่งกลางคืน
+            vec3 darkShadow = vec3(0.0, 0.01, 0.03); // สีดำอมน้ำเงินลึกๆ
+            
+            // ผสมแสงไฟเมืองเข้ากับเงามืด
+            vec3 finalColor = darkShadow + cityLights;
+            
+            // 6. คำนวณความทึบแสง (Alpha)
+            // - ฝั่งกลางวัน: ทะลุผ่าน 100% (Alpha = 0)
+            // - ฝั่งกลางคืน: สาดเงามืดบดบังแผนที่เดิม 92% (แต่โชว์ไฟเมือง 100%)
+            float lightsLuma = max(max(nightTex.r, nightTex.g), nightTex.b);
+            float finalAlpha = max(0.92 * nightMix, lightsLuma * nightMix);
+            
+            gl_FragColor = vec4(finalColor, finalAlpha);
+          }
+        `,
+        transparent: true,
+        blending: THREE.NormalBlending, // 📍 ฟันธง: เปลี่ยนเป็น NormalBlending เพื่อให้สร้าง "เงามืด" บดบังโลกเดิมได้
+        depthWrite: false
+      });
+
+      nightMesh = new THREE.Mesh(geometry, material);
+      nightMesh.name = 'NightLights';
+      scene.add(nightMesh);
+    } catch(e) { console.warn("NightLights Shader Error:", e); }
+  }
+
+  // 📍 อัปเดตทิศทางดวงอาทิตย์ส่งเข้าสมองกล Shader แบบ Real-time ตามนาฬิกา!
+  if (nightMesh && realtimeSun) {
+    try {
+      if (typeof globe.getCoords === 'function') {
+        const sunPos = globe.getCoords(currentSunPos.lat, currentSunPos.lng, 100);
+        nightMesh.material.uniforms.sunDirection.value.set(sunPos.x, sunPos.y, sunPos.z).normalize();
+      }
+      nightMesh.visible = true;
+    } catch(e) {}
+  } else if (nightMesh) {
+    nightMesh.visible = false;
+  }
+
 }, [realtimeSun, currentSunPos]);
 
   const currentDate = new Date(simulatedTimeMs);
   const targetSatrec = selectedCatnr ? satrecs[selectedCatnr] : null;
   const targetData = targetSatrec ? calculateSatData(currentDate, targetSatrec) : null;
   const targetConfig = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr) || SATELLITE_OPTIONS[0];
-  const linkActive = targetData && targetData.elevationDeg >= PASS_MIN_ELEVATION_DEG;
+  // 📍 ฟันธง: อัปเดต linkActive ให้ทำงานตาม stationMask แบบ Real-time
+  const linkActive = targetData && targetData.elevationDeg >= stationMask;
 
   // 📍 ฟันธง: สมองกลตัวนับถอยหลัง ดึงข้อมูลอ้างอิงจากตาราง PASS SCHEDULE โดยตรง! (ข้อมูลจะตรงกัน 1,000,000%)
   const nextPassTimestamp = useMemo(() => {
@@ -1163,22 +1256,25 @@ useEffect(() => {
     return null;
   }, [simulatedTimeMs, passSchedule, linkActive]);
 
-// 📍 1. ตัวแปรเก็บประวัติการแจ้งเตือน จะได้ไม่ยิง LINE ซ้ำรัวๆ จนโดนบล็อก
-const [notifiedPasses, setNotifiedPasses] = useState({});
+// 📍 1. อัปเกรดเป็น useRef แทน State เพื่อความเร็วระดับมิลลิวินาที ป้องกันการยิง API ซ้ำ (Race Condition)
+const notifiedPassesRef = useRef({});
 
 // 📍 2. สมองกลเซนเซอร์จับเวลาล่วงหน้า 10 นาที (Pre-AOS Trigger)
 useEffect(() => {
-  // ฟันธง: ต้องเช็ค isPlaying ด้วย เพื่อไม่ให้แจ้งเตือนทำงานตอนเรากด Pause ทิ้งไว้!
   if (!nextPassTimestamp || !nextPassTimestamp.time || speedMult !== 1 || !isPlaying) return;
   
   const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
   const TEN_MINUTES_MS = 600000; 
   
-  // 📍 สร้าง ID แจ้งเตือนแบบปัดเศษทิ้งเหลือระดับ "นาที" ป้องกันบั๊กมิลลิวินาทีแกว่ง
-  const stableAosTime = Math.floor(nextPassTimestamp.time / 60000) * 60000;
+  // 📍 ฟันธง: ปัดเศษเวลาให้กว้างระดับ "1 ชั่วโมง (3600000 ms)" 
+  // ดาวเทียม LEO 1 รอบใช้เวลา ~90 นาที ไม่มีทางซ้อนทับกันในชั่วโมงเดียวกัน ป้องกัน ID แกว่ง 100%
+  const stableAosTime = Math.floor(nextPassTimestamp.time / 3600000) * 3600000;
   const passId = `AOS-${selectedCatnr}-${stableAosTime}`;
 
-  if (timeToAos <= TEN_MINUTES_MS && timeToAos > 0 && !notifiedPasses[passId]) {
+  if (timeToAos <= TEN_MINUTES_MS && timeToAos > 0 && !notifiedPassesRef.current[passId]) {
+    // 📍 ล็อกประตูทันที! เขียนลง useRef จะบล็อกการยิงซ้ำแบบ Real-time
+    notifiedPassesRef.current[passId] = true;
+
     const upcomingPass = passSchedule.find(p => p.aosTime === nextPassTimestamp.time);
     
     if (upcomingPass) {
@@ -1207,13 +1303,13 @@ useEffect(() => {
         body: JSON.stringify(payloadData) 
       })
       .then(response => console.log(`[LINE] ยิงแจ้งเตือน 10 นาที (AOS) สำเร็จ! ID: ${passId}`))
-      .catch(err => console.error("LINE Notify Error:", err));
-
-      // บันทึกประวัติว่าแจ้งเตือนแล้ว จะได้ไม่ยิงซ้ำ!
-      setNotifiedPasses(prev => ({ ...prev, [passId]: true }));
+      .catch(err => {
+         console.error("LINE Notify Error:", err);
+         notifiedPassesRef.current[passId] = false; // ถ้าส่งล้มเหลว ค่อยปลดล็อกให้ระบบพยายามส่งใหม่
+      });
     }
   }
-}, [simulatedTimeMs, nextPassTimestamp, selectedCatnr, notifiedPasses, targetConfig, speedMult, isPlaying, passSchedule]);
+}, [simulatedTimeMs, nextPassTimestamp, selectedCatnr, targetConfig, speedMult, isPlaying, passSchedule]);
 
 
 // 📍 3. สมองกลเซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)"
@@ -1221,15 +1317,15 @@ useEffect(() => {
   if (passSchedule.length === 0 || speedMult !== 1 || !isPlaying) return;
 
   passSchedule.forEach(pass => {
-    // 📍 สร้าง ID แจ้งเตือนแบบปัดเศษระดับ "นาที" เช่นกัน
-    const stableLosTime = Math.floor(pass.losTime / 60000) * 60000;
+    // 📍 ปัดเศษระดับ "1 ชั่วโมง" ป้องกัน ID แกว่ง
+    const stableLosTime = Math.floor(pass.losTime / 3600000) * 3600000;
     const passIdLos = `LOS-${selectedCatnr}-${stableLosTime}`;
     
     const timeSinceLos = simulatedTimeMs - pass.losTime;
     
-    // 📍 ฟันธง: ขยายหน้าต่างจาก 5 วินาที เป็น 15 วินาที (15000ms) 
-    // เพื่อให้เซนเซอร์ไม่พลาดจังหวะแม้เครื่องจะกระตุก และรับประกันว่ายิงแค่รอบเดียวด้วย ID
-    if (timeSinceLos >= 0 && timeSinceLos <= 15000 && !notifiedPasses[passIdLos]) {
+    if (timeSinceLos >= 0 && timeSinceLos <= 15000 && !notifiedPassesRef.current[passIdLos]) {
+      // 📍 ล็อกประตูทันที!
+      notifiedPassesRef.current[passIdLos] = true; 
       
       const flagUrl = targetConfig.flag ? `https://flagcdn.com/w40/${targetConfig.flag}.png` : 'https://raw.githubusercontent.com/line/line-bot-sdk-nodejs/master/examples/kitchensink/public/logo.png';
       const doyStr = String(getUtcDayOfYear(new Date(pass.aosTime))).padStart(3, '0');
@@ -1256,12 +1352,13 @@ useEffect(() => {
         body: JSON.stringify(payloadData)
       })
       .then(response => console.log(`[LINE] ยิงแจ้งเตือน LOS (PASS COMPLETE) สำเร็จ! ID: ${passIdLos}`))
-      .catch(err => console.error("LINE Notify Error:", err));
-
-      setNotifiedPasses(prev => ({ ...prev, [passIdLos]: true }));
+      .catch(err => {
+         console.error("LINE Notify Error:", err);
+         notifiedPassesRef.current[passIdLos] = false;
+      });
     }
   });
-}, [simulatedTimeMs, passSchedule, selectedCatnr, notifiedPasses, targetConfig, speedMult, isPlaying]);
+}, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying]);
 
   const allSatObjects = useMemo(() => {
     return SATELLITE_OPTIONS.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
@@ -1358,26 +1455,30 @@ const imagingPlansData = useMemo(() => {
     return [{ points, color: 'rgba(255, 215, 0, 0.8)', stroke: 0.5 }];
   }, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000), showGroundTrack]);
   
-  const footprintBoundaryPath = useMemo(() => {
-    const paths = [];
-    allSatObjects.forEach(sat => {
-      if (selectedCatnrs.includes(sat.catnr)) {
-        const isPrimary = sat.catnr === selectedCatnr;
-        const radiusDeg = getFootprintRadiusDeg(sat.altKm, PASS_MIN_ELEVATION_DEG);
-        if (!isNaN(radiusDeg)) {
-          const pts = getCirclePolygon(sat.lat, sat.lng, radiusDeg, 64).map(c => ({ lng: c[0], lat: c[1], alt: 0.001 }));
-          if (pts.length >= 3) {
-            paths.push({
-              points: pts,
-              color: isPrimary ? 'rgba(255, 51, 51, 1)' : 'rgba(0, 234, 255, 0.8)',
-              stroke: isPrimary ? 1.5 : 0.8
-            });
-          }
+// 📍 อัปเกรดเส้นขอบ Footprint ให้เนียนกริบและเป็นสีแดง Tactical ตามบัญชา Commander!
+const footprintBoundaryPath = useMemo(() => {
+  const paths = [];
+  allSatObjects.forEach(sat => {
+    if (selectedCatnrs.includes(sat.catnr)) {
+      const isPrimary = sat.catnr === selectedCatnr;
+      const radiusDeg = getFootprintRadiusDeg(sat.altKm, stationMask);
+      if (!isNaN(radiusDeg)) {
+        // 📍 ฟันธง: เพิ่มความละเอียดวงกลมเป็น 128 จุดให้เนียนกริบ และยกลอยขึ้นมาที่ alt: 0.005
+        const pts = getCirclePolygon(sat.lat, sat.lng, radiusDeg, 128).map(c => ({ lng: c[0], lat: c[1], alt: 0.005 }));
+        if (pts.length >= 3) {
+          paths.push({
+            points: pts,
+            // 📍 ฟันธง: ใช้สีแดงสดสว่างวาบ (Red Solid) สำหรับเป้าหมายหลัก
+            color: isPrimary ? 'rgba(255, 51, 51, 0.95)' : 'rgba(255, 51, 51, 0.3)',
+            // 📍 ฟันธง: เพิ่มความหนาของเส้น (Stroke) ให้ชัดเจนทะลุจอ!
+            stroke: isPrimary ? 2.5 : 1.0 
+          });
         }
       }
-    });
-    return paths;
-  }, [allSatObjects, selectedCatnrs, selectedCatnr]);
+    }
+  });
+  return paths;
+}, [allSatObjects, selectedCatnrs, selectedCatnr, stationMask]);
 
 // 📍 ฟันธง 2: ระบบเสียง Sonar Ping วนลูปตลอดการ Tracking (หยุดเมื่อ LOS หรือกด Mute)
 const audioCtxRef = useRef(null);
@@ -1452,7 +1553,7 @@ useEffect(() => {
     allSatObjects.forEach(sat => {
       if (selectedCatnrs.includes(sat.catnr)) {
         const isPrimary = sat.catnr === selectedCatnr;
-        const radiusDeg = getFootprintRadiusDeg(sat.altKm, PASS_MIN_ELEVATION_DEG);
+        const radiusDeg = getFootprintRadiusDeg(sat.altKm, stationMask);
         if (!isNaN(radiusDeg)) {
           const circleCoords = getCirclePolygon(sat.lat, sat.lng, radiusDeg, 64);
           polygons.push({
@@ -1463,7 +1564,7 @@ useEffect(() => {
       }
     });
     return polygons;
-  }, [allSatObjects, selectedCatnrs, selectedCatnr]);
+  }, [allSatObjects, selectedCatnrs, selectedCatnr, stationMask]);
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -1613,7 +1714,7 @@ useEffect(() => {
     const nextPos = calculateSatData(new Date(currentDate.getTime() + 60000), targetSatrec);
     const isDescending = nextPos && nextPos.elevationDeg < targetData.elevationDeg;
 
-    if (targetData.elevationDeg <= 0 || (targetData.elevationDeg < PASS_MIN_ELEVATION_DEG && isDescending)) {
+    if (targetData.elevationDeg <= 0 || (targetData.elevationDeg < stationMask && isDescending)) {
       return { segments: [], maxEl: 'N/A', aosAz: null, losAz: null, sectorEdgePoints: [] };
     }
 
@@ -1635,7 +1736,7 @@ useEffect(() => {
       if (pos && !isNaN(pos.elevationDeg) && !isNaN(pos.azimuthDeg)) {
         if (pos.elevationDeg > maxEl) maxEl = pos.elevationDeg; 
         
-        const isVis = pos.elevationDeg >= PASS_MIN_ELEVATION_DEG;
+        const isVis = pos.elevationDeg >= stationMask;
         
         if (isVis) {
           hasFutureVisibility = true;
@@ -1676,13 +1777,13 @@ useEffect(() => {
       return { segments: [], maxEl: 'N/A', aosAz: null, losAz: null, sectorEdgePoints: [] };
     }
     return { segments, maxEl: maxEl > 0 ? maxEl.toFixed(1) : 'N/A', aosAz, losAz, sectorEdgePoints };
-  }, [targetSatrec, targetData, Math.floor(simulatedTimeMs / 60000), radarLayout]);
+  }, [targetSatrec, targetData, Math.floor(simulatedTimeMs / 60000), radarLayout, stationMask]); // <-- เพิ่ม stationMask
 
   const radarCurrentPos = useMemo(() => {
     if (!targetData || isNaN(targetData.elevationDeg) || isNaN(targetData.azimuthDeg)) return null;
     
     // ฟันธง 3: ถ้ามุมเงยต่ำกว่า Station Mask (กราวด์เปลี่ยนเป็นสีแดง) ให้ซ่อนจุดเรดาร์สีส้มหายไปทันที
-    if (targetData.elevationDeg < PASS_MIN_ELEVATION_DEG) return null;
+    if (targetData.elevationDeg < stationMask) return null;
     
     const { R, cx, cy } = radarLayout;
     const r = R * ((90 - targetData.elevationDeg) / 90);
@@ -1690,11 +1791,60 @@ useEffect(() => {
     const y = cy - r * Math.cos((targetData.azimuthDeg * Math.PI) / 180);
     
     return { x, y, isVis: true, el: targetData.elevationDeg };
-  }, [targetData, radarLayout]);
+  }, [targetData, radarLayout, stationMask]);
 
 // 📍 ฟันธง: ย้ายจุดประกอบร่างมาไว้ตรงนี้! รอให้ตัวแปรทุกตัวคำนวณเสร็จหมดก่อน ค่อยสั่งวาด
 const pathsToDraw3D = [...orbitVisualPath, ...signalVisualPath, ...footprintBoundaryPath, ...imagingSwathPaths];
 if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
+
+// 📍 ฟันธง: สมองกล Cache ระบบแสง Day/Night 2D (แก้อาการกระตุกขั้นเด็ดขาด!)
+const dayNightOverlay2D = useMemo(() => {
+  if (!realtimeSun) return null;
+  
+  const terminatorPts = [];
+  const sunLat = currentSunPos.lat === 0 ? 0.0001 : currentSunPos.lat;
+  const sunLatRad = sunLat * Math.PI / 180;
+  const sunLngRad = currentSunPos.lng * Math.PI / 180;
+  
+  for (let i = 0; i <= 100; i++) {
+    const lng = (i / 100) * 360 - 180;
+    const lngRad = lng * Math.PI / 180;
+    const latRad = Math.atan(-Math.cos(lngRad - sunLngRad) / Math.tan(sunLatRad));
+    const lat = latRad * 180 / Math.PI;
+    const y = (90 - lat) / 180 * 100;
+    terminatorPts.push(`${i},${y}`);
+  }
+  
+  if (sunLat >= 0) {
+    terminatorPts.push(`100,100`, `0,100`);
+  } else {
+    terminatorPts.push(`100,0`, `0,0`);
+  }
+  const nightPolygon = terminatorPts.join(' ');
+
+  return (
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
+      <defs>
+        <filter id="terminator-blur" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="1.5" />
+        </filter>
+        <filter id="city-glow">
+          <feColorMatrix type="matrix" values="
+            1.8 0 0 0 0
+            0 1.4 0 0 0
+            0 0 0.9 0 0
+            0 0 0 1 0" />
+        </filter>
+        <mask id="night-mask">
+          <rect x="0" y="0" width="100" height="100" fill="black" />
+          <polygon points={nightPolygon} fill="white" filter="url(#terminator-blur)" />
+        </mask>
+      </defs>
+      <polygon points={nightPolygon} fill="rgba(0, 5, 20, 0.88)" filter="url(#terminator-blur)" />
+      <image href="/textures/Earth_nightmap.webp" x="0" y="0" width="100" height="100" preserveAspectRatio="none" mask="url(#night-mask)" filter="url(#city-glow)" style={{ mixBlendMode: 'screen' }} />
+    </svg>
+  );
+}, [realtimeSun, currentSunPos]); // <- หัวใจสำคัญ! สั่งให้คำนวณใหม่เฉพาะตอนดวงอาทิตย์ขยับเท่านั้น
 
   return (
     <>
@@ -1783,13 +1933,6 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
         ringMaxRadius={linkActive ? 8 : 4}
         ringPropagationSpeed={1.5}
         ringRepeatPeriod={800}
-        polygonsData={footprintPolygonData}
-        polygonGeoJsonGeometry={d => ({ type: 'Polygon', coordinates: [d.coords] })}
-        polygonCapColor={d => d.fillColor}
-        polygonSideColor={() => 'transparent'}
-        polygonStrokeColor={() => 'transparent'} 
-        polygonAltitude={0.015}
-        polygonTransitionDuration={0}
       />
 
 {isFlatMap && (
@@ -1833,25 +1976,8 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 filter: mapThemes[mapThemeIdx].filter
               }}>
               
-              {realtimeSun && (() => {
-                const nightLng = currentSunPos.lng > 0 ? currentSunPos.lng - 180 : currentSunPos.lng + 180;
-                const nightLat = -currentSunPos.lat; 
-                const nightX = (nightLng + 180) / 360 * 100;
-                const nightY = (90 - nightLat) / 180 * 100;
-                return (
-                  <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1, overflow: 'hidden' }}>
-                    {[-100, 0, 100].map(offset => (
-                      <div 
-                        key={offset}
-                        style={{
-                          position: 'absolute', top: 0, left: `${offset}%`, width: '100%', height: '100%',
-                          background: `radial-gradient(circle at ${nightX}% ${nightY}%, rgba(0, 10, 25, 0.7) 0%, rgba(0, 10, 25, 0.55) 45%, transparent 60%)`
-                        }}
-                      />
-                    ))}
-                  </div>
-                );
-              })()}
+             {/* 📍 ดึงภาพ Cache แสงเงามาโชว์ (ภาพสวยเหมือนเดิม แต่เบาเครื่อง ลื่นปรึ๊ด 100%) */}
+             {dayNightOverlay2D}
 
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="map-svg">
                 {orbitVisualPath.map((pathObj, i) => {
@@ -1894,9 +2020,9 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                   />
                 )}
 
-                {allSatObjects.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
+                  {allSatObjects.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
                   const isPrimary = sat.catnr === selectedCatnr;
-                  const radiusDeg = getFootprintRadiusDeg(sat.altKm, PASS_MIN_ELEVATION_DEG);
+                  const radiusDeg = getFootprintRadiusDeg(sat.altKm, stationMask);
                   if (isNaN(radiusDeg)) return null;
                   
                   const latRad = (sat.lat * Math.PI) / 180;
@@ -2012,14 +2138,6 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 </div>
               </div>
 
-              {(() => {
-                const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
-                 return (
-                   <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ position: 'relative', top: '0', transform: 'none', width: '100%', marginTop: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                     {isLive ? '🟢 LIVE OPERATIONS' : '🟠 SIMULATION MODE'}
-                   </div>
-                 );
-              })()}
             </div>
           </div>
           
@@ -2117,14 +2235,15 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 <div className="t-box"><span>SLANT RANGE</span><strong>{targetData && !isNaN(targetData.rangeKm) ? Math.round(targetData.rangeKm).toLocaleString() : '---'} km</strong></div>
                 <div className="t-box"><span>ALTITUDE</span><strong>{targetData && !isNaN(targetData.altKm) ? targetData.altKm.toFixed(0) : '---'} km</strong></div>
                 <div className="t-box"><span>ORBITAL SPEED</span><strong>{targetData && !isNaN(targetData.speedKmS) ? targetData.speedKmS.toFixed(2) : '---'} km/s</strong></div>
-                <div className="t-box"><span>INCLINATION</span><strong>{tles[selectedCatnr] ? getInclinationDeg(tles[selectedCatnr].line2).toFixed(2) : '---'}°</strong></div>
+                {/* 📍 ฟันธง: อัปเกรดความแม่นยำ Inclination เป็น 4 ตำแหน่งทศนิยม ตามมาตรฐานไฟล์ TLE */}
+                <div className="t-box"><span>INCLINATION</span><strong>{tles[selectedCatnr] ? getInclinationDeg(tles[selectedCatnr].line2).toFixed(4) : '---'}°</strong></div>
               </div>
 
               <ul className="info-list">
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Operator / Agency:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.operator || 'Unknown'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Mission Type:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.mission || 'Various'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Orbit Class:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetData?.altKm > 2000 ? (targetData?.altKm > 30000 ? 'GEO' : 'MEO') : 'LEO'}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Station Mask:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{PASS_MIN_ELEVATION_DEG.toFixed(1)}°</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Station Mask:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{stationMask.toFixed(1)}°</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Telemetry (TT&C):</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.telemetry || 'N/A'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Payload Downlink:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.payload || 'N/A'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
@@ -2150,37 +2269,19 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
         <div className="control-group">
               <p>TIME & PLAYBACK</p>
               
-              {/* แถว 1: ปุ่มเครื่องเล่นเทป (Media Controls) ถอย/เดินหน้า ทีละ 30 วินาที หรือกดค้างเพื่อไถลเวลา */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                <button 
-                  className="btn media-btn" 
-                  onMouseDown={() => handleSeekDown(-30000)} 
-                  onMouseUp={() => handleSeekUp(-30000)} 
-                  onMouseLeave={() => handleSeekUp(0)} /* เผื่อลากเมาส์หลุดขอบปุ่ม */
-                  onTouchStart={() => handleSeekDown(-30000)} 
-                  onTouchEnd={() => handleSeekUp(-30000)}
-                >
+             {/* แถว 1: ปุ่มเครื่องเล่นเทป (Media Controls) เอาข้อความออก ขยายไอคอน */}
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                <button className="btn media-btn" onMouseDown={() => handleSeekDown(-30000)} onMouseUp={() => handleSeekUp(-30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(-30000)} onTouchEnd={() => handleSeekUp(-30000)}>
                   <span className="icon">⏪</span>
-                  <span className="label">-30S</span>
                 </button>
                 <button className={`btn media-btn btn-pause ${!isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(false)}>
                   <span className="icon">⏸</span>
-                  <span className="label">PAUSE</span>
                 </button>
                 <button className={`btn media-btn ${isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(true)}>
                   <span className="icon">▶</span>
-                  <span className="label">PLAY</span>
                 </button>
-                <button 
-                  className="btn media-btn" 
-                  onMouseDown={() => handleSeekDown(30000)} 
-                  onMouseUp={() => handleSeekUp(30000)} 
-                  onMouseLeave={() => handleSeekUp(0)}
-                  onTouchStart={() => handleSeekDown(30000)} 
-                  onTouchEnd={() => handleSeekUp(30000)}
-                >
+                <button className="btn media-btn" onMouseDown={() => handleSeekDown(30000)} onMouseUp={() => handleSeekUp(30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(30000)} onTouchEnd={() => handleSeekUp(30000)}>
                   <span className="icon">⏩</span>
-                  <span className="label">+30S</span>
                 </button>
               </div>
 
@@ -2191,15 +2292,34 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 ))}
               </div>
 
-             {/* แถว 3: ปุ่ม RESET ขยายเต็มความกว้าง */}
-             <button className="btn" style={{ marginBottom: 0, marginTop: '8px', fontSize: '14px', letterSpacing: '1px' }} onClick={() => {
-                setSimulatedTimeMs(Date.now());
-                setSpeedMult(1);
-                setIsPlaying(true);
-                isTrackingRef.current = false;
-                setCameraMode('FREE LOOK');
-                if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
-              }}>RESET TO LIVE</button>
+            {/* 📍 ฟันธง: แถว 3 ประกอบร่างป้าย LIVE/SIM คู่กับปุ่ม RESET ปรับขนาดให้สมมาตร 50/50 */}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', height: '48px' }}>
+                {(() => {
+                  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+                  return (
+                    <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ flex: '1', margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '6px', fontSize: '15px', letterSpacing: '2px' }}>
+                      {isLive ? '🟢 LIVE' : '🟠 SIM'}
+                    </div>
+                  );
+                })()}
+               {/* 📍 ฟันธง: อัปเกรดปุ่ม RESET ให้เคลียร์ค้างการเลือก Plan และซูมทั้งหมด */}
+               <button className="btn" style={{ flex: '1', margin: 0, padding: '0', fontSize: '15px', letterSpacing: '2px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => {
+                  setSimulatedTimeMs(Date.now());
+                  setSpeedMult(1);
+                  setIsPlaying(true);
+                  isTrackingRef.current = false;
+                  setCameraMode('FREE LOOK');
+                  
+                  // 📍 ฟันธง: ชุดคำสั่ง "ล้างบาง" สถานะที่ค้างอยู่ทั้งหมด!
+                  setSelectedPlanId(null); 
+                  setMapZoom(1); 
+                  setImgMapOrigin('center center'); 
+                  setTacticalZoom(1); 
+                  setZoomOrigin('center center');
+
+                  if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
+                }}>RESET TO LIVE</button>
+              </div>
 
               {/* 📍 แถว 4: TIME SCRUB BAR (แบบ Dynamic Scale 2 In 1) ฟันธง! */}
               <div className="time-scrubber-container">
@@ -2292,8 +2412,16 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
            <div className="control-group">
               <p>DISPLAY CONTROLS</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                {/* 📍 ฟันธง: ปุ่มกดสลับมุม Station Mask แบบ Real-time (0°, 3°, 5°) */}
                 <button 
-                  className={`btn ${realtimeSun ? 'active' : ''}`} 
+                  className="btn btn-green active"
+                  style={{ marginBottom: 0, fontSize: '14px', padding: '12px 5px', letterSpacing: '1.5px', gridColumn: 'span 2' }} 
+                  onClick={() => setStationMask(prev => prev === 5 ? 0 : (prev === 0 ? 3 : 5))}
+                >
+                STATION MASK: {stationMask}° 
+                </button>
+                <button 
+                  className={`btn btn-green ${realtimeSun ? 'active' : ''}`} 
                   style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
                   onClick={() => setRealtimeSun(!realtimeSun)}
                 >
@@ -2301,7 +2429,7 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 </button>
                 
                 <button 
-                  className={`btn ${isFlatMap ? 'active' : ''}`} 
+                  className={`btn btn-green${isFlatMap ? 'active' : ''}`} 
                   style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
                   onClick={() => setIsFlatMap(!isFlatMap)}
                 >
@@ -2309,7 +2437,7 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 </button>
 
                 <button 
-                  className={`btn ${showGroundTrack ? 'active' : ''}`} 
+                  className={`btn btn-green ${showGroundTrack ? 'active' : ''}`} 
                   style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
                   onClick={() => setShowGroundTrack(!showGroundTrack)}
                 >
@@ -2317,7 +2445,7 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 </button>
 
                 <button 
-                  className={`btn ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
+                  className={`btn btn-green ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
                   style={{ marginBottom: 0, fontSize: '15px', padding: '14px 5px', letterSpacing: '0.5px' }} 
                   onClick={() => {
                     const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
@@ -2343,142 +2471,115 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
 
                 {/* 📍 ปุุ่มใหม่: สลับ Theme แผนที่ 2D (กดแล้ววนลูปไปเรื่อยๆ) */}
                 <button 
-                  className="btn" 
+                  className="btn btn-cyan" 
                   style={{ marginBottom: 0, fontSize: '13px', padding: '12px 5px', letterSpacing: '1.5px', gridColumn: 'span 2', borderColor: 'var(--cyan)', color: 'var(--cyan)', textShadow: '0 0 8px var(--cyan)' }} 
                   onClick={() => setMapThemeIdx((prev) => (prev + 1) % mapThemes.length)}
                 >
-                  🗺️ THEME: {mapThemes[mapThemeIdx].name}
+                THEME: {mapThemes[mapThemeIdx].name}
                 </button>
               </div>
             </div>
 
-           {/* กลุ่มที่ 3: ข้อมูลและเครื่องมือพิเศษ */}
-           <div className="control-group" style={{ paddingBottom: '15px' }}>
+          {/* 🛠️ กลุ่มที่ 3: DATA & TOOLS (Redesigned & Regrouped) */}
+          <div className="control-group" style={{ paddingBottom: '15px' }}>
              <p>DATA & TOOLS</p>
-             
+
+             {/* แถว 1: Database กลาง (Full width) */}
              <button 
-               className="btn" 
-               onClick={handleAutoUpdateTle} 
-               disabled={isUpdatingTle}
-               style={{ borderColor: 'var(--cyan)', color: 'var(--cyan)', textShadow: '0 0 8px var(--cyan)', marginBottom: '8px', letterSpacing: '1px' }}
+               className={`btn btn-cyan ${isModalOpen ? 'active' : ''}`} 
+               onClick={() => { setIsModalOpen(!isModalOpen); if (!isModalOpen) bringToFront('db'); }}
+               style={{ width: '100%', marginBottom: '10px', padding: '16px', fontSize: '16px', letterSpacing: '2px', fontWeight: '900' }}
              >
-               {isUpdatingTle ? 'FETCHING...' : 'SYNC LIVE TLE'}
+              SATELLITE DATABASE
              </button>
 
-              {/* 📍 ปุ่มกดเปิดหน้าต่าง IMAGING PLAN (สีแดงนีออน) */}
-              <button 
-               onClick={() => { setIsImgOpen(!isImgOpen); if (!isImgOpen) bringToFront('img'); }}
-               style={{ 
-                 width: '100%', padding: '12px', marginBottom: '10px', 
-                 background: isImgOpen ? 'var(--red)' : 'rgba(255, 51, 51, 0.05)', 
-                 border: '1px solid var(--red)', color: isImgOpen ? '#fff' : 'var(--red)', 
-                 fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '2px',
-                 boxShadow: isImgOpen ? '0 0 25px rgba(255, 51, 51, 0.8)' : '0 0 10px rgba(255, 51, 51, 0.1)',
-                 cursor: 'pointer', transition: 'all 0.2s', textTransform: 'uppercase'
-               }}
-             >
-               📷 IMAGING PLAN
-             </button>
-
-             {/* 📍 ฟันธง 1: ปุ่ม GROUND STATION ดีไซน์ Sci-Fi (บังคับสไตล์ทับ CSS เดิมที่กวนอยู่) */}
-            <button 
-              onClick={() => { setIsGsModalOpen(!isGsModalOpen); if (!isGsModalOpen) bringToFront('gs'); }}
-              style={{ 
-                width: '100%', 
-                padding: '12px', 
-                marginBottom: '10px', 
-                background: 'rgba(0, 234, 255, 0.05)', 
-                border: '1px solid var(--cyan)', 
-                color: 'var(--cyan)', 
-                fontFamily: 'Orbitron', 
-                fontWeight: 'bold', 
-                letterSpacing: '2px',
-                boxShadow: '0 0 10px rgba(0,234,255,0.1)',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                textTransform: 'uppercase'
-              }}
-              onMouseEnter={(e) => { 
-                e.currentTarget.style.background = 'rgba(0, 234, 255, 0.2)'; 
-                e.currentTarget.style.boxShadow = '0 0 20px rgba(0,234,255,0.4), inset 0 0 10px rgba(0,234,255,0.2)'; 
-              }}
-              onMouseLeave={(e) => { 
-                e.currentTarget.style.background = 'rgba(0, 234, 255, 0.05)'; 
-                e.currentTarget.style.boxShadow = '0 0 10px rgba(0,234,255,0.1)'; 
-              }}
-            >
-              GROUND STATION
-            </button>
-
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-               {/* 📍 ฟันธง: แก้ปุ่ม DATABASE ให้กดสลับเปิด-ปิดได้ และเรืองแสงเมื่อเปิดใช้งาน */}
+             {/* แถว 2: TLE Sync & Upload รวมไว้ด้วยกัน */}
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
                <button 
-                 className={`btn database-btn ${isModalOpen ? 'active' : ''}`} 
-                 style={{ marginBottom: 0, fontSize: '13px', padding: '10px 5px', letterSpacing: '1px' }} 
-                 onClick={() => { setIsModalOpen(!isModalOpen); if (!isModalOpen) bringToFront('db'); }}
+                 className="btn btn-cyan" 
+                 onClick={handleAutoUpdateTle} 
+                 disabled={isUpdatingTle}
+                 style={{ margin: 0, padding: '12px 5px', fontSize: '13px' }}
                >
-                 DATABASE
+                 {isUpdatingTle ? 'FETCHING...' : 'AUTO UPDATE TLE'}
                </button>
                
                <input type="file" accept=".txt,.tle" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} />
                <button 
-                 className="btn" 
+                 className="btn btn-cyan" 
                  onClick={() => fileInputRef.current && fileInputRef.current.click()} 
                  disabled={isUpdatingTle}
-                 style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', opacity: 0.8, letterSpacing: '1px' }}
+                 style={{ margin: 0, padding: '12px 5px', fontSize: '13px' }}
                >
                  UPLOAD TLE
                </button>
              </div>
 
+             {/* แถว 3: IMAGING PLAN (ขยายใหญ่ โดดเด่น) */}
              <button 
-               className={`btn ${isRadarOpen ? 'active' : ''}`} 
-               onClick={() => { setIsRadarOpen(!isRadarOpen); if (!isRadarOpen) bringToFront('radar'); }}
+               className={`btn btn-red ${isImgOpen ? 'active' : ''}`}
+               onClick={() => { setIsImgOpen(!isImgOpen); if (!isImgOpen) bringToFront('img'); }}
+               style={{ width: '100%', marginBottom: '10px', padding: '18px', fontSize: '20px', letterSpacing: '3px', fontWeight: '900' }}
+             >
+              MISSION PLAN
+             </button>
+
+             {/* แถว 4: Ground Station & Radar Skyplot */}
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+               <button 
+                 className={`btn btn-cyan ${isGsModalOpen ? 'active' : ''}`}
+                 onClick={() => { setIsGsModalOpen(!isGsModalOpen); if (!isGsModalOpen) bringToFront('gs'); }}
+                 style={{ margin: 0, padding: '14px 5px', fontSize: '14px' }}
+               >
+                GROUND STATION
+               </button>
+
+               <button 
+                 className={`btn btn-green ${isRadarOpen ? 'active' : ''}`} 
+                 onClick={() => { setIsRadarOpen(!isRadarOpen); if (!isRadarOpen) bringToFront('radar'); }}
+                 style={{ margin: 0, padding: '14px 5px', fontSize: '14px' }}
+               >
+                RADAR SKYPLOT
+               </button>
+             </div>
+           </div>
+
+           {/* 🗓️ PASS SCHEDULE (นำใส่กล่อง control-group ให้สมมาตรกับด้านบน) */}
+           <div className="control-group" style={{ 
+             marginTop: '15px', 
+             padding: '20px',
+             borderColor: 'var(--gold)', 
+             borderTopColor: 'var(--gold)', 
+             boxShadow: '0 10px 30px rgba(0,0,0,0.8), 0 0 30px rgba(255, 204, 0, 0.15), inset 0 0 20px rgba(255, 204, 0, 0.05)' 
+           }}>
+             <button 
+               className={`btn btn-gold ${isPassModalOpen ? 'active' : ''}`} 
+               onClick={() => {
+                 setIsPassModalOpen(!isPassModalOpen);
+                 if (!isPassModalOpen) {
+                   bringToFront('pass');
+                   if (selectedCatnr) calculateFuturePasses(selectedCatnr);
+                 }
+               }}
                style={{ 
-                 marginBottom: 0, 
-                 padding: '12px 10px',
-                 minHeight: '48px',    
+                 margin: 0, 
+                 padding: '18px',
                  display: 'flex',      
                  justifyContent: 'center', 
                  alignItems: 'center', 
-                 gap: '8px',           
-                 borderColor: 'var(--green)', 
-                 color: 'var(--green)', 
-                 textShadow: '0 0 8px var(--green)',
                  fontWeight: '900',
-                 letterSpacing: '1.5px'
+                 letterSpacing: '4px',
+                 fontSize: '22px'
                }}
              >
-               RADAR SKYPLOT
+               ⏱️ PASS SCHEDULE
              </button>
            </div>
 
-           <button 
-                  className={`btn ${isPassModalOpen ? 'active' : ''}`} 
-                  onClick={() => {
-                    setIsPassModalOpen(!isPassModalOpen);
-                    if (!isPassModalOpen) {
-                      bringToFront('pass');
-                      if (selectedCatnr) calculateFuturePasses(selectedCatnr);
-                    }
-                  }}
-                  style={{ 
-                    marginBottom: 0, 
-                    padding: '14px 10px',
-                    display: 'flex',      
-                    justifyContent: 'center', 
-                    alignItems: 'center', 
-                    borderColor: 'var(--gold)', 
-                    color: 'var(--gold)', 
-                    textShadow: '0 0 8px var(--gold)',
-                    fontWeight: '900',
-                    letterSpacing: '1.5px',
-                    fontSize: '16px',
-                    marginTop: '10px'
-                  }}
-                >
-                  PASS SCHEDULE
-                </button>
+           {/* 📍 เครดิตลิขสิทธิ์และผู้พัฒนา */}
+           <div style={{ textAlign: 'center', marginTop: '15px', fontSize: '16px', color: 'rgba(255, 255, 255, 0.8)', fontFamily: 'Rajdhani', letterSpacing: '1px' }}>
+             © 2026 GISTDA.GSE Developed by Nawattakorn Kaikaew
+           </div>
 
          </div>
           )}
@@ -2725,16 +2826,29 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
             .pass-modal td { font-size: clamp(13px, 1.7cqw, 30px) !important; padding: clamp(8px, 1.2cqw, 20px) clamp(4px, 0.8cqw, 15px) !important; }
           `}</style>
 
-          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', borderBottom: '1px solid rgba(255, 204, 0, 0.5)', cursor: maximizedWins.pass ? 'default' : (isDraggingPass ? 'grabbing' : 'grab'), flexWrap: 'nowrap', flexShrink: 0 }} onMouseDown={(e) => { if(!maximizedWins.pass) handlePassMouseDown(e); }}>
+<div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', borderBottom: '1px solid rgba(255, 204, 0, 0.5)', cursor: maximizedWins.pass ? 'default' : (isDraggingPass ? 'grabbing' : 'grab'), flexWrap: 'nowrap', flexShrink: 0 }} onMouseDown={(e) => { if(!maximizedWins.pass) handlePassMouseDown(e); }}>
             <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center', color: 'var(--gold)', fontFamily: 'Orbitron', fontWeight: 'bold', textShadow: '0 0 10px var(--gold)', whiteSpace: 'nowrap', overflow: 'hidden', pointerEvents: 'none' }}>
               <span className="auto-scale-header" style={{marginRight:'8px'}}>⏱️</span> 
               <span className="auto-scale-header" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>PASS SCHEDULE</span>
             </div>
-            <div className="auto-scale-badge" style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(255, 204, 0, 0.1)', border: '1px solid rgba(255, 204, 0, 0.5)', borderRadius: '4px', margin: '0 10px', whiteSpace: 'nowrap' }}>
-              {SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr)?.flag && ( <img className="auto-scale-flag" src={`https://flagcdn.com/w40/${SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr).flag}.png`} alt="flag" style={{ borderRadius: '2px' }} /> )}
-              <span style={{ color: '#fff', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '1px' }}>{SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr)?.displayName || 'Unknown'}</span>
+            
+            {/* 📍 ฟันธง: เพิ่มเมนูเลือกวัน (1D, 3D, 7D) ไว้ตรงกลาง Header */}
+            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'center', gap: '5px' }}>
+              {[1, 3, 7].map(d => (
+                <button key={d} onMouseDown={(e) => e.stopPropagation()} onClick={() => setPassPredictionDays(d)}
+                  style={{
+                    background: passPredictionDays === d ? 'var(--gold)' : 'rgba(255, 204, 0, 0.1)',
+                    color: passPredictionDays === d ? '#000' : 'var(--gold)',
+                    border: '1px solid var(--gold)',
+                    padding: '4px 15px', borderRadius: '4px', fontSize: '13px', fontWeight: 'bold', fontFamily: 'Orbitron',
+                    cursor: 'pointer', transition: 'all 0.2s',
+                    boxShadow: passPredictionDays === d ? '0 0 15px rgba(255,204,0,0.6)' : 'none'
+                  }}>
+                  ±{d} DAYS
+                </button>
+              ))}
             </div>
-            {/* 📍 ฟันธง: เพิ่มปุ่ม Maximize (🗖) */}
+
             <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
               <button className="modal-close-btn" style={{ width: '36px', height: '36px', fontSize: '17px', flexShrink: 0, borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.2)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('pass'); }}>{maximizedWins.pass ? '🗗' : '🗖'}</button>
               <button className="modal-close-btn" style={{ width: '36px', height: '36px', fontSize: '16px', flexShrink: 0, borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.2)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsPassModalOpen(false); }}>✕</button>
@@ -2748,8 +2862,9 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
               </div>
             ) : (
               <table className="hide-scroll" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', fontSize: '18px', color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
-                <thead>
+                <thead style={{ position: 'sticky', top: 0, background: 'rgba(10, 5, 0, 0.95)', zIndex: 5 }}>
                   <tr style={{ borderBottom: '2px solid rgba(255, 204, 0, 0.6)', color: 'rgba(255, 255, 255, 0.7)', textAlign: 'center', letterSpacing: '1.5px', fontSize: '14px', textTransform: 'uppercase' }}>
+                    <th style={{ padding: '12px 5px' }}>STATUS</th>
                     <th style={{ padding: '12px 5px' }}>DATE (UTC)</th> 
                     <th style={{ padding: '12px 5px' }}>AOS</th> 
                     <th style={{ padding: '12px 5px' }}>MAX EL TIME</th> 
@@ -2761,22 +2876,58 @@ if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
                 </thead>
                 <tbody>
                   {passSchedule.length === 0 ? (
-                    <tr><td colSpan={7} style={{ padding: '30px', textAlign: 'center', color: 'var(--red)', fontWeight: 'bold', letterSpacing: '2px' }}>NO PASSES IN NEXT 3 DAYS OR GEO</td></tr>
+                    <tr><td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: 'var(--red)', fontWeight: 'bold', letterSpacing: '2px' }}>NO PASSES DETECTED IN THIS TIMEFRAME</td></tr>
                   ) : (
                     passSchedule.map((pass, idx) => {
                       const aosD = new Date(pass.aosTime); const losD = new Date(pass.losTime); const peakD = new Date(pass.peakTime); 
                       const durMins = Math.floor(pass.durationMs / 60000); const durSecs = Math.floor((pass.durationMs % 60000) / 1000);
+                      
+                      // 📍 สมองกลแยกแยะ อดีต / ปัจจุบัน / วันนี้ / อนาคต
+                      const isPast = simulatedTimeMs > pass.losTime;
+                      const isActive = simulatedTimeMs >= pass.aosTime && simulatedTimeMs <= pass.losTime;
+                      
+                      // 📍 ฟันธง: ดึงวันที่ของ Simulator กับ วันที่ของ Pass มาเทียบกันตรงๆ ว่าใช่วันเดียวกันหรือไม่
+                      const simDateStr = new Date(simulatedTimeMs).toISOString().split('T')[0];
+                      const passDateStr = aosD.toISOString().split('T')[0];
+                      const isToday = !isPast && !isActive && (simDateStr === passDateStr);
+
+                      let rowStyle = {
+                        borderBottom: '1px dashed rgba(255,255,255,0.1)', 
+                        cursor: 'pointer', transition: 'all 0.2s', textAlign: 'center',
+                        background: 'transparent', opacity: 1, filter: 'none'
+                      };
+
+                      let statusBadge;
+
+                      if (isActive) {
+                        rowStyle.background = 'linear-gradient(90deg, rgba(0, 255, 102, 0.2) 0%, rgba(0, 255, 102, 0.05) 100%)';
+                        rowStyle.borderLeft = '4px solid var(--green)';
+                        rowStyle.boxShadow = 'inset 0 0 20px rgba(0, 255, 102, 0.2)';
+                        statusBadge = <span style={{ color: '#000', background: 'var(--green)', padding: '2px 8px', borderRadius: '4px', fontWeight: '900', fontSize: '13px', animation: 'pulse 1.5s infinite' }}>● ACTIVE</span>;
+                      } else if (isPast) {
+                        rowStyle.opacity = 0.4; 
+                        rowStyle.filter = 'grayscale(80%)';
+                        statusBadge = <span style={{ color: 'rgba(255,255,255,0.5)' }}>PAST</span>;
+                      } else if (isToday) {
+                        // 📍 ฟันธง: คิวของวันนี้ (TODAY) ใช้สีเหลืองทองกระแทกตา สื่อถึงความพร้อม Standby
+                        statusBadge = <span style={{ color: 'var(--gold)', fontWeight: '900', textShadow: '0 0 8px rgba(255, 204, 0, 0.8)' }}>TODAY</span>;
+                      } else {
+                        // 📍 ฟันธง: คิวของวันพรุ่งนี้ขึ้นไป (FUTURE) ใช้สีฟ้าไซแอนดรอปแสงลง สื่อถึงคิวล่วงหน้าที่ยังไม่ต้องรีบ
+                        statusBadge = <span style={{ color: 'rgba(0, 234, 255, 0.65)' }}>FUTURE</span>;
+                      }
+
                       return (
                         <tr key={idx} 
                           onClick={() => { setSimulatedTimeMs(pass.aosTime - 60000); setSpeedMult(30); setIsPlaying(true); bringToFront('radar'); }}
-                          style={{ borderBottom: '1px dashed rgba(255,255,255,0.1)', backgroundColor: 'transparent', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'center' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.15)'; e.currentTarget.style.transform = 'scale(1.01)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.transform = 'scale(1)'; }}
+                          style={rowStyle}
+                          onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.15)'; e.currentTarget.style.transform = 'scale(1.01)'; }}
+                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.transform = 'scale(1)'; }}
                         >
+                          <td style={{ padding: '12px 5px', fontWeight: 'bold', fontFamily: 'Orbitron' }}>{statusBadge}</td>
                           <td style={{ color: 'rgba(255,255,255,0.9)', padding: '12px 5px' }}>{aosD.toISOString().split('T')[0]}</td>
-                          <td style={{ color: 'var(--green)', fontWeight: 'bold', padding: '12px 5px' }}>{pad2(aosD.getUTCHours())}:{pad2(aosD.getUTCMinutes())}:{pad2(aosD.getUTCSeconds())}</td>
-                          <td style={{ color: 'var(--gold)', fontWeight: 'bold', padding: '12px 5px' }}>{pad2(peakD.getUTCHours())}:{pad2(peakD.getUTCMinutes())}:{pad2(peakD.getUTCSeconds())}</td>
-                          <td style={{ color: 'var(--red)', fontWeight: 'bold', padding: '12px 5px' }}>{pad2(losD.getUTCHours())}:{pad2(losD.getUTCMinutes())}:{pad2(losD.getUTCSeconds())}</td>
+                          <td style={{ color: isActive ? 'var(--green)' : 'var(--green)', fontWeight: 'bold', padding: '12px 5px' }}>{pad2(aosD.getUTCHours())}:{pad2(aosD.getUTCMinutes())}:{pad2(aosD.getUTCSeconds())}</td>
+                          <td style={{ color: isActive ? 'var(--gold)' : 'var(--gold)', fontWeight: 'bold', padding: '12px 5px' }}>{pad2(peakD.getUTCHours())}:{pad2(peakD.getUTCMinutes())}:{pad2(peakD.getUTCSeconds())}</td>
+                          <td style={{ color: isActive ? 'var(--red)' : 'var(--red)', fontWeight: 'bold', padding: '12px 5px' }}>{pad2(losD.getUTCHours())}:{pad2(losD.getUTCMinutes())}:{pad2(losD.getUTCSeconds())}</td>
                           <td style={{ color: '#00eaff', fontWeight: 'bold', padding: '12px 5px' }}>{durMins}m {pad2(durSecs)}s</td>
                           <td style={{ color: '#ffffff', fontWeight: '900', padding: '12px 5px', textShadow: '0 0 8px rgba(255,255,255,0.5)' }}>{pass.maxEl.toFixed(2)}°</td>
                           <td style={{ color: 'rgba(255,255,255,0.6)', padding: '12px 5px' }}>{pass.aosAz.toFixed(1)}° → {pass.losAz.toFixed(1)}°</td>
