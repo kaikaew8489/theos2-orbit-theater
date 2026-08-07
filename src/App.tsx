@@ -607,9 +607,10 @@ export default function App() {
   const fileInputRef = useRef(null); 
   const isTrackingRef = useRef(false);
   // 📍 ฟันธง: ประกาศ State ควบคุม Station Mask (มุมเงยรับสัญญาณ)
-  const [stationMask, setStationMask] = useState(5);
+  const [stationMask, setStationMask] = useState(0);
 
-  
+  // 📍 ฟันธง: ตัวแปรควบคุมการแสดงผลสถานี (มี 4 โหมด: 'both', 'icon', 'name', 'none')
+  const [stationDisplayMode, setStationDisplayMode] = useState('both');
 
   const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   
@@ -1925,15 +1926,22 @@ const dayNightOverlay2D = useMemo(() => {
         htmlElement={d => {
           const el = document.createElement('div');
           
-          /* 📍 ถ้าเป็นสถานีภาคพื้นดิน (ฟันธง: ล็อกไอคอนจานไว้จุดศูนย์กลางเป๊ะ และห้อยชื่อไว้ด้านล่าง) */
-          if (d.type === 'station') {
+         /* 📍 ถ้าเป็นสถานีภาคพื้นดิน (ระบบเลือกโหมดแสดงผล Dynamic) */
+         if (d.type === 'station') {
+          if (stationDisplayMode === 'none') {
+            el.innerHTML = ``; // ไม่แสดงอะไรเลย (ล่องหน)
+          } else {
+            const showIcon = stationDisplayMode === 'both' || stationDisplayMode === 'icon';
+            const showName = stationDisplayMode === 'both' || stationDisplayMode === 'name';
+            
             el.innerHTML = `
               <div style="position: relative; display: flex; align-items: center; justify-content: center; pointer-events: none;">
-                <span style="font-size: 38px; line-height: 1; filter: drop-shadow(0 0 15px #00eaff);">📡</span>
-                <span style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); color: #00eaff; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 14px; text-shadow: 0 0 8px #000, 0 0 15px #00eaff; margin-top: 4px; letter-spacing: 1.5px; white-space: nowrap;">${d.name}</span>
+                ${showIcon ? `<span style="font-size: 38px; line-height: 1; filter: drop-shadow(0 0 15px #00eaff);">📡</span>` : `<span style="width: 38px; height: 38px; display: inline-block;"></span>`}
+                ${showName ? `<span style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); color: #00eaff; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 14px; text-shadow: 0 0 8px #000, 0 0 15px #00eaff; margin-top: 4px; letter-spacing: 1.5px; white-space: nowrap;">${d.name}</span>` : ''}
               </div>
             `;
           }
+        }
           /* 📍 ถ้าเป็นดาวเทียมเป้าหมาย */
           else {
             const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
@@ -2484,7 +2492,18 @@ const dayNightOverlay2D = useMemo(() => {
                 >
                   {isFlatMap ? '2D TACTICAL' : '3D GLOBE'}
                 </button>
-
+                {/* 📍 ฟันธง: ปุ่มกดสลับโหมดแสดงสถานี (วนลูป 4 สถานะ) */}
+                <button 
+              className={`btn btn-green ${stationDisplayMode !== 'none' ? 'active' : ''}`}
+              style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }}
+              onClick={() => {
+                const modes = ['both', 'icon', 'name', 'none'];
+                const nextIndex = (modes.indexOf(stationDisplayMode) + 1) % modes.length;
+                setStationDisplayMode(modes[nextIndex]);
+              }}
+            >
+              {`STATION: ${stationDisplayMode.toUpperCase()}`}
+            </button>
                 <button 
                   className={`btn btn-green ${showGroundTrack ? 'active' : ''}`} 
                   style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
@@ -2495,7 +2514,7 @@ const dayNightOverlay2D = useMemo(() => {
 
                 <button 
                   className={`btn btn-green ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
-                  style={{ marginBottom: 0, fontSize: '15px', padding: '14px 5px', letterSpacing: '0.5px' }} 
+                  style={{ marginBottom: 0, fontSize: '15px', padding: '14px 5px', letterSpacing: '0.5px', gridColumn: 'span 2' }}
                   onClick={() => {
                     const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
                     setCameraMode(newMode);
@@ -3099,7 +3118,7 @@ const dayNightOverlay2D = useMemo(() => {
                         <React.Fragment key={`el-${el}`}>
                           {/* 📍 3. เพิ่มความเข้มวงแหวน */}
                           <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(0, 255, 102, 0.9)" strokeWidth="1.5" strokeDasharray="4 4" />
-                          {R > 120 && el % 30 === 0 && ( <text x={cx + 2} y={cy - r + (9 * uiScale)} fill="rgba(0,255,102,0.9)" fontSize={10 * uiScale} fontWeight="bold">{el}°</text> )}
+                          {R > 120 && el % 30 === 0 && ( <text x={cx + 2} y={cy - r + (9 * uiScale)} fill="#ffcc00" fontSize={10 * uiScale} fontWeight="bold">{el}°</text> )}
                         </React.Fragment>
                       )
                     })}
@@ -3119,7 +3138,7 @@ const dayNightOverlay2D = useMemo(() => {
                       let dy = "0.3em"; if (az === 0) dy = "0em"; if (az === 180) dy = "0.8em";
 
                       return (
-                        <text key={`az-label-${az}`} x={lx} y={ly} dy={dy} fill={isMain ? "var(--green)" : "rgba(0,255,102,0.8)"} fontSize={isMain ? 12 * uiScale : 10 * uiScale} fontWeight={isMain ? "bold" : "normal"} textAnchor={anchor} >
+                        <text key={`az-label-${az}`} x={lx} y={ly} dy={dy} fill={isMain ? "#00eaff" : "#ffcc00"} fontSize={isMain ? 12 * uiScale : 10 * uiScale} fontWeight={isMain ? "bold" : "normal"} textAnchor={anchor} >
                           {label}
                         </text>
                       );
