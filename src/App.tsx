@@ -2178,7 +2178,6 @@ const dayNightOverlay2D = useMemo(() => {
                   <strong>{formatTime(currentDate)}</strong>
                 </div>
               </div>
-
             </div>
           </div>
           
@@ -2188,20 +2187,19 @@ const dayNightOverlay2D = useMemo(() => {
             
             <div className="panel-box" style={{ textAlign: 'center', padding: '20px 15px', background: 'rgba(0, 10, 20, 0.45)', border: '1px solid rgba(0, 234, 255, 0.5)', borderRadius: '4px', boxShadow: '0 0 20px rgba(0, 234, 255, 0.2) inset' }}>
               <h1 style={{ margin: '0 0 8px 0', fontFamily: 'Orbitron, sans-serif', fontSize: '30px', fontWeight: '900', color: '#ffffff', textShadow: '0 0 15px #00eaff, 0 0 30px #00eaff', letterSpacing: '2px' }}>SATELLITE ORBIT</h1>
-              <span style={{ display: 'block', fontSize: '13px', color: '#ffffff', fontWeight: '600', letterSpacing: '2px', textShadow: '0 0 8px rgba(255,255,255,0.6)', textTransform: 'uppercase' }}>Thailand Satellite Ground Station</span>
+              <span style={{ display: 'block', fontSize: '16px', color: '#ffaa00', fontWeight: '600', letterSpacing: '2px', textShadow: '0 0 8px rgba(255,255,255,0.6)', textTransform: 'uppercase' }}>Thailand Satellite Ground Station</span>
             </div>
 
             {/* ☁️ CLOUD COVER FORECAST HUD */}
             <div className="panel-box" style={{ padding: '15px 20px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px', gap: '5px' }}>
-                <span style={{ fontFamily: 'Orbitron', fontSize: '13px', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>☁️ ATMOSPHERIC CLOUD COVER</span>
-                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani', whiteSpace: 'nowrap', flexShrink: 0 }}>OPEN-METEO API</span>
+                <span style={{ fontFamily: 'Orbitron', fontSize: '16px', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>ATMOSPHERIC CLOUD COVER</span>
+                <span style={{ fontSize: '16px', color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani', whiteSpace: 'nowrap', flexShrink: 0 }}>OPEN-METEO API</span>
               </div>
               
               {/* 📍 ฟันธง: แก้ flexWrap ออก บังคับให้อยู่บรรทัดเดียวกันเสมอ และจัด align ให้ชิดขอบล่าง (flex-end) */}
               <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px' }}>
                 <div style={{ flex: '1', overflow: 'hidden' }}>
-                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', marginBottom: '4px' }}>Optical Viability</div>
                   {/* 📍 ฟันธง: ใช้ clamp() เพื่อให้ฟอนต์หดตัวอัตโนมัติเมื่อจอแคบ ป้องกันตัวหนังสือล้นกรอบ */}
                   <div style={{ fontSize: 'clamp(12px, 1.2vw, 16px)', fontFamily: 'Orbitron', fontWeight: 'bold', color: cloudCover < 30 ? 'var(--green)' : (cloudCover < 70 ? 'var(--gold)' : 'var(--red)'), lineHeight: '1.2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {cloudCover === null ? 'ANALYZING...' : (cloudCover < 30 ? 'NOMINAL (CLEAR)' : (cloudCover < 70 ? 'MODERATE CLOUDS' : 'HIGH OBSCUREMENT'))}
@@ -2251,8 +2249,8 @@ const dayNightOverlay2D = useMemo(() => {
               </>
                 ) : nextPassTimestamp && nextPassTimestamp.time && (nextPassTimestamp.time > simulatedTimeMs) ? (
                    <>
-                     <span style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', letterSpacing: '1px' }}>NEXT PASS (AOS) IN</span>
-                     <span style={{ fontSize: '28px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', color: 'var(--gold)', textShadow: '0 0 15px rgba(255, 204, 0, 0.5)', margin: '2px 0' }}>
+                     <span style={{ fontSize: '16px', color: 'rgba(255, 255, 255, 0.6)', letterSpacing: '1px' }}>NEXT PASS (AOS) IN</span>
+                     <span style={{ fontSize: '35px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', color: 'var(--gold)', textShadow: '0 0 15px rgba(255, 204, 0, 0.5)', margin: '2px 0' }}>
                        {(() => {
                          const diffMs = nextPassTimestamp.time - simulatedTimeMs;
                          const hrs = Math.floor(diffMs / 3600000);
@@ -2261,7 +2259,7 @@ const dayNightOverlay2D = useMemo(() => {
                          return `- ${pad2(hrs)}h ${pad2(mins)}m ${pad2(secs)}s`;
                        })()}
                      </span>
-                     <span style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.6)' }}>EXPECTED MAX EL: <strong style={{color: 'var(--cyan)', fontSize: '16px'}}>{nextPassTimestamp.maxEl.toFixed(1)}°</strong></span>
+                     <span style={{ fontSize: '16px', color: 'rgba(255, 255, 255, 0.6)' }}>EXPECTED MAX EL: <strong style={{color: 'var(--cyan)', fontSize: '16px'}}>{nextPassTimestamp.maxEl.toFixed(1)}°</strong></span>
                    </>
                 ) : (
                    <span style={{ fontSize: '16px' }}>NO UPCOMING PASS</span>
