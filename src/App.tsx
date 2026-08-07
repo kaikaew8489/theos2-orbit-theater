@@ -95,7 +95,18 @@ function parsePlanText(text) {
 // ==========================================
 // 1. DATA & CONFIGURATION
 // ==========================================
-const GROUND_STATION = { lat: 13.16, lng: 100.93, name: 'GISTDA', color: '#00eaff' };
+
+// 📍 ฟันธง 1: สร้างฐานข้อมูลเครือข่ายสถานีรับสัญญาณ 4 จุด (เพิ่มความสูงระดับน้ำทะเล: alt หน่วยเป็นเมตร)
+const GS_NETWORK = [
+  { id: 'SRC', name: 'GISTDA (SRC)', lat: 13.101195, lng: 100.928091, alt: 17 },     // ศรีราชา (~17 เมตร)
+  { id: 'CMI', name: 'GISTDA (CMI)', lat: 18.858778, lng: 99.180111, alt: 340 },   // เชียงใหม่ (~340 เมตร)
+  { id: 'UBN', name: 'GISTDA (UBN)', lat: 15.125694, lng: 104.924500, alt: 135 },  // อุบลราชธานี (~135 เมตร)
+  { id: 'UDN', name: 'GISTDA (UDN)', lat: 17.451639, lng: 102.933389, alt: 175 }   // อุดรธานี (~175 เมตร)
+];
+
+// 📍 ประกาศตัวแปร Global
+let GROUND_STATION = GS_NETWORK[0];
+
 const EARTH_RADIUS_KM = 6371;
 
 // 📍 ฟันธง 1: ฐานข้อมูลคิวถ่ายภาพ THEOS-2 (สกัดจากไฟล์ MPLN_T2V PDF)
@@ -498,7 +509,12 @@ function calculateSatData(date, satrec) {
     const gmst = satelliteJs.gstime(date);
     const geodetic = satelliteJs.eciToGeodetic(positionAndVelocity.position, gmst);
     const positionEcf = satelliteJs.eciToEcf(positionAndVelocity.position, gmst);
-    const observerGd = { latitude: toRadians(GROUND_STATION.lat), longitude: toRadians(GROUND_STATION.lng), height: 0.05 };
+   // 📍 ฟันธง: ดึงความสูงจริง (เมตร) แปลงเป็นกิโลเมตร เพื่อคำนวณมุม AOS/LOS ให้แม่นยำที่สุด!
+   const observerGd = { 
+    latitude: toRadians(GROUND_STATION.lat), 
+    longitude: toRadians(GROUND_STATION.lng), 
+    height: GROUND_STATION.alt / 1000 
+  };
     const lookAngles = satelliteJs.ecfToLookAngles(observerGd, positionEcf);
     const speed = Math.sqrt(positionAndVelocity.velocity.x ** 2 + positionAndVelocity.velocity.y ** 2 + positionAndVelocity.velocity.z ** 2);
 
@@ -582,6 +598,11 @@ function createSatelliteModel(isTarget = false) {
 // 4. MAIN APP
 // ==========================================
 export default function App() {
+  
+  // 📍 ฟันธง 2: กู้คืนสมองกลควบคุมปุ่มสลับสถานี
+  const [activeStation, setActiveStation] = useState(GS_NETWORK[0]);
+  GROUND_STATION = activeStation;
+
   const globeRef = useRef(null);
   const fileInputRef = useRef(null); 
   const isTrackingRef = useRef(false);
@@ -1081,7 +1102,7 @@ useEffect(() => {
     }
   }, [simulatedTimeMs, selectedCatnr, isFlatMap, isPlaying, satrecs]);
 
-// REAL-TIME DAY/NIGHT ENGINE (NASA Cinematic Lighting & Cloud Update - FINAL)
+// REAL-TIME DAY/NIGHT ENGINE (NASA Cinematic Lighting & Nightmap - RESTORED)
 useEffect(() => {
   if (!globeRef.current) return;
   const globe = globeRef.current;
@@ -1090,23 +1111,46 @@ useEffect(() => {
   const scene = globe.scene();
   if (!scene || !scene.children) return;
 
-  // --- 1. 💡 ระบบแสงสว่างระดับ Cinematic (Lighting) ---
+  // --- 1. แสงสว่างระดับ Cinematic (Lighting) ---
   const ambient = scene.children.find(c => c.type === 'AmbientLight');
   if (ambient) {
-    // 📍 ฟันธง: เปลี่ยนสีเงามืดจากสีดำ/เทา เป็น "สีน้ำเงินอวกาศ (Deep Space Blue)"
     ambient.intensity = realtimeSun ? 0.6 : 1.2; 
     ambient.color.setHex(realtimeSun ? 0x112244 : 0xffffff);
   }
 
   let sunLight = scene.children.find(c => c.name === 'SunLight');
   if (!sunLight) {
-    // 📍 ฟันธง: แสงแดดสีอมเหลืองทองนิดๆ (0xfff5e6) ลดความแรงลงมาที่ 2.8 ไม่ให้สีแผนที่ไหม้
     sunLight = new THREE.DirectionalLight(0xfff5e6, 2.8); 
     sunLight.name = 'SunLight';
     scene.add(sunLight);
   }
 
-  // 📍 ฟันธงทีเด็ด: เพิ่มแสง Hemisphere สะท้อนขั้วโลก ทำให้ทวีปสีสดเด้งขึ้น และน้ำทะเลสวยขึ้น
+  // 📍 ปั้นลูกไฟดวงอาทิตย์ (Lens Flare) แบบสวยงามไร้เส้นขอบ
+  let sunVisual = scene.children.find(c => c.name === 'SunVisual');
+  if (!sunVisual) {
+    const sGeo = new THREE.SphereGeometry(8, 32, 32); 
+    const sMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    sunVisual = new THREE.Mesh(sGeo, sMat);
+    sunVisual.name = 'SunVisual';
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 256;
+    const context = canvas.getContext('2d');
+    const gradient = context.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.1, 'rgba(255, 240, 200, 0.8)');
+    gradient.addColorStop(0.4, 'rgba(255, 180, 50, 0.3)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 256, 256);
+    
+    const spriteMaterial = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.scale.set(500, 500, 1);
+    sunVisual.add(sprite);
+    scene.add(sunVisual);
+  }
+
   let hemiLight = scene.children.find(c => c.name === 'HemiLight');
   if (!hemiLight) {
     hemiLight = new THREE.HemisphereLight(0x00eaff, 0x000000, 0.4); 
@@ -1118,49 +1162,30 @@ useEffect(() => {
   if (realtimeSun) {
     try {
       if (typeof globe.getCoords === 'function') {
-        const sunPos = globe.getCoords(currentSunPos.lat, currentSunPos.lng, 100); 
+        const sunPos = globe.getCoords(currentSunPos.lat, currentSunPos.lng, 25); 
         if (sunPos) {
           sunLight.position.set(sunPos.x, sunPos.y, sunPos.z);
+          sunVisual.position.set(sunPos.x, sunPos.y, sunPos.z);
           sunLight.visible = true;
+          sunVisual.visible = true;
         }
       }
-    } catch(e) { sunLight.visible = false; }
+    } catch(e) { 
+      sunLight.visible = false; 
+      if(sunVisual) sunVisual.visible = false;
+    }
   } else {
     sunLight.visible = false;
+    if(sunVisual) sunVisual.visible = false;
   }
 
-  // --- 2. 🌊 ระบบสะท้อนแสงผิวน้ำ (Specular Map) ---
-  try {
-    if (typeof globe.globeMaterial === 'function') {
-      const globeMat = globe.globeMaterial();
-      if (globeMat) {
-        globeMat.color = new THREE.Color(0xffffff);
-        globeMat.bumpScale = 12; // ภูเขานูนกำลังดี
-        
-        if (globeMat.map) {
-          globeMat.map.generateMipmaps = true;
-          globeMat.map.minFilter = THREE.LinearMipMapLinearFilter;
-          globeMat.map.anisotropy = 16; 
-        }
-
-        new THREE.TextureLoader().load('//unpkg.com/three-globe/example/img/earth-water.png', texture => {
-          globeMat.specularMap = texture;
-          globeMat.specular = new THREE.Color('grey'); 
-          globeMat.shininess = 20; // น้ำทะเลแวววาวสู้แดด
-        });
-      }
-    }
-  } catch (err) {}
-
-  // --- 3. 🌑 ระบบแสดงแสงไฟเมืองฝั่งกลางคืน (NASA 3D Terminator Line) ---
+  // --- 2. 🌑 คืนชีพ! ระบบแสดงแสงไฟเมืองฝั่งกลางคืน (NASA 3D Terminator Line) ---
   let nightMesh = scene.children.find(c => c.name === 'NightLights');
   
   if (!nightMesh) {
     try {
       const radius = typeof globe.getGlobeRadius === 'function' ? globe.getGlobeRadius() : 100;
-      // 📍 สร้างทรงกลมครอบโลกให้ใหญ่กว่าเดิมนิดเดียว (1.002x) เพื่อเป็น Layer แสงไฟ
       const geometry = new THREE.SphereGeometry(radius * 1.002, 64, 64);
-      // 📍 หมุนแกน Y -90 องศา เพื่อให้พิกัด UV ตรงกับแผนที่หลักของ react-globe.gl เป๊ะๆ
       geometry.rotateY(-Math.PI / 2);
 
       const material = new THREE.ShaderMaterial({
@@ -1183,35 +1208,19 @@ useEffect(() => {
           varying vec3 vWorldNormal;
           varying vec2 vUv;
           void main() {
-            // 1. คำนวณมุมตกกระทบของแสงอาทิตย์
             float intensity = dot(normalize(vWorldNormal), normalize(sunDirection));
-            
-            // 2. สร้างเส้นแบ่งเวลา (Terminator Line) ให้ไล่เฉดสมูทแบบ Twilight Zone
             float nightMix = smoothstep(0.1, -0.15, intensity);
-            
-            // 3. ดึงแผนที่แสงไฟเมือง
             vec4 nightTex = texture2D(tNight, vUv);
-            
-            // 4. บูสต์แสงไฟเมืองให้เป็นสีทอง (NASA Style)
             vec3 cityLights = nightTex.rgb * vec3(1.3, 1.1, 0.7);
-            
-            // 5. สร้างเงามืด (Deep Space Shadow) สำหรับฝั่งกลางคืน
-            vec3 darkShadow = vec3(0.0, 0.01, 0.03); // สีดำอมน้ำเงินลึกๆ
-            
-            // ผสมแสงไฟเมืองเข้ากับเงามืด
+            vec3 darkShadow = vec3(0.0, 0.01, 0.03);
             vec3 finalColor = darkShadow + cityLights;
-            
-            // 6. คำนวณความทึบแสง (Alpha)
-            // - ฝั่งกลางวัน: ทะลุผ่าน 100% (Alpha = 0)
-            // - ฝั่งกลางคืน: สาดเงามืดบดบังแผนที่เดิม 92% (แต่โชว์ไฟเมือง 100%)
             float lightsLuma = max(max(nightTex.r, nightTex.g), nightTex.b);
             float finalAlpha = max(0.92 * nightMix, lightsLuma * nightMix);
-            
             gl_FragColor = vec4(finalColor, finalAlpha);
           }
         `,
         transparent: true,
-        blending: THREE.NormalBlending, // 📍 ฟันธง: เปลี่ยนเป็น NormalBlending เพื่อให้สร้าง "เงามืด" บดบังโลกเดิมได้
+        blending: THREE.NormalBlending,
         depthWrite: false
       });
 
@@ -1221,7 +1230,6 @@ useEffect(() => {
     } catch(e) { console.warn("NightLights Shader Error:", e); }
   }
 
-  // 📍 อัปเดตทิศทางดวงอาทิตย์ส่งเข้าสมองกล Shader แบบ Real-time ตามนาฬิกา!
   if (nightMesh && realtimeSun) {
     try {
       if (typeof globe.getCoords === 'function') {
@@ -1894,23 +1902,34 @@ const dayNightOverlay2D = useMemo(() => {
             }
           }
         }}
-        labelsData={[GROUND_STATION]} 
-        labelLat="lat" labelLng="lng" labelText="name"
-        labelColor={() => '#00eaff'}
-        labelSize={0.4}
-        labelDotRadius={0}
-        labelAltitude={0.02}
-        htmlElementsData={allSatObjects.filter(sat => sat.isTarget)}
+
+        htmlElementsData={[
+          { type: 'station', lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, name: GROUND_STATION.name, altitude: 0 },
+          ...allSatObjects.filter(sat => sat.isTarget)
+        ]}
         htmlLat="lat" htmlLng="lng" htmlAltitude="altitude"
         htmlElement={d => {
           const el = document.createElement('div');
-          const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
-          const flagUrl = satInfo?.flag ? `https://flagcdn.com/w20/${satInfo.flag}.png` : '';
-          el.innerHTML = `
-            <div style="display: flex; align-items: center; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-shadow: 0 0 5px #000, 0 0 15px #00eaff; transform: translate(15px, -15px); pointer-events: none; white-space: nowrap;">
-              ${flagUrl ? `<img src="${flagUrl}" style="width:20px; margin-right:8px; border-radius:2px; box-shadow: 0 0 8px rgba(0,234,255,0.8);" />` : ''}
-              ${d.name}
-            </div>`;
+          
+          /* 📍 ถ้าเป็นสถานีภาคพื้นดิน (ฟันธง: ล็อกไอคอนจานไว้จุดศูนย์กลางเป๊ะ และห้อยชื่อไว้ด้านล่าง) */
+          if (d.type === 'station') {
+            el.innerHTML = `
+              <div style="position: relative; display: flex; align-items: center; justify-content: center; pointer-events: none;">
+                <span style="font-size: 38px; line-height: 1; filter: drop-shadow(0 0 15px #00eaff);">📡</span>
+                <span style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); color: #00eaff; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 14px; text-shadow: 0 0 8px #000, 0 0 15px #00eaff; margin-top: 4px; letter-spacing: 1.5px; white-space: nowrap;">${d.name}</span>
+              </div>
+            `;
+          }
+          /* 📍 ถ้าเป็นดาวเทียมเป้าหมาย */
+          else {
+            const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
+            const flagUrl = satInfo?.flag ? `https://flagcdn.com/w20/${satInfo.flag}.png` : '';
+            el.innerHTML = `
+              <div style="display: flex; align-items: center; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-shadow: 0 0 5px #000, 0 0 15px #00eaff; transform: translate(15px, -15px); pointer-events: none; white-space: nowrap;">
+                ${flagUrl ? `<img src="${flagUrl}" style="width:20px; margin-right:8px; border-radius:2px; box-shadow: 0 0 8px rgba(0,234,255,0.8);" />` : ''}
+                ${d.name}
+              </div>`;
+          }
           return el;
         }}
 
@@ -2228,26 +2247,42 @@ const dayNightOverlay2D = useMemo(() => {
               </div>
 
               <div className="telemetry-grid">
-                <div className="t-box"><span>LATITUDE</span><strong>{targetData && !isNaN(targetData.lat) ? targetData.lat.toFixed(4) : '---'}°</strong></div>
-                <div className="t-box"><span>LONGITUDE</span><strong>{targetData && !isNaN(targetData.lng) ? targetData.lng.toFixed(4) : '---'}°</strong></div>
-                <div className={`t-box ${linkActive ? 'highlight' : ''}`}><span>ELEVATION</span><strong>{targetData && !isNaN(targetData.elevationDeg) ? targetData.elevationDeg.toFixed(2) : '---'}°</strong></div>
-                <div className="t-box"><span>AZIMUTH</span><strong>{targetData && !isNaN(targetData.azimuthDeg) ? targetData.azimuthDeg.toFixed(2) : '---'}°</strong></div>
-                <div className="t-box"><span>SLANT RANGE</span><strong>{targetData && !isNaN(targetData.rangeKm) ? Math.round(targetData.rangeKm).toLocaleString() : '---'} km</strong></div>
-                <div className="t-box"><span>ALTITUDE</span><strong>{targetData && !isNaN(targetData.altKm) ? targetData.altKm.toFixed(0) : '---'} km</strong></div>
-                <div className="t-box"><span>ORBITAL SPEED</span><strong>{targetData && !isNaN(targetData.speedKmS) ? targetData.speedKmS.toFixed(2) : '---'} km/s</strong></div>
-                {/* 📍 ฟันธง: อัปเกรดความแม่นยำ Inclination เป็น 4 ตำแหน่งทศนิยม ตามมาตรฐานไฟล์ TLE */}
-                <div className="t-box"><span>INCLINATION</span><strong>{tles[selectedCatnr] ? getInclinationDeg(tles[selectedCatnr].line2).toFixed(4) : '---'}°</strong></div>
+                {/* 📍 พิกัด (สีขาว) */}
+                <div className="t-box"><span>LATITUDE</span><strong style={{ color: '#ffffff' }}>{targetData && !isNaN(targetData.lat) ? targetData.lat.toFixed(4) : '---'}°</strong></div>
+                <div className="t-box"><span>LONGITUDE</span><strong style={{ color: '#ffffff' }}>{targetData && !isNaN(targetData.lng) ? targetData.lng.toFixed(4) : '---'}°</strong></div>
+                
+                {/* 🎯 มุมชี้เป้า (สีเขียวเรืองแสง) */}
+                <div className={`t-box ${linkActive ? 'highlight' : ''}`}><span>ELEVATION</span><strong style={{ color: 'var(--green)', textShadow: '0 0 10px rgba(0, 255, 102, 0.4)' }}>{targetData && !isNaN(targetData.elevationDeg) ? targetData.elevationDeg.toFixed(2) : '---'}°</strong></div>
+                <div className="t-box"><span>AZIMUTH</span><strong style={{ color: 'var(--green)', textShadow: '0 0 10px rgba(0, 255, 102, 0.4)' }}>{targetData && !isNaN(targetData.azimuthDeg) ? targetData.azimuthDeg.toFixed(2) : '---'}°</strong></div>
+                
+                {/* 📏 ระยะทาง (สีเหลืองทอง) */}
+                <div className="t-box"><span>SLANT RANGE</span><strong style={{ color: 'var(--gold)', textShadow: '0 0 10px rgba(255, 204, 0, 0.4)' }}>{targetData && !isNaN(targetData.rangeKm) ? Math.round(targetData.rangeKm).toLocaleString() : '---'} km</strong></div>
+                <div className="t-box"><span>ALTITUDE</span><strong style={{ color: 'var(--gold)', textShadow: '0 0 10px rgba(255, 204, 0, 0.4)' }}>{targetData && !isNaN(targetData.altKm) ? targetData.altKm.toFixed(0) : '---'} km</strong></div>
+                
+                {/* 🚀 ไดนามิกวงโคจร (สีส้ม) */}
+                <div className="t-box"><span>ORBITAL SPEED</span><strong style={{ color: '#ff6600', textShadow: '0 0 10px rgba(255, 102, 0, 0.4)' }}>{targetData && !isNaN(targetData.speedKmS) ? targetData.speedKmS.toFixed(2) : '---'} km/s</strong></div>
+                <div className="t-box"><span>INCLINATION</span><strong style={{ color: '#ff6600', textShadow: '0 0 10px rgba(255, 102, 0, 0.4)' }}>{tles[selectedCatnr] ? getInclinationDeg(tles[selectedCatnr].line2).toFixed(4) : '---'}°</strong></div>
               </div>
 
               <ul className="info-list">
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Operator / Agency:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.operator || 'Unknown'}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Mission Type:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.mission || 'Various'}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Orbit Class:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetData?.altKm > 2000 ? (targetData?.altKm > 30000 ? 'GEO' : 'MEO') : 'LEO'}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Station Mask:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{stationMask.toFixed(1)}°</strong></li>
+                {/* ข้อมูลทั่วไป (สีขาว) */}
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Operator / Agency:</span><strong style={{ color: '#ffffff', textAlign: 'right' }}>{targetConfig.operator || 'Unknown'}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Mission Type:</span><strong style={{ color: '#ffffff', textAlign: 'right' }}>{targetConfig.mission || 'Various'}</strong></li>
+                
+                {/* ข้อมูลระยะ (สีเหลืองทอง) */}
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Orbit Class:</span><strong style={{ color: 'var(--gold)', textAlign: 'right' }}>{targetData?.altKm > 2000 ? (targetData?.altKm > 30000 ? 'GEO' : 'MEO') : 'LEO'}</strong></li>
+                
+                {/* ข้อมูลตัวแปรเรดาร์ (สีเขียว) */}
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Station Mask:</span><strong style={{ color: 'var(--green)', textShadow: '0 0 5px rgba(0, 255, 102, 0.4)', textAlign: 'right' }}>{stationMask.toFixed(1)}°</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Footprint Radius:</span><strong style={{ color: 'var(--green)', textShadow: '0 0 5px rgba(0, 255, 102, 0.4)', textAlign: 'right' }}>{targetData && !isNaN(targetData.altKm) ? Math.round(getFootprintRadiusDeg(targetData.altKm, stationMask) * (Math.PI / 180) * EARTH_RADIUS_KM).toLocaleString() : '---'} km</strong></li>
+                
+                {/* ข้อมูลการสื่อสาร (สีฟ้าไซแอน คงเอกลักษณ์เดิมไว้) */}
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Telemetry (TT&C):</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.telemetry || 'N/A'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Payload Downlink:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.payload || 'N/A'}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{tleSource}</strong></li>
+                
+                {/* ข้อมูล TLE (สีเทาเงิน ดรอปความเด่นลงเพื่อไม่แย่งซีนข้อมูลหลัก) */}
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: 'rgba(255, 255, 255, 0.7)', fontWeight: '600', textAlign: 'right' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span><strong style={{ color: 'rgba(255, 255, 255, 0.7)', fontWeight: '600', textAlign: 'right' }}>{tleSource}</strong></li>
               </ul>
             </div>
           </div>
@@ -2578,7 +2613,8 @@ const dayNightOverlay2D = useMemo(() => {
 
            {/* 📍 เครดิตลิขสิทธิ์และผู้พัฒนา */}
            <div style={{ textAlign: 'center', marginTop: '15px', fontSize: '16px', color: 'rgba(255, 255, 255, 0.8)', fontFamily: 'Rajdhani', letterSpacing: '1px' }}>
-             © 2026 GISTDA.GSE Developed by Nawattakorn Kaikaew
+             © 2026 GISTDA.Ground System Engineering Division
+             Developed by Nawattakorn Kaikaew
            </div>
 
          </div>
@@ -2593,8 +2629,8 @@ const dayNightOverlay2D = useMemo(() => {
           top: maximizedWins.gs ? '0px' : `${gsPos.y}px`, 
           left: maximizedWins.gs ? '0px' : `${gsPos.x}px`, 
           width: maximizedWins.gs ? '100vw' : '480px', /* 📍 ขยายความกว้างให้อ่านสบายตาขึ้น */
-          height: maximizedWins.gs ? '100vh' : '560px', /* 📍 ขยายความสูงเริ่มต้นเป็น 560px เพื่อให้เห็นข้อมูลครบถ้วนโดยไม่ต้องเลื่อน */
-          minWidth: '400px', minHeight: '450px',
+          height: maximizedWins.gs ? '100vh' : '690px', /* 📍 ขยายความสูงเริ่มต้นเป็น 690px เพื่อให้เห็นข้อมูลครบถ้วนโดยไม่ต้องเลื่อน */
+          minWidth: '400px', minHeight: '650px',
           maxWidth: 'none', maxHeight: 'none', 
           resize: maximizedWins.gs ? 'none' : 'both', overflow: 'hidden', padding: '0',
           background: 'linear-gradient(145deg, rgba(20, 5, 0, 0.92) 0%, rgba(10, 2, 0, 0.98) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
@@ -2626,7 +2662,7 @@ const dayNightOverlay2D = useMemo(() => {
             
             <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(255, 102, 0, 0.1)', border: '1px solid #FF6600', padding: '6px 20px', borderRadius: '6px', margin: '0 10px', whiteSpace: 'nowrap', boxShadow: 'inset 0 0 10px rgba(255, 102, 0, 0.2)' }}>
               <span style={{ color: '#fff', fontSize: '15px', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px #FF6600', pointerEvents: 'none' }}>
-                SKP GROUND STATION
+              GISTDA GROUND STATION
               </span>
             </div>
 
@@ -2637,21 +2673,44 @@ const dayNightOverlay2D = useMemo(() => {
           </div>
           
           <div className="gs-no-scroll" style={{ padding: '20px 30px', display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', fontFamily: 'Rajdhani', letterSpacing: '0.5px' }}>
-            <div className="gs-row">
-              <span className="gs-label">LOCATION:</span>
-              <span className="gs-value">SKP Sri Racha Chonburi</span>
-            </div>
-            <div className="gs-row">
-              <span className="gs-label">LATITUDE:</span>
-              <span className="gs-value highlight">13.1522° N</span>
-            </div>
-            <div className="gs-row">
-              <span className="gs-label">LONGITUDE:</span>
-              <span className="gs-value highlight">101.1205° E</span>
-            </div>
-            <div className="gs-row">
+
+              {/* 📍 ฟันธง 3: แผงควบคุมสลับสถานี 4 จังหวัด (ลบตัวซ้ำซ้อนออกแล้ว) */}
+              <div style={{ background: 'rgba(0, 234, 255, 0.05)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(0, 234, 255, 0.2)', marginBottom: '20px' }}>
+                <h3 style={{ margin: '0 0 10px 0', color: 'var(--cyan)', fontSize: '14px', letterSpacing: '2px' }}>🌐 ACTIVE GROUND STATION NETWORK</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
+                  {GS_NETWORK.map(station => (
+                    <button 
+                      key={station.id}
+                      className={`btn ${activeStation.id === station.id ? 'btn-cyan active' : 'btn-cyan'}`}
+                      style={{ padding: '10px 5px', fontSize: '14px', margin: 0, fontWeight: activeStation.id === station.id ? '900' : 'normal' }}
+                      onClick={() => {
+                        setActiveStation(station);
+                        if (selectedCatnr) calculateFuturePasses(selectedCatnr);
+                      }}
+                    >
+                      {station.id}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 📍 ฟันธง: ดึงพิกัดสถานีแบบ Real-time */}
+              <div className="gs-row">
+                <span className="gs-label">LOCATION:</span>
+                <span className="gs-value">{GROUND_STATION.name}</span>
+              </div>
+              <div className="gs-row">
+                <span className="gs-label">LATITUDE:</span>
+                <span className="gs-value highlight">{Math.abs(GROUND_STATION.lat).toFixed(4)}° {GROUND_STATION.lat >= 0 ? 'N' : 'S'}</span>
+              </div>
+              <div className="gs-row">
+                <span className="gs-label">LONGITUDE:</span>
+                <span className="gs-value highlight">{Math.abs(GROUND_STATION.lng).toFixed(4)}° {GROUND_STATION.lng >= 0 ? 'E' : 'W'}</span>
+              </div>
+
+              <div className="gs-row">
               <span className="gs-label">ALTITUDE (ASL):</span>
-              <span className="gs-value">17 m</span>
+              <span className="gs-value highlight">{GROUND_STATION.alt} m</span>
             </div>
             <div className="gs-row">
               <span className="gs-label">S-BAND (TT&C):</span>
@@ -2670,12 +2729,19 @@ const dayNightOverlay2D = useMemo(() => {
               <span className="gs-value">5.0°</span>
             </div>
             
-            <div className="gs-status-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: linkActive ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 102, 0, 0.1)', borderRadius: '6px', border: `1px solid ${linkActive ? 'var(--green)' : '#FF6600'}`, boxShadow: `inset 0 0 15px ${linkActive ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 102, 0, 0.2)'}`, padding: '15px', marginTop: '15px' }}>
-              <span className="gs-label" style={{ color: 'rgba(255,255,255,0.8)' }}>ANTENNA STATUS:</span>
-              <span className="gs-value highlight" style={{ color: linkActive ? 'var(--green)' : '#FF6600', fontWeight: 'bold', textShadow: `0 0 10px ${linkActive ? 'var(--green)' : '#FF6600'}`, animation: linkActive ? 'pulse-glow 2s infinite' : 'none' }}>
-                {linkActive ? 'TRACKING (LOCKED)' : 'STANDBY'}
-              </span>
+            {/* 📍 ฟันธง: สร้างเกราะป้องกันหุ้มกล่อง Status บังคับให้เบราว์เซอร์ดันขอบล่างออกไป 40px เสมอ! */}
+            <div style={{ paddingBottom: '40px' }}>
+              <div className="gs-status-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: linkActive ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 102, 0, 0.1)', borderRadius: '6px', border: `1px solid ${linkActive ? 'var(--green)' : '#FF6600'}`, boxShadow: `inset 0 0 15px ${linkActive ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 102, 0, 0.2)'}`, padding: '15px', marginTop: '15px' }}>
+                <span className="gs-label" style={{ color: 'rgba(255,255,255,0.8)' }}>ANTENNA STATUS:</span>
+                <span className="gs-value highlight" style={{ color: linkActive ? 'var(--green)' : '#FF6600', fontWeight: 'bold', textShadow: `0 0 10px ${linkActive ? 'var(--green)' : '#FF6600'}`, animation: linkActive ? 'pulse-glow 2s infinite' : 'none' }}>
+                  {linkActive ? 'TRACKING (LOCKED)' : 'STANDBY'}
+                </span>
+              </div>
             </div>
+
+            {/* 📍 ฟันธง: ใส่กล่องอากาศ (Spacer) ดันขอบล่าง บังคับไม่ให้ทับเส้นขอบ 100% */}
+            <div style={{ minHeight: '40px', flexShrink: 0, width: '100%' }}></div>
+
           </div>
         </div>
       )}
@@ -3358,7 +3424,7 @@ const dayNightOverlay2D = useMemo(() => {
                        transform: `scale(${mapZoom})`,
                        transition: 'transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)'
                    }}>
-                       <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block', backgroundColor: '#040608' }}>
+                       <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block', backgroundColor: 'transparent' }}>
                            {/* 📍 ฟันธง: แก้จอหลุมดำ! เปลี่ยนกลับมาใช้ High-Res URL ผ่าน CDN ที่โหลดติด 100% พร้อมดันสีให้สดแบบ Tactical */}
                            <image 
                       href={mapThemes[mapThemeIdx].url} 
