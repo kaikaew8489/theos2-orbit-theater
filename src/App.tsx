@@ -1114,18 +1114,20 @@ useEffect(() => {
   // --- 1. แสงสว่างระดับ Cinematic (Lighting) ---
   const ambient = scene.children.find(c => c.type === 'AmbientLight');
   if (ambient) {
-    ambient.intensity = realtimeSun ? 0.6 : 1.2; 
-    ambient.color.setHex(realtimeSun ? 0x112244 : 0xffffff);
+    // 📍 ฟันธง: หรี่ไฟบรรยากาศโลกให้ต่ำสุดตอนกลางคืน ลบสีฟ้าทิ้ง เพื่อให้เงามืดดำสนิท
+    ambient.intensity = realtimeSun ? 0.05 : 1.2; 
+    ambient.color.setHex(0xffffff); 
   }
 
   let sunLight = scene.children.find(c => c.name === 'SunLight');
   if (!sunLight) {
-    sunLight = new THREE.DirectionalLight(0xfff5e6, 2.8); 
+    // 📍 ฟันธง: บูสต์แสงอาทิตย์ (DirectionalLight) ให้สว่างจ้ากระแทกตาสู้กับแผนที่เมฆ (จาก 2.8 เป็น 5.5)
+    sunLight = new THREE.DirectionalLight(0xfff5e6, 5.5); 
     sunLight.name = 'SunLight';
     scene.add(sunLight);
   }
 
-  // 📍 ปั้นลูกไฟดวงอาทิตย์ (Lens Flare) แบบสวยงามไร้เส้นขอบ
+  // ปั้นลูกไฟดวงอาทิตย์ (Lens Flare)
   let sunVisual = scene.children.find(c => c.name === 'SunVisual');
   if (!sunVisual) {
     const sGeo = new THREE.SphereGeometry(8, 32, 32); 
@@ -1153,7 +1155,8 @@ useEffect(() => {
 
   let hemiLight = scene.children.find(c => c.name === 'HemiLight');
   if (!hemiLight) {
-    hemiLight = new THREE.HemisphereLight(0x00eaff, 0x000000, 0.4); 
+    // 📍 ฟันธง: เปลี่ยน HemisphereLight เป็นสีขาว-ดำ และลดความแรงลงสุดๆ เพื่อไม่ให้ทะเลเรืองแสงสีน้ำเงินในตอนกลางคืน
+    hemiLight = new THREE.HemisphereLight(0xffffff, 0x000000, 0.05); 
     hemiLight.name = 'HemiLight';
     scene.add(hemiLight);
   }
@@ -1207,16 +1210,27 @@ useEffect(() => {
           uniform vec3 sunDirection;
           varying vec3 vWorldNormal;
           varying vec2 vUv;
+          
           void main() {
+            // 📍 1. สมมาตร Day/Night Line
             float intensity = dot(normalize(vWorldNormal), normalize(sunDirection));
-            float nightMix = smoothstep(0.1, -0.15, intensity);
+            float nightMix = 1.0 - smoothstep(-0.15, 0.15, intensity);
+            
             vec4 nightTex = texture2D(tNight, vUv);
-            vec3 cityLights = nightTex.rgb * vec3(1.3, 1.1, 0.7);
-            vec3 darkShadow = vec3(0.0, 0.01, 0.03);
-            vec3 finalColor = darkShadow + cityLights;
-            float lightsLuma = max(max(nightTex.r, nightTex.g), nightTex.b);
-            float finalAlpha = max(0.92 * nightMix, lightsLuma * nightMix);
-            gl_FragColor = vec4(finalColor, finalAlpha);
+            
+            // 📍 2. ฟันธง! คำนวณความสว่าง (Brightness/Luma) ของภาพแผนที่
+            float brightness = dot(nightTex.rgb, vec3(0.299, 0.587, 0.114));
+            
+            // 📍 3. Luma Key: "ฆ่าสีน้ำเงินทิ้ง!" พิกเซลไหนมืด (น้ำทะเล) ให้กลายเป็น 0 (ดำสนิท) 
+            float mask = smoothstep(0.08, 0.20, brightness); 
+            
+            // 📍 4. บูสต์ไฟเมืองสีทองเฉพาะจุดที่สว่าง (ไฟเมืองจะพุ่งทะลุจอ)
+            vec3 cityLights = nightTex.rgb * mask * vec3(3.5, 2.5, 1.2);
+            
+            // 📍 5. บังคับพื้นหลังฝั่งกลางคืนให้เป็น "สีดำอวกาศ (True Black 0,0,0)" 1,000,000%
+            vec3 finalColor = vec3(0.0, 0.0, 0.0) + cityLights;
+            
+            gl_FragColor = vec4(finalColor, nightMix);
           }
         `,
         transparent: true,
@@ -1848,7 +1862,7 @@ const dayNightOverlay2D = useMemo(() => {
           <polygon points={nightPolygon} fill="white" filter="url(#terminator-blur)" />
         </mask>
       </defs>
-      <polygon points={nightPolygon} fill="rgba(0, 5, 20, 0.88)" filter="url(#terminator-blur)" />
+      <polygon points={nightPolygon} fill="rgba(0, 0, 0, 1.0)" filter="url(#terminator-blur)" />
       <image href="/textures/Earth_nightmap.webp" x="0" y="0" width="100" height="100" preserveAspectRatio="none" mask="url(#night-mask)" filter="url(#city-glow)" style={{ mixBlendMode: 'screen' }} />
     </svg>
   );
@@ -2247,9 +2261,9 @@ const dayNightOverlay2D = useMemo(() => {
               </div>
 
               <div className="telemetry-grid">
-                {/* 📍 พิกัด (สีขาว) */}
-                <div className="t-box"><span>LATITUDE</span><strong style={{ color: '#ffffff' }}>{targetData && !isNaN(targetData.lat) ? targetData.lat.toFixed(4) : '---'}°</strong></div>
-                <div className="t-box"><span>LONGITUDE</span><strong style={{ color: '#ffffff' }}>{targetData && !isNaN(targetData.lng) ? targetData.lng.toFixed(4) : '---'}°</strong></div>
+                {/* 📍 พิกัด (เปลี่ยนเป็นสีฟ้าเนวิเกเตอร์) */}
+                <div className="t-box"><span>LATITUDE</span><strong style={{ color: '#33ccff', textShadow: '0 0 10px rgba(51, 204, 255, 0.4)' }}>{targetData && !isNaN(targetData.lat) ? targetData.lat.toFixed(4) : '---'}°</strong></div>
+                <div className="t-box"><span>LONGITUDE</span><strong style={{ color: '#33ccff', textShadow: '0 0 10px rgba(51, 204, 255, 0.4)' }}>{targetData && !isNaN(targetData.lng) ? targetData.lng.toFixed(4) : '---'}°</strong></div>
                 
                 {/* 🎯 มุมชี้เป้า (สีเขียวเรืองแสง) */}
                 <div className={`t-box ${linkActive ? 'highlight' : ''}`}><span>ELEVATION</span><strong style={{ color: 'var(--green)', textShadow: '0 0 10px rgba(0, 255, 102, 0.4)' }}>{targetData && !isNaN(targetData.elevationDeg) ? targetData.elevationDeg.toFixed(2) : '---'}°</strong></div>
@@ -2265,9 +2279,9 @@ const dayNightOverlay2D = useMemo(() => {
               </div>
 
               <ul className="info-list">
-                {/* ข้อมูลทั่วไป (สีขาว) */}
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Operator / Agency:</span><strong style={{ color: '#ffffff', textAlign: 'right' }}>{targetConfig.operator || 'Unknown'}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Mission Type:</span><strong style={{ color: '#ffffff', textAlign: 'right' }}>{targetConfig.mission || 'Various'}</strong></li>
+                {/* ข้อมูลทั่วไป (เปลี่ยนเป็นสีเงินแพลตตินัมให้ดูเป็นทางการ) */}
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Operator / Agency:</span><strong style={{ color: '#e2e8f0', textAlign: 'right' }}>{targetConfig.operator || 'Unknown'}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Mission Type:</span><strong style={{ color: '#e2e8f0', textAlign: 'right' }}>{targetConfig.mission || 'Various'}</strong></li>
                 
                 {/* ข้อมูลระยะ (สีเหลืองทอง) */}
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Orbit Class:</span><strong style={{ color: 'var(--gold)', textAlign: 'right' }}>{targetData?.altKm > 2000 ? (targetData?.altKm > 30000 ? 'GEO' : 'MEO') : 'LEO'}</strong></li>
@@ -2276,13 +2290,13 @@ const dayNightOverlay2D = useMemo(() => {
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Station Mask:</span><strong style={{ color: 'var(--green)', textShadow: '0 0 5px rgba(0, 255, 102, 0.4)', textAlign: 'right' }}>{stationMask.toFixed(1)}°</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Footprint Radius:</span><strong style={{ color: 'var(--green)', textShadow: '0 0 5px rgba(0, 255, 102, 0.4)', textAlign: 'right' }}>{targetData && !isNaN(targetData.altKm) ? Math.round(getFootprintRadiusDeg(targetData.altKm, stationMask) * (Math.PI / 180) * EARTH_RADIUS_KM).toLocaleString() : '---'} km</strong></li>
                 
-                {/* ข้อมูลการสื่อสาร (สีฟ้าไซแอน คงเอกลักษณ์เดิมไว้) */}
+                {/* ข้อมูลการสื่อสาร (สีฟ้าไซแอน) */}
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Telemetry (TT&C):</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.telemetry || 'N/A'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Payload Downlink:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.payload || 'N/A'}</strong></li>
                 
-                {/* ข้อมูล TLE (สีเทาเงิน ดรอปความเด่นลงเพื่อไม่แย่งซีนข้อมูลหลัก) */}
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: 'rgba(255, 255, 255, 0.7)', fontWeight: '600', textAlign: 'right' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span><strong style={{ color: 'rgba(255, 255, 255, 0.7)', fontWeight: '600', textAlign: 'right' }}>{tleSource}</strong></li>
+                {/* ข้อมูล TLE (เปลี่ยนเป็นสีเขียวเทอร์มินัล ให้อารมณ์ System Log) */}
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tleSource}</strong></li>
               </ul>
             </div>
           </div>
