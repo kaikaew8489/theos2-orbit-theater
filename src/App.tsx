@@ -889,11 +889,12 @@ useEffect(() => {
   const [isDraggingPass, setIsDraggingPass] = useState(false);
   const dragPassRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
- // 📍 อัปเดต Z-Index ให้รองรับหน้าต่างใหม่ (img)
- const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996, img: 10000 });
+ // 📍 อัปเดต Z-Index ให้รองรับหน้าต่างใหม่ (img, analyzer)
+ const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996, img: 10000, analyzer: 10001 });
 
  // 📍 ฟันธง: สมองกลควบคุมระบบ Maximize (ขยายเต็มจอ) ของหน้าต่างทั้งหมด
- const [maximizedWins, setMaximizedWins] = useState({ radar: false, pass: false, db: false, img: false, gs: false });
+ const [maximizedWins, setMaximizedWins] = useState({ radar: false, pass: false, db: false, img: false, gs: false, analyzer: false });
+
  const toggleMaximize = (winName) => {
    setMaximizedWins(prev => ({ ...prev, [winName]: !prev[winName] }));
    bringToFront(winName);
@@ -1033,6 +1034,37 @@ useEffect(() => {
     document.removeEventListener('mouseup', handleMouseUp);
   };
 }, [isDraggingGs]);
+
+// 📍 ฟันธง: สมองกลควบคุมหน้าต่าง SIGNAL ANALYZER (IQ)
+const [isAnalyzerOpen, setIsAnalyzerOpen] = useState(false);
+const [analyzerPos, setAnalyzerPos] = useState({ x: 100, y: 300 });
+const [isDraggingAnalyzer, setIsDraggingAnalyzer] = useState(false);
+const dragAnalyzerRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
+
+const handleAnalyzerMouseDown = (e) => {
+  setIsDraggingAnalyzer(true);
+  bringToFront('analyzer');
+  dragAnalyzerRef.current = { startX: e.clientX, startY: e.clientY, initX: analyzerPos.x, initY: analyzerPos.y };
+};
+
+useEffect(() => {
+  const handleMouseMove = (e) => {
+    if (!isDraggingAnalyzer) return;
+    setAnalyzerPos({
+      x: dragAnalyzerRef.current.initX + (e.clientX - dragAnalyzerRef.current.startX),
+      y: dragAnalyzerRef.current.initY + (e.clientY - dragAnalyzerRef.current.startY)
+    });
+  };
+  const handleMouseUp = () => setIsDraggingAnalyzer(false);
+  if (isDraggingAnalyzer) {
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }
+  return () => {
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUp);
+  };
+}, [isDraggingAnalyzer]);
 
   const toggleLeftPanel = () => {
     setIsLeftPanelOpen(!isLeftPanelOpen);
@@ -1859,6 +1891,183 @@ const dayNightOverlay2D = useMemo(() => {
   );
 }, [realtimeSun, currentSunPos]); // <- หัวใจสำคัญ! สั่งให้คำนวณใหม่เฉพาะตอนดวงอาทิตย์ขยับเท่านั้น
 
+// 📍 ฟันธง: สมองกล SIGNAL ANALYZER (IQ & Dual Spectrum) 
+// วิเคราะห์และแปรผันตาม Spec ของ THEOS และ THEOS-2 (Agilent Classic CRT Style)
+const iqCanvasRef = useRef(null);
+const xBandCanvasRef = useRef(null);
+const sBandCanvasRef = useRef(null);
+
+useEffect(() => {
+  if (!isAnalyzerOpen) return;
+  let animationFrameId;
+  let time = 0;
+
+  // ข้อมูลทางวิศวกรรม (Engineering Specs) อ้างอิงจาก THEOS_RF_Frequency
+  const SAT_SPECS = {
+    '33396': { name: 'THEOS', xBand: { bw: 120, mod: 'QPSK' }, sBand: { bw: 2, mod: 'BPSK/QPSK' } },
+    '58016': { name: 'THEOS-2', xBand: { bw: 310, mod: 'O-QPSK' }, sBand: { bw: 1, mod: 'QPSK' } }
+  };
+
+  const draw = () => {
+    const iqCanvas = iqCanvasRef.current;
+    const xCanvas = xBandCanvasRef.current;
+    const sCanvas = sBandCanvasRef.current;
+    if (!iqCanvas || !xCanvas || !sCanvas) return;
+
+    const iqCtx = iqCanvas.getContext('2d');
+    const xCtx = xCanvas.getContext('2d');
+    const sCtx = sCanvas.getContext('2d');
+    
+    const iW = iqCanvas.width = 300; const iH = iqCanvas.height = 300;
+    const sW = xCanvas.width = sCanvas.width = 500;
+    const sH = xCanvas.height = sCanvas.height = 220;
+
+    const spec = SAT_SPECS[selectedCatnr] || { name: 'UNKNOWN', xBand: { bw: 100, mod: 'QPSK' }, sBand: { bw: 2, mod: 'PSK' } };
+
+    // ----------------------------------------------------
+    // 1. วาดหน้าจอ IQ Constellation (Theme: Retro Green)
+    // ----------------------------------------------------
+    iqCtx.fillStyle = '#051005'; iqCtx.fillRect(0, 0, iW, iH);
+    iqCtx.strokeStyle = 'rgba(0, 255, 0, 0.3)'; iqCtx.lineWidth = 1;
+    iqCtx.setLineDash([2, 4]); // เส้นประ
+    iqCtx.beginPath(); iqCtx.moveTo(iW/2, 0); iqCtx.lineTo(iW/2, iH); iqCtx.stroke();
+    iqCtx.beginPath(); iqCtx.moveTo(0, iH/2); iqCtx.lineTo(iW, iH/2); iqCtx.stroke();
+    iqCtx.beginPath(); iqCtx.arc(iW/2, iH/2, iW*0.35, 0, 2*Math.PI); iqCtx.stroke();
+    iqCtx.setLineDash([]); 
+
+    if (linkActive) {
+      iqCtx.fillStyle = '#00ff00';
+      for(let i=0; i<300; i++) {
+         const quad = i % 4;
+         const tx = quad === 0 || quad === 3 ? iW*0.75 : iW*0.25;
+         const ty = quad === 0 || quad === 1 ? iH*0.25 : iH*0.75;
+         const jitter = spec.xBand.mod === 'O-QPSK' ? 0.12 : 0.08;
+         const nx = (Math.random() - 0.5) * (iW * jitter); 
+         const ny = (Math.random() - 0.5) * (iH * jitter);
+         iqCtx.globalAlpha = Math.random() * 0.8 + 0.2;
+         iqCtx.fillRect(tx + nx, ty + ny, 3, 3);
+      }
+    } else {
+      iqCtx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+      for(let i=0; i<400; i++) {
+         iqCtx.globalAlpha = Math.random();
+         iqCtx.fillRect(Math.random()*iW, Math.random()*iH, 2, 2);
+      }
+    }
+    iqCtx.globalAlpha = 1.0;
+
+    // ----------------------------------------------------
+    // 2. ฟังก์ชันวาดกราฟ Spectrum (สไตล์ Agilent HP 8560E)
+    // ----------------------------------------------------
+    const drawSpectrum = (ctx, isXBand) => {
+      ctx.fillStyle = '#051005'; // สีพื้นหลังจอดำอมเขียว
+      ctx.fillRect(0, 0, sW, sH);
+      
+      // วาด Grid แบบ 10x10 Dotted
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)'; ctx.lineWidth = 1;
+      ctx.setLineDash([2, 4]); 
+      ctx.beginPath();
+      for(let i=1; i<10; i++) { ctx.moveTo(i*sW/10, 0); ctx.lineTo(i*sW/10, sH); }
+      for(let i=1; i<10; i++) { ctx.moveTo(0, i*sH/10); ctx.lineTo(sW, i*sH/10); }
+      ctx.stroke();
+      ctx.setLineDash([]); 
+
+      const bw = isXBand ? spec.xBand.bw : spec.sBand.bw;
+      const span = isXBand ? 500 : 10; // X-Band กว้าง 500MHz, S-Band แคบ 10MHz
+      const halfBwPixels = (bw / span) * (sW / 2);
+
+      // วาดเส้น Trace (Signal Shape)
+      ctx.strokeStyle = '#00ff00'; 
+      ctx.lineWidth = 1.5; 
+      ctx.beginPath();
+
+      // การคำนวณรูปทรงภูเขา (Haystack / Rounded Top with Side Lobes)
+      for(let x=0; x<sW; x++) {
+        const dist = Math.abs(x - sW/2);
+        let amp = 0;
+        
+        if (linkActive) {
+            let x_norm = dist / halfBwPixels;
+            if (x_norm < 1.0) {
+                // Main Lobe: ทรงยอดโดมโค้ง (Rounded top)
+                amp = Math.pow(Math.cos((x_norm * Math.PI) / 2), 0.6);
+            } else if (x_norm < 1.8) {
+                // First Side Lobe: เด้งขึ้นมาด้านข้าง
+                amp = Math.abs(Math.sin((x_norm - 1.0) * Math.PI)) * 0.3 / x_norm;
+            } else if (x_norm < 2.6) {
+                // Second Side Lobe
+                amp = Math.abs(Math.sin((x_norm - 1.8) * Math.PI)) * 0.15 / x_norm;
+            }
+        }
+        
+        // Noise floor แบบสมจริง
+        const noise = (Math.random() * 0.12) + 0.05; 
+        const totalPwr = linkActive ? Math.max(noise, amp) : noise;
+        
+        // ความสูง: Peak แตะประมาณเส้นกริดที่ 2 จากบน, Floor อยู่กริดล่างสุด
+        const baseY = sH * 0.88; // ฐาน Noise floor
+        const peakH = sH * 0.70; // ความสูงสุทธิของ Signal
+        const y = baseY - (totalPwr * peakH) + (Math.random() - 0.5) * (sH * 0.05); // มี Jitter แกว่งตลอดเวลา
+        
+        if (x===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // วาด Overlay Text เลียนแบบหน้าจอเครื่อง Agilent เป๊ะๆ!
+      ctx.fillStyle = '#00ff00'; ctx.font = 'bold 11px monospace'; 
+      
+      // ฝั่งซ้ายบน
+      ctx.textAlign = 'left';
+      ctx.fillText(`${formatTime(new Date(simulatedTimeMs))} THA, SIM`, 10, 15);
+      ctx.fillText(`REF -40.0 dBm    #AT 0 dB`, 10, 30);
+      ctx.fillText(`PEAK`, 10, 45);
+      ctx.fillText(`LOG`, 10, 58);
+      ctx.fillText(`5`, 10, 71);
+      ctx.fillText(`dB/`, 10, 84);
+      
+      // Marker ขวาบน (จะโผล่ก็ต่อเมื่อมีสัญญาณ)
+      if (linkActive) {
+          // วาดจุด Marker Diamond
+          const mkX = sW/2 - halfBwPixels;
+          const mkY = sH * 0.88 - (Math.pow(Math.cos((1.0 * Math.PI) / 2), 0.6) * sH * 0.70); 
+          ctx.beginPath();
+          ctx.moveTo(mkX, mkY - 5); ctx.lineTo(mkX + 4, mkY); ctx.lineTo(mkX, mkY + 5); ctx.lineTo(mkX - 4, mkY);
+          ctx.closePath(); ctx.fill();
+          
+          ctx.textAlign = 'right';
+          ctx.fillText(`MKR delta ${bw.toFixed(1)} MHz`, sW - 10, 30);
+          ctx.fillText(`-3.57 dB`, sW - 10, 45);
+      } else {
+          ctx.textAlign = 'right';
+          ctx.fillStyle = 'rgba(255,0,0,0.8)';
+          ctx.fillText(`NO CARRIER`, sW - 10, 30);
+          ctx.fillStyle = '#00ff00'; // Reset color
+      }
+
+      // แถวล่างสุด (Center, Span, RBW, VBW)
+      ctx.textAlign = 'left';
+      ctx.fillText(`CENTER 720.0 MHz`, 10, sH - 22);
+      ctx.fillText(`#RES BW 3.0 MHz`, 10, sH - 8);
+      
+      ctx.textAlign = 'right';
+      ctx.fillText(`SPAN ${span.toFixed(1)} MHz`, sW - 10, sH - 22);
+      ctx.fillText(`SWP 50.0 msec`, sW - 10, sH - 8);
+      
+      ctx.textAlign = 'center';
+      ctx.fillText(`#VBW 10 kHz`, sW/2, sH - 8);
+    };
+
+    drawSpectrum(xCtx, true);  // CH1: วาด X-Band
+    drawSpectrum(sCtx, false); // CH2: วาด S-Band
+
+    time += 0.2;
+    animationFrameId = requestAnimationFrame(draw);
+  };
+
+  draw();
+  return () => cancelAnimationFrame(animationFrameId);
+}, [isAnalyzerOpen, linkActive, selectedCatnr, simulatedTimeMs]);
+
   return (
     <>
       <Globe
@@ -2294,6 +2503,16 @@ const dayNightOverlay2D = useMemo(() => {
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tleSource}</strong></li>
               </ul>
+              {/* 📍 ฟันธง: ปุ่มเรียก SIGNAL ANALYZER IQ เมนูด้านซ้าย */}
+              <button 
+                className={`btn ${linkActive ? 'btn-green' : 'btn-red'} ${isAnalyzerOpen ? 'active' : ''}`}
+                onClick={() => { setIsAnalyzerOpen(!isAnalyzerOpen); if (!isAnalyzerOpen) bringToFront('analyzer'); }}
+                style={{ width: '100%', marginTop: '15px', padding: '12px', fontSize: '16px', letterSpacing: '2px', fontWeight: '900', boxShadow: linkActive ? '0 0 15px rgba(0,255,102,0.4)' : '0 0 15px rgba(255,51,51,0.4)' }}
+              >
+                <span style={{ fontSize: '18px', marginRight: '8px' }}>📻</span> SIGNAL ANALYZER (IQ)
+              </button>
+
+
             </div>
           </div>
           )}
@@ -3491,6 +3710,83 @@ const dayNightOverlay2D = useMemo(() => {
           </div>
         </div>
       )}
+
+     {/* --- SIGNAL ANALYZER (IQ & DUAL SPECTRUM) --- */}
+     {isAnalyzerOpen && (
+        <div className="modal-box analyzer-modal" onMouseDownCapture={() => bringToFront('analyzer')} style={{
+          position: 'fixed', top: maximizedWins.analyzer ? '0px' : `${analyzerPos.y}px`, left: maximizedWins.analyzer ? '0px' : `${analyzerPos.x}px`,
+          width: maximizedWins.analyzer ? '100vw' : '900px', height: maximizedWins.analyzer ? '100vh' : '550px',
+          minWidth: '700px', minHeight: '500px', resize: maximizedWins.analyzer ? 'none' : 'both', overflow: 'hidden',
+          background: 'linear-gradient(145deg, rgba(0, 15, 5, 0.95) 0%, rgba(0, 5, 2, 0.98) 100%)',
+          backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+          border: maximizedWins.analyzer ? 'none' : `2px solid ${linkActive ? 'var(--green)' : 'var(--red)'}`,
+          borderRadius: maximizedWins.analyzer ? '0px' : '12px',
+          boxShadow: `0 0 40px ${linkActive ? 'rgba(0, 255, 102, 0.4)' : 'rgba(255, 51, 51, 0.4)'}, inset 0 0 20px ${linkActive ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`,
+          display: 'flex', flexDirection: 'column', zIndex: windowZ.analyzer || 10001,
+          transition: isDraggingAnalyzer ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
+        }}>
+          {/* Header */}
+          <div className="modal-header" style={{
+            position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 20px', cursor: maximizedWins.analyzer ? 'default' : (isDraggingAnalyzer ? 'grabbing' : 'grab'),
+            borderBottom: `2px solid ${linkActive ? 'rgba(0, 255, 102, 0.5)' : 'rgba(255, 51, 51, 0.5)'}`,
+            background: `linear-gradient(180deg, ${linkActive ? 'rgba(0, 255, 102, 0.15)' : 'rgba(255, 51, 51, 0.15)'} 0%, transparent 100%)`
+          }} onMouseDown={(e) => { if(!maximizedWins.analyzer) handleAnalyzerMouseDown(e); }}>
+            <div style={{ display: 'flex', alignItems: 'center', color: linkActive ? 'var(--green)' : 'var(--red)', fontFamily: 'Orbitron', fontWeight: '900', fontSize: '20px', textShadow: `0 0 10px ${linkActive ? 'var(--green)' : 'var(--red)'}`, letterSpacing: '2px', pointerEvents: 'none' }}>
+              <span style={{ fontSize: '24px', marginRight: '10px' }}>📻</span> SIGNAL ANALYZER (R&S FSW)
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', borderColor: linkActive ? 'var(--green)' : 'var(--red)', color: linkActive ? 'var(--green)' : 'var(--red)' }} onClick={() => toggleMaximize('analyzer')}>{maximizedWins.analyzer ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', borderColor: linkActive ? 'var(--green)' : 'var(--red)', color: linkActive ? 'var(--green)' : 'var(--red)' }} onClick={() => setIsAnalyzerOpen(false)}>✕</button>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'row', padding: '15px', gap: '15px', overflow: 'hidden' }}>
+            
+            {/* ซ้าย: IQ Constellation */}
+            <div style={{ flex: '0 0 35%', display: 'flex', flexDirection: 'column', background: '#010c14', border: `1px solid ${linkActive ? 'rgba(0,255,102,0.3)' : 'rgba(255,51,51,0.3)'}`, borderRadius: '8px', padding: '10px', boxShadow: 'inset 0 0 20px rgba(0,0,0,0.8)' }}>
+              <div style={{ textAlign: 'center', fontFamily: 'Orbitron', fontSize: '14px', color: 'var(--cyan)', marginBottom: '10px', letterSpacing: '2px', fontWeight: 'bold' }}>
+                BASEBAND CONSTELLATION
+              </div>
+              <div style={{ flex: 1, position: 'relative', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <canvas ref={iqCanvasRef} style={{ width: '100%', height: '100%', objectFit: 'contain', filter: `drop-shadow(0 0 8px ${linkActive ? 'rgba(0,255,102,0.5)' : 'rgba(255,51,51,0.5)'})` }}></canvas>
+              </div>
+              <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
+                MODULATION: <strong style={{color:'#fff'}}>{selectedCatnr === '58016' ? 'O-QPSK' : 'QPSK'}</strong>
+              </div>
+            </div>
+
+            {/* ขวา: Dual Spectrum (X-Band & S-Band) */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              
+              {/* CH1: X-Band */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#010c14', border: `1px solid ${linkActive ? 'rgba(0,255,102,0.3)' : 'rgba(255,51,51,0.3)'}`, borderRadius: '8px', padding: '10px', boxShadow: 'inset 0 0 20px rgba(0,0,0,0.8)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'Orbitron', fontSize: '13px', color: 'var(--cyan)', marginBottom: '5px', fontWeight: 'bold' }}>
+                  <span>CH1: X-BAND PAYLOAD (BW: {selectedCatnr === '58016' ? '310' : '120'} MHz)</span>
+                  <span style={{ color: linkActive ? 'var(--green)' : 'var(--red)' }}>{linkActive ? 'LOCKED' : 'NO CARRIER'}</span>
+                </div>
+                <div style={{ flex: 1, position: 'relative', width: '100%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <canvas ref={xBandCanvasRef} style={{ width: '100%', height: '100%', display: 'block' }}></canvas>
+                </div>
+              </div>
+
+              {/* CH2: S-Band */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#010c14', border: `1px solid ${linkActive ? 'rgba(0,255,102,0.3)' : 'rgba(255,51,51,0.3)'}`, borderRadius: '8px', padding: '10px', boxShadow: 'inset 0 0 20px rgba(0,0,0,0.8)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'Orbitron', fontSize: '13px', color: 'var(--cyan)', marginBottom: '5px', fontWeight: 'bold' }}>
+                  <span>CH2: S-BAND TELEMETRY (BW: {selectedCatnr === '58016' ? '1.0' : '2.0'} MHz)</span>
+                  <span style={{ color: linkActive ? 'var(--green)' : 'var(--red)' }}>{linkActive ? 'LOCKED' : 'NO CARRIER'}</span>
+                </div>
+                <div style={{ flex: 1, position: 'relative', width: '100%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <canvas ref={sBandCanvasRef} style={{ width: '100%', height: '100%', display: 'block' }}></canvas>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
 
       <div className="scanlines"></div>
     </>
