@@ -706,43 +706,44 @@ const mapThemes = [
   
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // 📍 สมองกลดึงข้อมูลเปอร์เซ็นต์เมฆจาก Open-Meteo API
-  const [cloudCover, setCloudCover] = useState(null);
-  const [isFetchingCloud, setIsFetchingCloud] = useState(false);
+ // 📍 สมองกลดึงข้อมูลเปอร์เซ็นต์เมฆจาก Open-Meteo API
+ const [cloudCover, setCloudCover] = useState(null);
+ const [isFetchingCloud, setIsFetchingCloud] = useState(false);
 
-  useEffect(() => {
-    const lat = GROUND_STATION.lat;
-    const lng = GROUND_STATION.lng;
-    setIsFetchingCloud(true);
+ useEffect(() => {
+   // 📍 ฟันธง: เปลี่ยนมาดึงค่าจาก activeStation แทน GROUND_STATION ที่เป็น Global 
+   const lat = activeStation.lat;
+   const lng = activeStation.lng;
+   setIsFetchingCloud(true);
 
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=cloud_cover&forecast_days=3&timezone=UTC`;
-    
-    fetch(url)
-      .then(r => r.json())
-      .then(data => {
-        if (data && data.hourly && data.hourly.cloud_cover) {
-          const nowMs = simulatedTimeMs;
-          let closestIdx = 0;
-          let minDiff = Infinity;
-          
-          data.hourly.time.forEach((tStr, idx) => {
-            const tMs = new Date(tStr + 'Z').getTime();
-            const diff = Math.abs(tMs - nowMs);
-            if (diff < minDiff) {
-              minDiff = diff;
-              closestIdx = idx;
-            }
-          });
-          
-          setCloudCover(data.hourly.cloud_cover[closestIdx]);
-        }
-        setIsFetchingCloud(false);
-      })
-      .catch(err => {
-        console.warn("Cloud API Error:", err);
-        setIsFetchingCloud(false);
-      });
-  }, [Math.floor(simulatedTimeMs / 3600000)]);
+   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=cloud_cover&forecast_days=3&timezone=UTC`;
+   
+   fetch(url)
+     .then(r => r.json())
+     .then(data => {
+       if (data && data.hourly && data.hourly.cloud_cover) {
+         const nowMs = simulatedTimeMs;
+         let closestIdx = 0;
+         let minDiff = Infinity;
+         
+         data.hourly.time.forEach((tStr, idx) => {
+           const tMs = new Date(tStr + 'Z').getTime();
+           const diff = Math.abs(tMs - nowMs);
+           if (diff < minDiff) {
+             minDiff = diff;
+             closestIdx = idx;
+           }
+         });
+         
+         setCloudCover(data.hourly.cloud_cover[closestIdx]);
+       }
+       setIsFetchingCloud(false);
+     })
+     .catch(err => {
+       console.warn("Cloud API Error:", err);
+       setIsFetchingCloud(false);
+     });
+ }, [Math.floor(simulatedTimeMs / 3600000), activeStation.id]); // <-- 📍 ฟันธง: เพิ่ม activeStation.id ตรงนี้! เพื่อบังคับให้ดึงข้อมูลใหม่ทันทีที่กดสลับปุ่มสถานี
 
   // --- ระบบ PASS PREDICTION ---
   const [isPassModalOpen, setIsPassModalOpen] = useState(false);
@@ -1284,7 +1285,11 @@ const notifiedPassesRef = useRef({});
 
 // 📍 2. สมองกลเซนเซอร์จับเวลาล่วงหน้า 10 นาที (Pre-AOS Trigger)
 useEffect(() => {
-  if (!nextPassTimestamp || !nextPassTimestamp.time || speedMult !== 1 || !isPlaying) return;
+  // 📍 ฟันธง: สร้างตัวแปรเช็คความเป็น LIVE อ้างอิงจากเวลาจริงแบบเป๊ะๆ
+  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+  
+  // 📍 ฟันธง: ถ้าไม่ได้อยู่ในโหมด LIVE (คือเล่นซิมไถลบาร์เวลาอยู่) ให้เบรกทันที! ป้องกันยิง LINE รัวๆ
+  if (!nextPassTimestamp || !nextPassTimestamp.time || !isLive) return;
   
   const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
   const TEN_MINUTES_MS = 600000; 
@@ -1337,7 +1342,11 @@ useEffect(() => {
 
 // 📍 3. สมองกลเซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)"
 useEffect(() => {
-  if (passSchedule.length === 0 || speedMult !== 1 || !isPlaying) return;
+  // 📍 ฟันธง: เสริมเกราะป้องกัน SIM Mode ให้อีกชั้นที่นี่!
+  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+  
+  // 📍 ฟันธง: ตัดจบการทำงานทันทีถ้าไม่ได้อยู่โหมด LIVE เพื่อรักษา Token LINE
+  if (passSchedule.length === 0 || !isLive) return;
 
   passSchedule.forEach(pass => {
     // 📍 ปัดเศษระดับ "1 ชั่วโมง" ป้องกัน ID แกว่ง
@@ -1569,25 +1578,6 @@ useEffect(() => {
     if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
   };
 }, [linkActive, isMuted]); // ทำงานใหม่ทุกครั้งที่สถานะ Mute หรือ AOS เปลี่ยนแปลง
-
-
-  const footprintPolygonData = useMemo(() => {
-    const polygons = [];
-    allSatObjects.forEach(sat => {
-      if (selectedCatnrs.includes(sat.catnr)) {
-        const isPrimary = sat.catnr === selectedCatnr;
-        const radiusDeg = getFootprintRadiusDeg(sat.altKm, stationMask);
-        if (!isNaN(radiusDeg)) {
-          const circleCoords = getCirclePolygon(sat.lat, sat.lng, radiusDeg, 64);
-          polygons.push({
-            coords: circleCoords,
-            fillColor: isPrimary ? 'rgba(255, 51, 51, 0.15)' : 'rgba(0, 234, 255, 0.1)'
-          });
-        }
-      }
-    });
-    return polygons;
-  }, [allSatObjects, selectedCatnrs, selectedCatnr, stationMask]);
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
