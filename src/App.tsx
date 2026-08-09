@@ -889,11 +889,8 @@ useEffect(() => {
   const [isDraggingPass, setIsDraggingPass] = useState(false);
   const dragPassRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
- // 📍 อัปเดต Z-Index ให้รองรับหน้าต่างใหม่ (img, analyzer)
- const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996, img: 10000, analyzer: 10001 });
-
- // 📍 ฟันธง: สมองกลควบคุมระบบ Maximize (ขยายเต็มจอ) ของหน้าต่างทั้งหมด
- const [maximizedWins, setMaximizedWins] = useState({ radar: false, pass: false, db: false, img: false, gs: false, analyzer: false });
+  const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996, img: 10000, analyzer: 10001, angles: 10002 });
+  const [maximizedWins, setMaximizedWins] = useState({ radar: false, pass: false, db: false, img: false, gs: false, analyzer: false, angles: false });
 
  const toggleMaximize = (winName) => {
    setMaximizedWins(prev => ({ ...prev, [winName]: !prev[winName] }));
@@ -908,6 +905,30 @@ useEffect(() => {
      return { ...prev, [winName]: maxZ + 1 }; 
    });
  };
+ 
+
+ // 📍 ฟันธง: สมองกลควบคุมหน้าต่าง TRACKING ANGLES
+ const [isAnglesOpen, setIsAnglesOpen] = useState(false);
+ const [anglesPos, setAnglesPos] = useState({ x: 80, y: 80 });
+ const [isDraggingAngles, setIsDraggingAngles] = useState(false);
+ const dragAnglesRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
+ const [angleInterval, setAngleInterval] = useState(27); // ค่าเริ่มต้น 27 วินาที
+
+ const handleAnglesMouseDown = (e) => {
+   setIsDraggingAngles(true);
+   bringToFront('angles');
+   dragAnglesRef.current = { startX: e.clientX, startY: e.clientY, initX: anglesPos.x, initY: anglesPos.y };
+ };
+
+ useEffect(() => {
+   const handleMouseMove = (e) => {
+     if (!isDraggingAngles) return;
+     setAnglesPos({ x: dragAnglesRef.current.initX + (e.clientX - dragAnglesRef.current.startX), y: dragAnglesRef.current.initY + (e.clientY - dragAnglesRef.current.startY) });
+   };
+   const handleMouseUp = () => setIsDraggingAngles(false);
+   if (isDraggingAngles) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); }
+   return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
+ }, [isDraggingAngles]);
 
  // 📍 ฟันธง: สมองกลควบคุมหน้าต่าง IMAGING PLAN VIEWER
  const [isImgOpen, setIsImgOpen] = useState(false);
@@ -2934,24 +2955,33 @@ useEffect(() => {
               MISSION PLAN
              </button>
 
-             {/* แถว 4: Ground Station & Radar Skyplot */}
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-               <button 
-                 className={`btn btn-cyan ${isGsModalOpen ? 'active' : ''}`}
-                 onClick={() => { setIsGsModalOpen(!isGsModalOpen); if (!isGsModalOpen) bringToFront('gs'); }}
-                 style={{ margin: 0, padding: '14px 5px', fontSize: '14px' }}
-               >
-                GROUND STATION
-               </button>
+             {/* แถว 4: Ground Station, Radar & Tracking Angles */}
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                <button 
+                  className={`btn btn-cyan ${isGsModalOpen ? 'active' : ''}`}
+                  onClick={() => { setIsGsModalOpen(!isGsModalOpen); if (!isGsModalOpen) bringToFront('gs'); }}
+                  style={{ margin: 0, padding: '14px 2px', fontSize: '13px', letterSpacing: '0.5px' }}
+                >
+                 GROUND STATION
+                </button>
 
-               <button 
-                 className={`btn btn-green ${isRadarOpen ? 'active' : ''}`} 
-                 onClick={() => { setIsRadarOpen(!isRadarOpen); if (!isRadarOpen) bringToFront('radar'); }}
-                 style={{ margin: 0, padding: '14px 5px', fontSize: '14px' }}
-               >
-                RADAR SKYPLOT
-               </button>
-             </div>
+                <button 
+                  className={`btn btn-green ${isRadarOpen ? 'active' : ''}`} 
+                  onClick={() => { setIsRadarOpen(!isRadarOpen); if (!isRadarOpen) bringToFront('radar'); }}
+                  style={{ margin: 0, padding: '14px 2px', fontSize: '13px', letterSpacing: '0.5px' }}
+                >
+                 RADAR SKYPLOT
+                </button>
+
+                {/* 📍 ปุ่มใหม่: TRACKING ANGLES (Datron L3) */}
+                <button 
+                  className={`btn btn-gold ${isAnglesOpen ? 'active' : ''}`} 
+                  onClick={() => { setIsAnglesOpen(!isAnglesOpen); if (!isAnglesOpen) bringToFront('angles'); }}
+                  style={{ margin: 0, padding: '14px 2px', fontSize: '13px', letterSpacing: '0.5px', background: isAnglesOpen ? 'var(--gold)' : 'rgba(255,204,0,0.1)', color: isAnglesOpen ? '#000' : 'var(--gold)', borderColor: 'var(--gold)' }}
+                >
+                POINTING ANGLES
+                </button>
+              </div>
            </div>
 
            {/* 🗓️ PASS SCHEDULE (นำใส่กล่อง control-group ให้สมมาตรกับด้านบน) */}
@@ -3947,6 +3977,143 @@ useEffect(() => {
           </div>
         </div>
       )}
+
+     {/* --- TRACKING ANGLES (MODERN TACTICAL DATRON) --- */}
+     {isAnglesOpen && (
+        <div className="modal-box angles-modal" onMouseDownCapture={() => bringToFront('angles')} style={{
+          position: 'fixed', top: maximizedWins.angles ? '0px' : `${anglesPos.y}px`, left: maximizedWins.angles ? '0px' : `${anglesPos.x}px`,
+          width: maximizedWins.angles ? '100vw' : '850px', height: maximizedWins.angles ? '100vh' : '650px',
+          minWidth: '600px', minHeight: '400px', resize: maximizedWins.angles ? 'none' : 'both', overflow: 'hidden',
+          background: 'linear-gradient(145deg, rgba(10, 15, 25, 0.95) 0%, rgba(5, 10, 15, 0.98) 100%)', 
+          border: maximizedWins.angles ? 'none' : '2px solid var(--cyan)', 
+          borderRadius: maximizedWins.angles ? '0px' : '8px', 
+          boxShadow: '0 0 40px rgba(0, 234, 255, 0.3), inset 0 0 15px rgba(0, 234, 255, 0.1)',
+          display: 'flex', flexDirection: 'column', zIndex: windowZ.angles || 10002, transition: isDraggingAngles ? 'none' : 'all 0.1s ease-out'
+        }}>
+          
+          <style>{`
+            /* 📍 ฟันธง: ซ่อน Scrollbar ของตาราง แต่ยังเลื่อนล้อเมาส์ได้ปกติ */
+            .hide-scroll-angles::-webkit-scrollbar { display: none; }
+            .hide-scroll-angles { -ms-overflow-style: none; scrollbar-width: none; }
+          `}</style>
+
+          {/* Header */}
+          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', cursor: maximizedWins.angles ? 'default' : (isDraggingAngles ? 'grabbing' : 'grab'), background: 'linear-gradient(90deg, rgba(0, 234, 255, 0.15), transparent)', borderBottom: '1px solid rgba(0, 234, 255, 0.4)', zIndex: 10 }} onMouseDown={(e) => { if(!maximizedWins.angles) handleAnglesMouseDown(e); }}>
+            <div style={{ display: 'flex', alignItems: 'center', color: '#fff', fontFamily: 'Orbitron, sans-serif', fontWeight: 'bold', fontSize: '16px', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
+              <span style={{ marginRight: '10px' }}>📐</span> POINTING ANGLES
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', borderColor: 'var(--cyan)', color: 'var(--cyan)', background: 'transparent' }} onClick={() => toggleMaximize('angles')}>{maximizedWins.angles ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', borderColor: 'var(--red)', color: 'var(--red)', background: 'transparent' }} onClick={() => setIsAnglesOpen(false)}>✕</button>
+            </div>
+          </div>
+
+          {/* Body & Logic */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '15px', overflow: 'hidden' }}>
+            
+            {/* 📍 สมองกลดึงข้อมูลและคำนวณ */}
+            {(() => {
+              if (!targetSatrec || passSchedule.length === 0) return <div style={{ color: 'var(--red)', textAlign: 'center', marginTop: '50px', fontSize: '20px', fontFamily: 'Orbitron', textShadow: '0 0 10px var(--red)' }}>NO PASS SCHEDULE AVAILABLE</div>;
+              
+              let targetPass = passSchedule.find(p => p.losTime > simulatedTimeMs);
+              if (!targetPass) targetPass = passSchedule[passSchedule.length - 1]; 
+
+              const getSunPos = (timestamp) => {
+                  const d = new Date(timestamp);
+                  const tDays = (d.getTime() / 86400000) + 2440587.5 - 2451545.0;
+                  const L = (280.460 + 0.9856474 * tDays) % 360;
+                  const g = (357.528 + 0.9856003 * tDays) % 360;
+                  const lambda = L + 1.915 * Math.sin(g*Math.PI/180) + 0.020 * Math.sin(2*g*Math.PI/180);
+                  const eps = 23.439 - 0.0000004 * tDays;
+                  const alpha = Math.atan2(Math.cos(eps*Math.PI/180)*Math.sin(lambda*Math.PI/180), Math.cos(lambda*Math.PI/180)) * 180/Math.PI;
+                  const delta = Math.asin(Math.sin(eps*Math.PI/180)*Math.sin(lambda*Math.PI/180)) * 180/Math.PI;
+                  
+                  const gmst = (18.697374558 + 24.06570982441908 * tDays) % 24;
+                  const lmst = (gmst * 15 + GROUND_STATION.lng) % 360;
+                  const ha = (lmst - alpha + 360) % 360;
+                  
+                  const latRad = GROUND_STATION.lat * Math.PI/180;
+                  const decRad = delta * Math.PI/180;
+                  const haRad = ha * Math.PI/180;
+                  
+                  const sunElRad = Math.asin(Math.sin(decRad)*Math.sin(latRad) + Math.cos(decRad)*Math.cos(latRad)*Math.cos(haRad));
+                  const sunEl = sunElRad * 180/Math.PI;
+                  const sunAzRad = Math.acos((Math.sin(decRad) - Math.sin(sunElRad)*Math.sin(latRad)) / (Math.cos(sunElRad)*Math.cos(latRad)));
+                  let sunAz = sunAzRad * 180/Math.PI;
+                  if (Math.sin(haRad) > 0) sunAz = 360 - sunAz;
+                  return { el: sunEl, az: sunAz };
+              };
+
+              const stepMs = angleInterval * 1000;
+              const rows = [];
+              for (let t = targetPass.aosTime; t <= targetPass.losTime; t += stepMs) {
+                 const pos = calculateSatData(new Date(t), targetSatrec);
+                 const sun = getSunPos(t);
+                 rows.push({ time: new Date(t), satEl: pos ? Math.max(0, pos.elevationDeg) : 0, satAz: pos ? pos.azimuthDeg : 0, sunEl: sun.el, sunAz: sun.az });
+              }
+
+              const fmt3 = (num) => String(num.toFixed(3)).padStart(7, '0');
+              const dStr = new Date(targetPass.aosTime).toISOString().substring(0, 10).toUpperCase();
+
+              return (
+                <>
+                  {/* 📍 Info Header (Sci-Fi HUD Redesign) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px', fontFamily: 'Orbitron', fontSize: '13px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '20px' }}>
+                      <span style={{ background: 'rgba(0, 234, 255, 0.1)', padding: '4px 15px', border: '1px solid var(--cyan)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>TARGET: <strong style={{ color: '#fff', fontSize: '15px', textShadow: '0 0 8px var(--cyan)' }}>{targetConfig.displayName}</strong></span>
+                      <span style={{ background: 'rgba(255, 204, 0, 0.1)', padding: '4px 15px', border: '1px solid var(--gold)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>ORBIT: <strong style={{ color: 'var(--gold)', fontSize: '15px', textShadow: '0 0 8px var(--gold)' }}>{tles[selectedCatnr]?.line2.substring(63, 68).trim() || 'N/A'}</strong></span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', fontSize: '12px' }}>
+                      <span style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '4px 12px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px', color: '#fff' }}>{dStr}</span>
+                      <span style={{ background: 'rgba(0, 255, 102, 0.1)', padding: '4px 12px', border: '1px solid var(--green)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>AOS: <strong style={{ color: 'var(--green)' }}>{new Date(targetPass.aosTime).toISOString().substring(11, 19)}</strong></span>
+                      <span style={{ background: 'rgba(255, 204, 0, 0.1)', padding: '4px 12px', border: '1px solid var(--gold)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>PCA: <strong style={{ color: 'var(--gold)' }}>{new Date(targetPass.peakTime).toISOString().substring(11, 19)}</strong></span>
+                      <span style={{ background: 'rgba(255, 51, 51, 0.1)', padding: '4px 12px', border: '1px solid var(--red)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>LOS: <strong style={{ color: 'var(--red)' }}>{new Date(targetPass.losTime).toISOString().substring(11, 19)}</strong></span>
+                    </div>
+                  </div>
+
+                  {/* 📍 Interval Settings (Sci-Fi Slider) */}
+                  <div style={{ background: 'rgba(0, 0, 0, 0.5)', border: '1px solid rgba(0, 234, 255, 0.3)', padding: '12px 20px', borderRadius: '6px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    <span style={{ fontFamily: 'Orbitron', fontSize: '13px', color: 'var(--cyan)' }}>INTERVAL SETTING:</span>
+                    <input type="range" min="1" max="60" value={angleInterval} onChange={(e) => setAngleInterval(Number(e.target.value))} className="sci-fi-slider" style={{ flex: 1, '--thumb-color': 'var(--cyan)', '--thumb-glow': 'rgba(0,234,255,0.8)' }} />
+                    <span style={{ background: 'rgba(0, 234, 255, 0.1)', padding: '4px 15px', border: '1px solid var(--cyan)', borderRadius: '4px', fontFamily: 'Rajdhani', fontSize: '18px', fontWeight: 'bold', color: '#fff', textShadow: '0 0 10px var(--cyan)', minWidth: '90px', textAlign: 'center' }}>{angleInterval} <span style={{fontSize:'12px', color:'rgba(255,255,255,0.6)'}}>SEC</span></span>
+                  </div>
+
+                  {/* 📍 Data Table (BG ขาวสะอาด + Header โคตรล้ำ) */}
+                  <div className="hide-scroll-angles" style={{ flex: 1, overflowY: 'auto', background: '#f8fafc', borderRadius: '6px', border: '2px solid var(--cyan)', boxShadow: '0 0 15px rgba(0, 234, 255, 0.2)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: 'monospace', fontSize: '15px', color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
+                      <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
+                        <tr style={{ background: '#0b1121', color: '#e2e8f0', fontFamily: 'Orbitron', fontSize: '12px', letterSpacing: '1px' }}>
+                          <th style={{ borderBottom: '1px solid var(--cyan)', padding: '8px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }} rowSpan={2}>TIME (UTC)</th>
+                          <th style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '8px', textAlign: 'center', color: 'var(--cyan)', borderRight: '1px solid rgba(255,255,255,0.1)' }} colSpan={2}>PREDICTED SATELLITE</th>
+                          <th style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '8px', textAlign: 'center', color: 'var(--gold)' }} colSpan={2}>SUN POSITION</th>
+                        </tr>
+                        <tr style={{ background: '#0f172a', color: '#94a3b8', fontFamily: 'Orbitron', fontSize: '11px' }}>
+                          <th style={{ borderBottom: '2px solid var(--cyan)', padding: '6px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>ELEVATION</th>
+                          <th style={{ borderBottom: '2px solid var(--cyan)', padding: '6px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>AZIMUTH</th>
+                          <th style={{ borderBottom: '2px solid var(--gold)', padding: '6px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>ELEVATION</th>
+                          <th style={{ borderBottom: '2px solid var(--gold)', padding: '6px', textAlign: 'center' }}>AZIMUTH</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r, i) => (
+                          <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#ffffff' : '#f1f5f9', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e0f2fe'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#ffffff' : '#f1f5f9'}>
+                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 'bold' }}>{r.time.toISOString().substring(11, 23)}</td>
+                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: '6px 8px', textAlign: 'center', color: '#0369a1', fontWeight: 'bold' }}>{fmt3(r.satEl)}</td>
+                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #94a3b8', padding: '6px 8px', textAlign: 'center', color: '#0369a1', fontWeight: 'bold' }}>{fmt3(r.satAz)}</td>
+                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: '6px 8px', textAlign: 'center', color: '#b45309' }}>{fmt3(r.sunEl)}</td>
+                            <td style={{ borderBottom: '1px solid #e2e8f0', padding: '6px 8px', textAlign: 'center', color: '#b45309' }}>{fmt3(r.sunAz)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
+
+          </div>
+        </div>
+      )}     
 
       <div className="scanlines"></div>
     </>
