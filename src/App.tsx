@@ -1317,22 +1317,19 @@ const notifiedPassesRef = useRef({});
 
 // 📍 2. สมองกลเซนเซอร์จับเวลาล่วงหน้า 10 นาที (Pre-AOS Trigger)
 useEffect(() => {
-  // 📍 ฟันธง: สร้างตัวแปรเช็คความเป็น LIVE อ้างอิงจากเวลาจริงแบบเป๊ะๆ
-  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+  // 📍 ฟันธง 4: ล็อกการแจ้งเตือนตอน SIM แบบเด็ดขาด! (เวลาต้องตรงกันระดับ 5 วินาทีเท่านั้น)
+  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
   
-  // 📍 ฟันธง: ถ้าไม่ได้อยู่ในโหมด LIVE (คือเล่นซิมไถลบาร์เวลาอยู่) ให้เบรกทันที! ป้องกันยิง LINE รัวๆ
-  if (!nextPassTimestamp || !nextPassTimestamp.time || !isLive) return;
+  // ถ้าไม่ใช่ LIVE ให้เตะออกทันที ห้ามแจ้งเตือน!
+  if (!isLive || !nextPassTimestamp || !nextPassTimestamp.time) return;
   
   const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
   const TEN_MINUTES_MS = 600000; 
   
-  // 📍 ฟันธง: ปัดเศษเวลาให้กว้างระดับ "1 ชั่วโมง (3600000 ms)" 
-  // ดาวเทียม LEO 1 รอบใช้เวลา ~90 นาที ไม่มีทางซ้อนทับกันในชั่วโมงเดียวกัน ป้องกัน ID แกว่ง 100%
   const stableAosTime = Math.floor(nextPassTimestamp.time / 3600000) * 3600000;
   const passId = `AOS-${selectedCatnr}-${stableAosTime}`;
 
   if (timeToAos <= TEN_MINUTES_MS && timeToAos > 0 && !notifiedPassesRef.current[passId]) {
-    // 📍 ล็อกประตูทันที! เขียนลง useRef จะบล็อกการยิงซ้ำแบบ Real-time
     notifiedPassesRef.current[passId] = true;
 
     const upcomingPass = passSchedule.find(p => p.aosTime === nextPassTimestamp.time);
@@ -1365,11 +1362,59 @@ useEffect(() => {
       .then(response => console.log(`[LINE] ยิงแจ้งเตือน 10 นาที (AOS) สำเร็จ! ID: ${passId}`))
       .catch(err => {
          console.error("LINE Notify Error:", err);
-         notifiedPassesRef.current[passId] = false; // ถ้าส่งล้มเหลว ค่อยปลดล็อกให้ระบบพยายามส่งใหม่
+         notifiedPassesRef.current[passId] = false; 
       });
     }
   }
 }, [simulatedTimeMs, nextPassTimestamp, selectedCatnr, targetConfig, speedMult, isPlaying, passSchedule]);
+
+// 📍 3. สมองกลเซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)"
+useEffect(() => {
+  // 📍 ฟันธง 4: ล็อกตายโหมด SIM ห้ามรันบรรทัดล่างเด็ดขาด
+  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
+  if (!isLive || passSchedule.length === 0) return;
+
+  passSchedule.forEach(pass => {
+    const stableLosTime = Math.floor(pass.losTime / 3600000) * 3600000;
+    const passIdLos = `LOS-${selectedCatnr}-${stableLosTime}`;
+    
+    const timeSinceLos = simulatedTimeMs - pass.losTime;
+    
+    if (timeSinceLos >= 0 && timeSinceLos <= 15000 && !notifiedPassesRef.current[passIdLos]) {
+      notifiedPassesRef.current[passIdLos] = true; 
+      
+      const flagUrl = targetConfig.flag ? `https://flagcdn.com/w40/${targetConfig.flag}.png` : 'https://raw.githubusercontent.com/line/line-bot-sdk-nodejs/master/examples/kitchensink/public/logo.png';
+      const doyStr = String(getUtcDayOfYear(new Date(pass.aosTime))).padStart(3, '0');
+
+      const payloadData = {
+        isLos: true, 
+        satName: targetConfig.displayName,
+        flagUrl: flagUrl,
+        station: GROUND_STATION.name,
+        doy: doyStr,
+        aosUtc: new Date(pass.aosTime).toISOString().substring(11, 19) + ' UTC',
+        aosLocal: new Date(pass.aosTime).toLocaleTimeString('en-GB') + ' THA',
+        losUtc: new Date(pass.losTime).toISOString().substring(11, 19) + ' UTC',
+        losLocal: new Date(pass.losTime).toLocaleTimeString('en-GB') + ' THA',
+        maxEl: pass.maxEl.toFixed(1),
+        duration: `${Math.floor(pass.durationMs / 60000)}m ${Math.floor((pass.durationMs % 60000)/1000)}s`
+      };
+      
+      const gasUrl = 'https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec';
+      
+      fetch(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+        body: JSON.stringify(payloadData)
+      })
+      .then(response => console.log(`[LINE] ยิงแจ้งเตือน LOS (PASS COMPLETE) สำเร็จ! ID: ${passIdLos}`))
+      .catch(err => {
+         console.error("LINE Notify Error:", err);
+         notifiedPassesRef.current[passIdLos] = false;
+      });
+    }
+  });
+}, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying]);
 
 
 // 📍 3. สมองกลเซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)"
@@ -1917,7 +1962,7 @@ useEffect(() => {
 
   const draw = () => {
     // ----------------------------------------------------
-    // 1. วาดหน้าจอ IQ Constellation (ทำงานเสมอ ไม่แตะต้อง)
+    // 1. วาดหน้าจอ IQ Constellation (อัปเกรด Viasat Style & Lock Phase)
     // ----------------------------------------------------
     const iqCanvas = iqCanvasRef.current;
     if (iqCanvas) {
@@ -1946,37 +1991,53 @@ useEffect(() => {
          iqCtx.beginPath(); iqCtx.arc(centerX + radius * Math.cos(a), centerY - radius * Math.sin(a), 4, 0, 2*Math.PI); iqCtx.fill();
       });
 
+      // 📍 ฟันธง: คำนวณคุณภาพการ Lock ของ Demodulator อ้างอิงจากมุม Elevation
+      const el = targetData ? targetData.elevationDeg : -10;
+      const isAutoTrack = el >= 5.0;
+      const isProgramTrack = el >= 0.0 && el < 5.0;
+      
+      // Lock Quality: 0.0 = ไม่ล็อคเลย, 1.0 = ล็อคสมบูรณ์
+      // ในช่วง Program Track (0-5 องศา) เปอร์เซ็นต์การล็อคจะค่อยๆ เพิ่มขึ้น (อาการพยายาม Lock)
+      const lockQuality = isAutoTrack ? 1.0 : (isProgramTrack ? (el / 5.0) : 0.0);
+
       iqCtx.fillStyle = '#ffffff';
-      if (linkActive) {
-        for(let i=0; i<400; i++) {
-           const angle = angles[i % 4];
-           const tx = centerX + radius * Math.cos(angle);
-           const ty = centerY - radius * Math.sin(angle);
-           const jitter = spec.xBand.mod === 'O-QPSK' ? 0.12 : 0.08;
-           
-           const u1 = Math.max(Math.random(), 0.0001); const u2 = Math.random();
-           const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-           const z1 = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
-           
-           const nx = z0 * (radius * jitter * 0.4); 
-           const ny = z1 * (radius * jitter * 0.4);
-           
-           iqCtx.globalAlpha = Math.random() * 0.6 + 0.4;
-           iqCtx.beginPath(); iqCtx.arc(tx + nx, ty + ny, 1.5, 0, 2*Math.PI); iqCtx.fill();
-        }
-      } else {
-        for(let i=0; i<600; i++) {
-           const px = Math.random() * iW; 
-           const py = Math.random() * iH; 
-           iqCtx.globalAlpha = Math.random() * 0.6 + 0.1;
-           iqCtx.beginPath(); iqCtx.arc(px, py, 1.2, 0, 2*Math.PI); iqCtx.fill();
-        }
+
+      // 📍 ฟันธง: จำลองเม็ดเวกเตอร์ 256 จุด (Nb Vector 256 แบบเป๊ะๆ ตามหน้าจอ Viasat)
+      for(let i=0; i<256; i++) {
+         // สุ่มว่าเม็ดนี้จะอยู่ในตำแหน่ง Lock หรือ Unlocked ตามคุณภาพสัญญาณ
+         const isPointLocked = Math.random() < lockQuality;
+
+         if (isPointLocked) {
+             // 🟢 อาการ Lock (QPSK): เม็ดสี่เหลี่ยมเกาะกลุ่มกันที่ 4 มุม
+             const angle = angles[i % 4];
+             const tx = centerX + radius * Math.cos(angle);
+             const ty = centerY - radius * Math.sin(angle);
+             const jitter = spec.xBand.mod === 'O-QPSK' ? 0.12 : 0.08;
+             
+             const u1 = Math.max(Math.random(), 0.0001); const u2 = Math.random();
+             const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+             const z1 = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
+             
+             const nx = z0 * (radius * jitter * 0.4); 
+             const ny = z1 * (radius * jitter * 0.4);
+             
+             iqCtx.globalAlpha = Math.random() * 0.4 + 0.6; // ให้ความสว่างวูบวาบนิดๆ
+             // 📍 ฟันธง: วาดเป็นจุด "สี่เหลี่ยมทึบ" ขนาด 3x3 พิกเซล เหมือนเครื่อง Viasat
+             iqCtx.fillRect(tx + nx - 1.5, ty + ny - 1.5, 3, 3);
+         } else {
+             // 🔴 อาการ Unlocked: เม็ดสี่เหลี่ยมกระจายแบบ Uniform ในกรอบสี่เหลี่ยมจัตุรัส
+             const spread = radius * 1.35; // ความกว้างของการกระจาย (อยู่ในกรอบกราฟ)
+             const px = centerX + (Math.random() - 0.5) * 2 * spread;
+             const py = centerY + (Math.random() - 0.5) * 2 * spread;
+             
+             iqCtx.globalAlpha = 1.0; // เม็ดกระจายจะสว่างชัดเจน ไม่โปร่งแสง
+             iqCtx.fillRect(px - 1.5, py - 1.5, 3, 3);
+         }
       }
       iqCtx.globalAlpha = 1.0;
     }
-
-    // ----------------------------------------------------
-    // 2. ฟังก์ชันวาดกราฟ Spectrum
+// ----------------------------------------------------
+    // 2. ฟังก์ชันวาดกราฟ Spectrum (อัปเกรด Dynamic Amplitude & Tracking LED)
     // ----------------------------------------------------
     const drawSpectrum = (canvas, w, h, isXBand) => {
       const ctx = canvas.getContext('2d');
@@ -1986,7 +2047,6 @@ useEffect(() => {
       const spec = SAT_SPECS[selectedCatnr] || { name: 'UNKNOWN', xBand: { bw: 120, mod: 'QPSK' }, sBand: { bw: 2, mod: 'PSK' } };
       
       const uiScale = h / 220; 
-      // 📍 ฟันธง 2: ล็อกสเกลตัวหนังสือให้แน่นขึ้น (Max 1.05) ป้องกันการบวมใหญ่เวลากดดูกราฟเดี่ยว
       const textScale = Math.min(uiScale, 1.05); 
 
       const graphW = w - (15 * textScale); 
@@ -2001,7 +2061,33 @@ useEffect(() => {
 
       const bw = isXBand ? spec.xBand.bw : spec.sBand.bw;
       const span = isXBand ? xBandSpan : sBandSpan; 
-      const cf = isXBand ? 720.0 : 70.0; 
+      const cf_base = isXBand ? 720.0 : 70.0; 
+
+      // 📍 ฟันธง 1: คำนวณความแรงสัญญาณตามมุม Elevation และกำหนด Tracking Mode LED
+      let signalStrength = 0;
+      let trackMode = 'STANDBY';
+      let trackColor = 'var(--red)';
+
+      if (linkActive && targetData) {
+          const el = targetData.elevationDeg;
+          // จำลอง Free Space Path Loss เชิงเปรียบเทียบ โดยใช้อัตราส่วน Altitude / Slant Range
+          let baseStrength = targetData.altKm / targetData.rangeKm; 
+          
+          if (el >= 5) {
+              trackMode = 'AUTOTRACK';
+              trackColor = '#00ff66'; // 🟢 Green LED
+              // สัญญาณนิ่งและแรงขึ้นเรื่อยๆ ตามมุมเงย (จำลองการทำงานของระบบ AGC Leveling)
+              signalStrength = Math.min(1.0, Math.pow(baseStrength, 0.5) * 1.2); 
+          } else if (el >= 0) {
+              trackMode = 'PROGRAM TRACK';
+              trackColor = '#ffcc00'; // 🟠 Orange LED
+              // มุมต่ำกว่า 5 องศา สัญญาณอ่อนและผลุบโผล่ (Fluctuating / Scintillation)
+              signalStrength = (baseStrength * 0.8) * (Math.random() * 0.5 + 0.5); 
+          }
+      }
+
+      // 📍 ฟันธง 2: ล็อกความถี่ IF ไว้ตรงกลางจอเสมอ (ไม่มี Doppler ทางฝั่ง Demodulator)
+      const peakX = graphW / 2; 
       
       const visualCompression = 0.65; 
       const halfBwPixels = (bw / span) * (graphW / 2) * visualCompression;
@@ -2010,53 +2096,65 @@ useEffect(() => {
       const totalDb = 10 * dbPerDiv; 
       const refLevel = isXBand ? -35 : -20; 
 
-      // 📍 ฟันธง 3: ปรับฐานกราฟลงมาให้อยู่เหนือคำว่า CENTER นิดเดียว (เปิดพื้นที่ด้านบนให้กราฟ)
       const baseY = h - (36 * textScale); 
       const peakH = baseY - (25 * textScale); 
 
       ctx.strokeStyle = isXBand ? '#ffcc00' : '#00eaff'; 
-      ctx.lineWidth = 1.1 * Math.max(1, uiScale * 0.6);
+      ctx.lineWidth = 0.7 * Math.max(1, uiScale * 0.5);
       ctx.beginPath();
 
-      // สมการโค้งมน Haystack คงเดิม
+      // วาดสมการโค้งมน Haystack ที่ความสูงขึ้นลงตามระดับ signalStrength
       for(let x=0; x<=graphW; x++) {
-        const dist = Math.abs(x - graphW/2);
+        const dist = Math.abs(x - peakX); 
         const x_norm = dist / halfBwPixels;
         let amp = 0;
         
         if (linkActive) {
             if (x_norm <= 1.0) {
-                amp = Math.pow(Math.cos((x_norm * Math.PI) / 2), 0.6);
+                amp = Math.pow(Math.cos((x_norm * Math.PI) / 2), 0.6) * signalStrength;
             } else if (x_norm < 1.8) {
-                amp = Math.abs(Math.sin((x_norm - 1.0) * Math.PI)) * 0.3 / x_norm;
+                amp = Math.abs(Math.sin((x_norm - 1.0) * Math.PI)) * 0.3 / x_norm * signalStrength;
             } else if (x_norm < 2.6) {
-                amp = Math.abs(Math.sin((x_norm - 1.8) * Math.PI)) * 0.15 / x_norm;
+                amp = Math.abs(Math.sin((x_norm - 1.8) * Math.PI)) * 0.15 / x_norm * signalStrength;
             }
         }
         
-        const noise = (Math.random() * 0.12) + 0.05; 
-        const totalPwr = linkActive ? Math.max(noise, amp) : noise;
+        const noise = (Math.random() * 0.06) + 0.02; 
+        // 📍 ถ้าค่า amp ต่ำกว่า Noise Floor ก็จะเห็นแค่ Noise (ให้เอฟเฟกต์ผลุบโผล่)
+        const totalPwr = linkActive ? Math.max(noise, amp) : noise; 
         
-        const y = baseY - (totalPwr * peakH) + (Math.random() - 0.5) * (h * 0.05); 
+        const y = baseY - (totalPwr * peakH) + (Math.random() - 0.5) * (h * 0.015); 
         
         if (x===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
-// ----------------------------------------------------
-      // วาด Overlay Text (คุมขนาดด้วย textScale เสมอ)
-      // ----------------------------------------------------ฟฟ
-      // 📍 ฟันธง: แก้ไขขนาดตัวอักษรตรงนี้ ปรับเลข 14 ให้ใหญ่ขึ้นได้ตามใจชอบ (เดิม 10.5)
+
+      // ----------------------------------------------------
+      // วาด Overlay Text
+      // ----------------------------------------------------
       const fSize = 18 * textScale; 
-      ctx.fillStyle = '#e2e8f0'; ctx.font = `bold ${fSize}px Rajdhani, monospace`;
+      ctx.fillStyle = '#e2e8f0'; ctx.font = `bold ${fSize}px Rajdhani, monospace`; 
+      ctx.textAlign = 'left';
       
       const textX = 15 * textScale;
       ctx.fillText(`${formatTime(new Date(simulatedTimeMs))} THA, SIM`, textX, 25 * textScale);
       ctx.fillText(`REF ${refLevel.toFixed(1)} dBm    AT 10 dB`, textX, 45 * textScale);
-      ctx.fillText(`PEAK`, textX, 65 * textScale);
-      ctx.fillText(`LOG 5 dB/`, textX, 85 * textScale);
+      ctx.fillText(`LOG 5 dB/`, textX, 65 * textScale); 
+      
+      // 📍 ฟันธง 3: วาดไฟ LED แสดง Tracking Mode ใต้บรรทัด LOG 5 dB/
+      if (linkActive && targetData) {
+          ctx.beginPath();
+          ctx.arc(textX + 4 * textScale, 85 * textScale - 4 * textScale, 5 * textScale, 0, Math.PI * 2);
+          ctx.fillStyle = trackColor;
+          ctx.fill();
+          ctx.shadowBlur = 12;
+          ctx.shadowColor = trackColor;
+          ctx.fillText(` ${trackMode}`, textX + 12 * textScale, 85 * textScale);
+          ctx.shadowBlur = 0; // ล้างค่าเรืองแสงทิ้งหลังวาดเสร็จ
+      }
       
       if (linkActive) {
-          const mkX = graphW/2; 
+          const mkX = peakX; 
           const mkY = baseY - (1.0 * peakH); 
           ctx.beginPath(); 
           ctx.moveTo(mkX, mkY - (6 * textScale)); 
@@ -2066,17 +2164,13 @@ useEffect(() => {
           ctx.fillStyle = isXBand ? '#ffcc00' : '#00eaff'; ctx.fill();
           
           ctx.textAlign = 'right';
-          ctx.fillText(`MKR ${cf.toFixed(1)} MHz`, graphW - (15 * textScale), 25 * textScale);
+          ctx.fillText(`MKR ${cf_base.toFixed(1)} MHz`, graphW - (15 * textScale), 25 * textScale);
           ctx.fillStyle = '#ffffff'; 
           ctx.fillText(`${(refLevel - 5).toFixed(2)} dBm`, graphW - (15 * textScale), 45 * textScale);
-      } else {
-          ctx.textAlign = 'right'; ctx.fillStyle = '#ff3333';
-          ctx.fillText(`NO CARRIER`, graphW - (15 * textScale), 25 * textScale); 
       }
 
       ctx.fillStyle = '#e2e8f0'; ctx.textAlign = 'left';
-      // ตัวอักษรฐานล่าง
-      ctx.fillText(`CENTER ${cf.toFixed(1)} MHz`, textX, h - (20 * textScale));
+      ctx.fillText(`CENTER ${cf_base.toFixed(1)} MHz`, textX, h - (20 * textScale));
       ctx.fillText(`#RES BW 3.0 MHz`, textX, h - (6 * textScale));
       
       ctx.textAlign = 'right';
@@ -2590,15 +2684,15 @@ useEffect(() => {
                 </button>
               </div>
 
-              {/* แถว 2: ความเร็ว */}
-              <div className="speed-row">
-                {[1, 100, 300, 500].map(s => (
+             {/* แถว 2: ความเร็ว (📍 ฟันธง: เอา 1X ออก ใส่ 30X แทนให้สัมพันธ์กับตอนกด Pass Schedule) */}
+             <div className="speed-row">
+                {[30, 100, 300, 500].map(s => (
                   <button key={s} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, fontSize: '14px'}} onClick={() => setSpeedMult(s)}>{s}X</button>
                 ))}
               </div>
 
-            {/* 📍 ฟันธง: แถว 3 ประกอบร่างป้าย LIVE/SIM คู่กับปุ่ม RESET ปรับขนาดให้สมมาตร 50/50 */}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', height: '48px' }}>
+           {/* 📍 ฟันธง: แถว 3 ประกอบร่างป้าย LIVE/SIM คู่กับปุ่ม RESET ปรับขนาดให้สมมาตร 50/50 */}
+           <div style={{ display: 'flex', gap: '8px', marginTop: '8px', height: '48px' }}>
                 {(() => {
                   const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
                   return (
