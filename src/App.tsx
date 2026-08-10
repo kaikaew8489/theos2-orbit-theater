@@ -481,7 +481,26 @@ const injectStyles = () => {
       .left-container, .right-panel { width: 100%; pointer-events: auto; }
       .flat-map-wrap { padding: 10px; }
     }
+
+    /* 📍 ฟันธง 1: CSS สำหรับ WOW Feature (Block Diagram & Matrix) */
+    @keyframes data-flow {
+      0% { stroke-dashoffset: 20; opacity: 0.5; }
+      50% { opacity: 1; }
+      100% { stroke-dashoffset: 0; opacity: 0.5; }
+    }
+    .hw-box { background: rgba(0, 20, 30, 0.8); border: 2px solid var(--cyan); border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 15px; box-shadow: inset 0 0 15px rgba(0, 234, 255, 0.2); transition: all 0.3s ease; }
+    .hw-box.active { border-color: var(--green); box-shadow: 0 0 20px rgba(0, 255, 102, 0.4), inset 0 0 20px rgba(0, 255, 102, 0.3); transform: scale(1.05); }
+    
+    @keyframes matrix-fall {
+      0% { transform: translateY(-100%); opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { transform: translateY(100%); opacity: 0; }
+    }
+    .matrix-column { display: flex; flex-direction: column; font-family: monospace; font-size: 10px; color: rgba(0, 234, 255, 0.7); line-height: 1; animation: matrix-fall linear infinite; }
+
   `;
+  
   document.head.appendChild(style);
 };
 
@@ -889,7 +908,7 @@ useEffect(() => {
   const [isDraggingPass, setIsDraggingPass] = useState(false);
   const dragPassRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
-  const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996, img: 10000, analyzer: 10001, angles: 10002 });
+  const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996, img: 10000, analyzer: 10001, angles: 10002, diagram: 10003 });
   const [maximizedWins, setMaximizedWins] = useState({ radar: false, pass: false, db: false, img: false, gs: false, analyzer: false, angles: false });
 
  const toggleMaximize = (winName) => {
@@ -905,7 +924,6 @@ useEffect(() => {
      return { ...prev, [winName]: maxZ + 1 }; 
    });
  };
- 
 
  // 📍 ฟันธง: สมองกลควบคุมหน้าต่าง TRACKING ANGLES
  const [isAnglesOpen, setIsAnglesOpen] = useState(false);
@@ -2224,6 +2242,54 @@ useEffect(() => {
   return () => cancelAnimationFrame(animationFrameId);
 }, [isAnalyzerOpen, linkActive, selectedCatnr, simulatedTimeMs, xBandSpan, sBandSpan, showXBand, showSBand]);
 
+// 📍 WOW Feature 1: DIAGRAM STATE
+const [isDiagramOpen, setIsDiagramOpen] = useState(false);
+const [diagramPos, setDiagramPos] = useState({ x: 200, y: 150 });
+const [isDraggingDiagram, setIsDraggingDiagram] = useState(false);
+const dragDiagramRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
+
+// 📍 WOW Feature 2 & 3: AUTO-PILOT & DOWNLINK MATRIX STATE
+const [isAutoPilot, setIsAutoPilot] = useState(false);
+const matrixRef = useRef(null);
+const autoPilotTimer = useRef(null);
+
+// Logic ระบบลากหน้าต่าง Diagram
+const handleDiagramMouseDown = (e) => { setIsDraggingDiagram(true); bringToFront('diagram'); dragDiagramRef.current = { startX: e.clientX, startY: e.clientY, initX: diagramPos.x, initY: diagramPos.y }; };
+useEffect(() => {
+  const handleMouseMove = (e) => { if (isDraggingDiagram) setDiagramPos({ x: dragDiagramRef.current.initX + (e.clientX - dragDiagramRef.current.startX), y: dragDiagramRef.current.initY + (e.clientY - dragDiagramRef.current.startY) }); };
+  const handleMouseUp = () => setIsDraggingDiagram(false);
+  if (isDraggingDiagram) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); }
+  return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
+}, [isDraggingDiagram]);
+
+// Logic Auto-Pilot 🤖
+useEffect(() => {
+  if (isAutoPilot) {
+    if (globeRef.current) globeRef.current.controls().autoRotate = true; // 1. หมุนโลก
+    let windowCycle = 0;
+    autoPilotTimer.current = setInterval(() => {
+      // 2. สลับหน้าต่างทุกๆ 8 วินาที
+      windowCycle++;
+      if(windowCycle % 3 === 0) { setIsRadarOpen(true); setIsAnalyzerOpen(false); setIsDiagramOpen(false); }
+      else if(windowCycle % 3 === 1) { setIsRadarOpen(false); setIsAnalyzerOpen(true); setIsDiagramOpen(false); }
+      else { setIsRadarOpen(false); setIsAnalyzerOpen(false); setIsDiagramOpen(true); }
+
+      // 3. Time Travel ถ้ารอนานเกินไป (ข้ามไปก่อน AOS 30 วิ)
+      if (nextPassTimestamp && nextPassTimestamp.time) {
+        const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
+        if (timeToAos > 120000) { // ถ้ารอเกิน 2 นาที วาร์ปเลย!
+          setSimulatedTimeMs(nextPassTimestamp.time - 30000);
+          setCustomAlert({ show: true, message: 'AUTO-PILOT: TIME TRAVEL INITIATED 🚀', type: 'success' });
+        }
+      }
+    }, 8000);
+  } else {
+    if (globeRef.current) globeRef.current.controls().autoRotate = false;
+    if (autoPilotTimer.current) clearInterval(autoPilotTimer.current);
+  }
+  return () => { if (autoPilotTimer.current) clearInterval(autoPilotTimer.current); };
+}, [isAutoPilot, simulatedTimeMs, nextPassTimestamp]);
+
   return (
     <>
       <Globe
@@ -2659,6 +2725,42 @@ useEffect(() => {
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tleSource}</strong></li>
               </ul>
+
+                {/* 📍 WOW Feature 2: DATA DOWNLINK MATRIX */}
+              <div style={{ marginTop: '15px', background: 'rgba(0, 10, 20, 0.8)', border: '1px solid var(--cyan)', borderRadius: '6px', padding: '15px', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontFamily: 'Orbitron', fontSize: '14px', fontWeight: 'bold' }}>
+                  <span style={{ color: 'var(--cyan)' }}>IMAGE DATA DL</span>
+                  {linkActive ? (
+                    <span style={{ color: 'var(--green)', textShadow: '0 0 10px var(--green)' }}>{(450 + Math.random() * 20).toFixed(1)} Mbps</span>
+                  ) : (
+                    <span style={{ color: 'rgba(255,255,255,0.4)' }}>0.0 Mbps</span>
+                  )}
+                </div>
+                
+                {/* Progress Bar คำนวณจาก AOS ถึง LOS */}
+                <div style={{ width: '100%', height: '12px', background: 'rgba(255,255,255,0.1)', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(0, 234, 255, 0.3)' }}>
+                  {(() => {
+                    let dlProgress = 0;
+                    if (linkActive) {
+                      const activePass = passSchedule.find(p => simulatedTimeMs >= p.aosTime && simulatedTimeMs <= p.losTime);
+                      if (activePass) dlProgress = ((simulatedTimeMs - activePass.aosTime) / activePass.durationMs) * 100;
+                    }
+                    return <div style={{ width: `${Math.max(0, Math.min(100, dlProgress))}%`, height: '100%', background: 'linear-gradient(90deg, var(--cyan), var(--green))', boxShadow: '0 0 15px var(--cyan)', transition: 'width 0.2s linear' }}></div>;
+                  })()}
+                </div>
+
+                {/* Matrix Rain Effect (ทำงานเฉพาะตอนลิงก์ติด) */}
+                {linkActive && (
+                  <div style={{ position: 'absolute', right: '5px', top: '0', height: '100%', width: '40px', overflow: 'hidden', opacity: 0.8, pointerEvents: 'none' }}>
+                    {[1, 2, 3, 4].map(i => (
+                      <div key={i} className="matrix-column" style={{ position: 'absolute', left: `${i * 10}px`, animationDuration: `${0.8 + Math.random()}s`, animationDelay: `${Math.random()}s` }}>
+                        0<br/>1<br/>1<br/>0<br/>1<br/>0<br/>0<br/>1
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* 📍 ฟันธง: ปุ่มเรียก SIGNAL ANALYZER IQ เมนูด้านซ้าย */}
               <button 
                 className={`btn ${linkActive ? 'btn-green' : 'btn-red'} ${isAnalyzerOpen ? 'active' : ''}`}
@@ -2689,6 +2791,14 @@ useEffect(() => {
         <div className="control-group">
               <p>TIME & PLAYBACK</p>
               
+                {/* 📍 WOW Feature 3: ปุ่ม AUTO-PILOT (Kiosk Mode) */}
+                <button 
+                onClick={() => setIsAutoPilot(!isAutoPilot)}
+                style={{ width: '100%', marginBottom: '12px', padding: '10px', fontSize: '18px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.3s', background: isAutoPilot ? 'linear-gradient(90deg, #ff00ff, #00eaff)' : 'rgba(255, 0, 255, 0.1)', color: isAutoPilot ? '#fff' : '#ff00ff', border: '2px solid #ff00ff', boxShadow: isAutoPilot ? '0 0 20px #ff00ff' : 'inset 0 0 10px rgba(255,0,255,0.2)' }}
+              >
+                {isAutoPilot ? '🤖 AUTO-PILOT: ACTIVE' : '🤖 AUTO-PILOT: OFF'}
+              </button>
+
              {/* แถว 1: ปุ่มเครื่องเล่นเทป (Media Controls) เอาข้อความออก ขยายไอคอน */}
              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                 <button className="btn media-btn" onMouseDown={() => handleSeekDown(-30000)} onMouseUp={() => handleSeekUp(-30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(-30000)} onTouchEnd={() => handleSeekUp(-30000)}>
@@ -2981,6 +3091,15 @@ useEffect(() => {
                 >
                 POINTING ANGLES
                 </button>
+                  {/* 📍 WOW Feature 1: ปุ่มเปิด Block Diagram */}
+                <button 
+                  className={`btn btn-cyan ${isDiagramOpen ? 'active' : ''}`} 
+                  onClick={() => { setIsDiagramOpen(!isDiagramOpen); if (!isDiagramOpen) bringToFront('diagram'); }}
+                  style={{ width: '100%', marginTop: '8px', padding: '14px', fontSize: '15px', letterSpacing: '2px', fontWeight: '900' }}
+                >
+                  SIGNAL FLOW DIAGRAM
+                </button>
+
               </div>
            </div>
 
@@ -4114,6 +4233,379 @@ useEffect(() => {
           </div>
         </div>
       )}     
+
+    {/* 📍 WOW Feature 1: SIGNAL FLOW DIAGRAM (PART 1: FRAME & HEADER) */}
+    {isDiagramOpen && (
+        <div className="modal-box diagram-modal" onMouseDownCapture={() => bringToFront('diagram')} style={{
+          position: 'fixed', 
+          top: maximizedWins?.diagram ? '0px' : `${diagramPos.y}px`, 
+          left: maximizedWins?.diagram ? '0px' : `${diagramPos.x}px`,
+          width: maximizedWins?.diagram ? '100vw' : '1200px', 
+          height: maximizedWins?.diagram ? '100vh' : '750px', 
+          minWidth: '950px', minHeight: '600px',
+          resize: maximizedWins?.diagram ? 'none' : 'both', 
+          overflow: 'hidden',
+          background: 'linear-gradient(180deg, #020617 0%, #0a0f24 100%)', 
+          border: maximizedWins?.diagram ? 'none' : `2px solid ${linkActive ? 'var(--green)' : 'var(--cyan)'}`, 
+          borderRadius: maximizedWins?.diagram ? '0px' : '12px',
+          boxShadow: `0 0 40px ${linkActive ? 'rgba(0,255,102,0.3)' : 'rgba(0,234,255,0.3)'}`,
+          display: 'flex', flexDirection: 'column', 
+          zIndex: windowZ?.diagram || 10003, backdropFilter: 'blur(15px)',
+          transition: isDraggingDiagram ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+          containerType: 'size'
+        }}>
+          
+          {/* HEADER */}
+          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(12px, 1.5cqmin) max(20px, 2.5cqmin)', borderBottom: `2px solid ${linkActive ? 'var(--green)' : 'rgba(0, 234, 255, 0.4)'}`, background: 'rgba(0, 234, 255, 0.05)', cursor: maximizedWins?.diagram ? 'default' : (isDraggingDiagram ? 'grabbing' : 'grab') }} onMouseDown={(e) => { if(!maximizedWins?.diagram) handleDiagramMouseDown(e); }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'max(10px, 1cqmin)', color: '#fff', fontFamily: 'Orbitron', fontWeight: '900', fontSize: 'max(16px, 1.8cqmin)', letterSpacing: 'max(2px, 0.2cqmin)', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
+              <span style={{ fontSize: 'max(20px, 2.2cqmin)' }}>⚙️</span> SIGNAL FLOW
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', background: linkActive ? 'rgba(0,255,102,0.1)' : 'rgba(255,51,51,0.1)', border: `1px solid ${linkActive ? 'var(--green)' : 'var(--red)'}`, borderRadius: 'max(20px, 2.5cqmin)', padding: 'max(4px, 0.5cqmin) max(15px, 2cqmin)', boxShadow: `0 0 10px ${linkActive ? 'rgba(0,255,102,0.3)' : 'rgba(255,51,51,0.3)'}` }}>
+                 <div style={{ width: 'max(8px, 1cqmin)', height: 'max(8px, 1cqmin)', borderRadius: '50%', background: linkActive ? 'var(--green)' : 'var(--red)', marginRight: 'max(10px, 1.2cqmin)', animation: linkActive ? 'pulse 1.5s infinite' : 'none', boxShadow: `0 0 8px ${linkActive ? 'var(--green)' : 'var(--red)'}` }}></div>
+                 <span style={{ fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: 'max(13px, 1.4cqmin)', color: linkActive ? 'var(--green)' : 'var(--red)', letterSpacing: 'max(2px, 0.2cqmin)' }}>
+                   {linkActive ? 'ACTIVE: DATA DOWNLINK' : 'STANDBY'}
+                 </span>
+            </div>
+            <div style={{ display: 'flex', gap: 'max(8px, 1cqmin)' }}>
+              <button className="modal-close-btn" style={{ width: 'max(30px, 3.5cqmin)', height: 'max(30px, 3.5cqmin)', background: 'transparent', border: '1px solid var(--cyan)', color: 'var(--cyan)', cursor: 'pointer', borderRadius: 'max(4px, 0.5cqmin)', fontSize: 'max(15px, 1.6cqmin)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('diagram')}>{maximizedWins?.diagram ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: 'max(30px, 3.5cqmin)', height: 'max(30px, 3.5cqmin)', background: 'rgba(255,51,51,0.1)', border: '1px solid var(--red)', color: 'var(--red)', cursor: 'pointer', borderRadius: 'max(4px, 0.5cqmin)', fontSize: 'max(15px, 1.6cqmin)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsDiagramOpen(false)}>✕</button>
+            </div>
+          </div>
+
+          {/* Blueprint Body */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            
+            <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(0, 234, 255, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 234, 255, 0.08) 1px, transparent 1px)', backgroundSize: '40px 40px', transform: 'perspective(500px) rotateX(45deg) scale(2)', transformOrigin: 'bottom', opacity: 0.3, pointerEvents: 'none' }}></div>
+            
+            <style>{`
+              @keyframes dash-fwd { to { stroke-dashoffset: -30; } }
+              @keyframes dash-rev { to { stroke-dashoffset: 30; } }
+              @keyframes sat-wobble { 
+                0% { transform: translateY(0) rotate(0deg); } 
+                25% { transform: translateY(-4px) rotate(-2deg) translateX(-3px); } 
+                50% { transform: translateY(0) rotate(0deg); } 
+                75% { transform: translateY(4px) rotate(2deg) translateX(3px); } 
+                100% { transform: translateY(0) rotate(0deg); } 
+              }
+
+              .p-line { stroke-width: 3; stroke-dasharray: 8 8; stroke-linecap: round; transition: all 0.3s; }
+              .l-tm { stroke: var(--cyan); animation: dash-fwd 0.8s linear infinite; filter: drop-shadow(0 0 5px var(--cyan)); }
+              .l-tc { stroke: var(--gold); animation: dash-fwd 0.6s linear infinite; filter: drop-shadow(0 0 5px var(--gold)); }
+              .l-pl { stroke: var(--green); animation: dash-fwd 0.8s linear infinite; filter: drop-shadow(0 0 5px var(--green)); }
+              
+              .flow-node { 
+                background: linear-gradient(145deg, rgba(0, 15, 25, 0.95), rgba(0, 5, 10, 0.98)); 
+                border: 3px solid rgba(0, 234, 255, 0.5); 
+                border-radius: max(12px, 1.2cqmin); 
+                position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; 
+                transform: translate(-50%, -50%); transition: all 0.3s ease; 
+                box-shadow: 0 0 20px rgba(0,234,255,0.2), inset 0 0 20px rgba(0, 234, 255, 0.15); 
+                z-index: 10; padding: max(15px, 2cqmin); width: max(140px, 17cqmin); aspect-ratio: 4/3; 
+              }
+              .flow-node.active { border-color: var(--green); box-shadow: 0 0 max(40px, 4cqmin) rgba(0, 255, 102, 0.5), inset 0 0 max(30px, 3cqmin) rgba(0, 255, 102, 0.4); }
+              
+              .n-icon { width: max(40px, 5.5cqmin); height: max(40px, 5.5cqmin); margin-bottom: max(10px, 1.2cqmin); filter: drop-shadow(0 0 5px rgba(255,255,255,0.2)); transition: all 0.3s; }
+              .flow-node.active .n-icon { filter: drop-shadow(0 0 15px var(--green)); transform: scale(1.1); }
+              .anim-wobble { animation: sat-wobble 4s ease-in-out infinite; }
+              
+              .n-title { font-size: max(14px, 1.6cqmin); color: #fff; font-family: 'Orbitron', sans-serif; font-weight: 900; letter-spacing: 1px; text-shadow: 0 0 10px rgba(255,255,255,0.6); text-align: center; white-space: nowrap; line-height: 1.2; }
+              .n-sub { font-size: max(10px, 1.1cqmin); color: rgba(255,255,255,0.95); font-family: 'Rajdhani', sans-serif; font-weight: 900; letter-spacing: 1px; text-align: center; margin-top: max(4px, 0.5cqmin); white-space: nowrap; text-shadow: 0 0 6px rgba(0,0,0,0.8); }
+              
+              .conn-dot { position: absolute; width: max(6px, 0.8cqmin); height: max(6px, 0.8cqmin); background: var(--green); border-radius: 50%; box-shadow: 0 0 10px var(--green); z-index: 15; transform: translate(-50%, -50%); }
+
+              .f-label { 
+                position: absolute; background: rgba(0, 10, 20, 0.85); border: 2px solid; border-radius: max(4px, 0.5cqmin); 
+                padding: max(4px, 0.5cqmin) max(10px, 1.2cqmin); font-family: 'Orbitron', sans-serif; font-weight: bold; 
+                font-size: max(11px, 1.2cqmin); transform: translate(-50%, -50%); z-index: 5; text-align: center; white-space: nowrap; 
+              }
+
+              .bot-panel {
+                position: absolute; background: rgba(0, 10, 20, 0.85); 
+                border-radius: max(8px, 1cqmin); padding: max(15px, 1.5cqmin); backdrop-filter: blur(5px);
+                box-shadow: 0 0 20px rgba(0,0,0,0.5); height: fit-content;
+              }
+            `}</style>
+
+{(() => {
+              let satSpecs = {
+                tcFreq: '--- MHz', tcRange: '---', tcRate: '---',
+                tmFreq: '--- MHz', tmRange: '---', tmRate: '---',
+                xBandFreq: '--- MHz', xBandRange: '---', xBandRate: '---'
+              };
+              if (selectedCatnr === '33396') {
+                satSpecs = {
+                  tcFreq: '2036.00 MHz', tcRange: '2036.00 MHz (Fixed)', tcRate: '4 kbps',
+                  tmFreq: '2211.00 MHz', tmRange: '2211.00 MHz (Fixed)', tmRate: '400 kSps',
+                  xBandFreq: '8140.00 MHz', xBandRange: '8080 - 8200 MHz', xBandRate: 'BW: 120 MHz (60 MSps)'
+                };
+              } else if (selectedCatnr === '58016') {
+                satSpecs = {
+                  tcFreq: '2066.56 MHz', tcRange: '2025 - 2120 MHz', tcRate: '32 kbps',
+                  tmFreq: '2244.228 MHz', tmRange: '2200 - 2300 MHz', tmRate: '117,647 Sps',
+                  xBandFreq: '8150.00 MHz', xBandRange: '7995 - 8305 MHz', xBandRate: 'BW: 310 MHz (155 MSps)'
+                };
+              }
+
+              return (
+                <>
+                 {/* 📍 สลับเส้นสัญญาณ (TC กลาง, Payload ขวา) และเพิ่มลูกกลม Data Packets แบบหน้าจอ Radar */}
+                 <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
+                    
+                    {/* TM (สีฟ้า): Sat -> SRC -> UP/DOWN -> TT&C */}
+                    <line x1="50%" y1="20%" x2="50%" y2="55%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateX(-2.5cqmin)' }} />
+                    <line x1="50%" y1="55%" x2="15%" y2="55%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateY(-2.5cqmin)' }} />
+                    <line x1="15%" y1="55%" x2="15%" y2="85%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateX(-2.5cqmin)' }} />
+                    
+                    {/* TC (สีทอง): TT&C -> UP/DOWN -> SRC -> Sat (ย้ายมาตรงกลาง) */}
+                    <line x1="15%" y1="85%" x2="15%" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateX(2.5cqmin)' }} />
+                    <line x1="15%" y1="55%" x2="50%" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateY(2.5cqmin)' }} />
+                    <line x1="50%" y1="55%" x2="50%" y2="20%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} />
+
+                    {/* Payload (สีเขียว): Sat -> SRC -> X-Band -> Baseband (ย้ายไปขวาสุด) */}
+                    <line x1="50%" y1="20%" x2="50%" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} style={{ transform: 'translateX(2.5cqmin)' }} />
+                    <line x1="50%" y1="55%" x2="85%" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} style={{ transform: 'translateY(-2.5cqmin)' }} />
+                    <line x1="85%" y1="55%" x2="85%" y2="85%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
+                    
+                    {/* ☄️ DATA PACKETS (ลูกกลม Radar เรืองแสงวิ่งตามเส้น) */}
+                    {linkActive && (
+                      <g style={{ filter: 'drop-shadow(0 0 6px rgba(255,255,255,0.9))' }}>
+                        {/* TM Packets (ฟ้า - วิ่งลง/ซ้าย) */}
+                        <circle r="max(4px, 0.4cqmin)" fill="#fff" style={{ transform: 'translateX(-2.5cqmin)' }}>
+                          <animate attributeName="cx" from="50%" to="50%" dur="1.2s" repeatCount="indefinite" />
+                          <animate attributeName="cy" from="20%" to="55%" dur="1.2s" repeatCount="indefinite" />
+                        </circle>
+                        <circle r="max(4px, 0.4cqmin)" fill="#fff" style={{ transform: 'translateY(-2.5cqmin)' }}>
+                          <animate attributeName="cx" from="50%" to="15%" dur="1.2s" repeatCount="indefinite" />
+                          <animate attributeName="cy" from="55%" to="55%" dur="1.2s" repeatCount="indefinite" />
+                        </circle>
+                        <circle r="max(4px, 0.4cqmin)" fill="#fff" style={{ transform: 'translateX(-2.5cqmin)' }}>
+                          <animate attributeName="cx" from="15%" to="15%" dur="0.8s" repeatCount="indefinite" />
+                          <animate attributeName="cy" from="55%" to="85%" dur="0.8s" repeatCount="indefinite" />
+                        </circle>
+
+                        {/* TC Packets (ทอง - วิ่งขึ้น/ขวา) */}
+                        <circle r="max(4px, 0.4cqmin)" fill="#fff" style={{ transform: 'translateX(2.5cqmin)' }}>
+                          <animate attributeName="cx" from="15%" to="15%" dur="0.8s" repeatCount="indefinite" />
+                          <animate attributeName="cy" from="85%" to="55%" dur="0.8s" repeatCount="indefinite" />
+                        </circle>
+                        <circle r="max(4px, 0.4cqmin)" fill="#fff" style={{ transform: 'translateY(2.5cqmin)' }}>
+                          <animate attributeName="cx" from="15%" to="50%" dur="1.2s" repeatCount="indefinite" />
+                          <animate attributeName="cy" from="55%" to="55%" dur="1.2s" repeatCount="indefinite" />
+                        </circle>
+                        <circle r="max(4px, 0.4cqmin)" fill="#fff">
+                          <animate attributeName="cx" from="50%" to="50%" dur="1.2s" repeatCount="indefinite" />
+                          <animate attributeName="cy" from="55%" to="20%" dur="1.2s" repeatCount="indefinite" />
+                        </circle>
+
+                        {/* Payload Packets (เขียว - วิ่งลง/ขวา) */}
+                        <circle r="max(4px, 0.4cqmin)" fill="#fff" style={{ transform: 'translateX(2.5cqmin)' }}>
+                          <animate attributeName="cx" from="50%" to="50%" dur="1s" repeatCount="indefinite" />
+                          <animate attributeName="cy" from="20%" to="55%" dur="1s" repeatCount="indefinite" />
+                        </circle>
+                        <circle r="max(4px, 0.4cqmin)" fill="#fff" style={{ transform: 'translateY(-2.5cqmin)' }}>
+                          <animate attributeName="cx" from="50%" to="85%" dur="1.2s" repeatCount="indefinite" />
+                          <animate attributeName="cy" from="55%" to="55%" dur="1.2s" repeatCount="indefinite" />
+                        </circle>
+                        <circle r="max(4px, 0.4cqmin)" fill="#fff">
+                          <animate attributeName="cx" from="85%" to="85%" dur="0.8s" repeatCount="indefinite" />
+                          <animate attributeName="cy" from="55%" to="85%" dur="0.8s" repeatCount="indefinite" />
+                        </circle>
+                      </g>
+                    )}
+                  </svg>
+
+                  {linkActive && (
+                    <>
+                      {/* TM Freq */}
+                      <div className="f-label" style={{ left: '32%', top: 'calc(55% - 2.5cqmin)', borderColor: 'var(--cyan)', color: 'var(--cyan)', boxShadow: '0 0 10px rgba(0,234,255,0.3)', transform: 'translate(-50%, calc(-100% - max(6px, 0.6cqmin)))' }}>
+                        {satSpecs.tmFreq}<br/><span style={{fontSize:'0.75em', color:'#fff'}}>S-BAND TM (DOWN)</span>
+                      </div>
+                      
+                      {/* Payload Freq (ขยับชิดเส้นสีเขียว) */}
+                      <div className="f-label" style={{ left: 'calc(50% + 2.5cqmin)', top: '37.5%', borderColor: 'var(--green)', color: 'var(--green)', boxShadow: '0 0 10px rgba(0,255,102,0.3)', transform: 'translate(max(15px, 1.5cqmin), -50%)' }}>
+                        {satSpecs.xBandFreq}<br/><span style={{fontSize:'0.75em', color:'#fff'}}>PAYLOAD (DOWN)</span>
+                      </div>
+                      
+                      {/* TC Freq */}
+                      <div className="f-label" style={{ left: '32%', top: 'calc(55% + 2.5cqmin)', borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.3)', transform: 'translate(-50%, max(10px, 1cqmin))' }}>
+                        {satSpecs.tcFreq}<br/><span style={{fontSize:'0.75em', color:'#fff'}}>S-BAND TC (UP)</span>
+                      </div>
+                      
+                      {/* RF Signal */}
+                      <div className="f-label" style={{ left: '70%', top: '55%', borderColor: 'var(--green)', color: 'var(--green)', transform: 'translate(-50%, calc(-100% - max(8px, 0.8cqmin)))' }}>RF SIGNAL</div>
+                      
+                      {/* 720 MHz IF */}
+                      <div className="f-label" style={{ left: '85%', top: '70%', borderColor: 'var(--green)', color: 'var(--green)', transform: 'translate(max(15px, 1.5cqmin), -50%)' }}>720 MHz IF</div>
+                      
+                      {/* IF 70MHz (ดันออกขวาหนีเส้นสีเหลือง) */}
+                      <div className="f-label" style={{ left: 'calc(15% + 2.5cqmin)', top: '70%', borderColor: '#ffffff', color: '#ffffff', boxShadow: '0 0 10px rgba(255,255,255,0.3)', transform: 'translate(max(15px, 1.5cqmin), -50%)' }}>IF 70MHz</div>
+                    </>
+                  )}
+
+                  {/* 1. SATELLITE NODE */}
+                  <div className={`flow-node node-sat ${linkActive ? 'active' : ''}`} style={{ left: '50%', top: '20%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'max(8px, 1cqmin)', marginBottom: 'max(8px, 1cqmin)' }}>
+                      {targetConfig.flag && <img src={`https://flagcdn.com/w40/${targetConfig.flag.toLowerCase()}.png`} style={{ width: 'max(20px, 2.5cqmin)', borderRadius: '2px' }} alt="flag" />}
+                      <img src="https://api.iconify.design/mdi:satellite-variant.svg?color=%2300eaff" className={`n-icon ${linkActive ? 'anim-wobble' : ''}`} alt="Sat" style={{ marginBottom: 0 }} />
+                    </div>
+                    <div className="n-title" style={{ color: linkActive ? 'var(--cyan)' : '#fff' }}>{targetConfig.displayName}</div>
+                    <div className="n-sub">SPACE SEGMENT</div>
+                    {linkActive && <>
+                      {/* TM ซ้าย, TC กลาง, PL ขวา */}
+                      <div className="conn-dot" style={{ top: '100%', left: 'calc(50% - 2.5cqmin)', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                      <div className="conn-dot" style={{ top: '100%', left: '50%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                      <div className="conn-dot" style={{ top: '100%', left: 'calc(50% + 2.5cqmin)', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+                    </>}
+                  </div>
+
+                  {/* 2. SRC (ANTENNA SYSTEM) NODE */}
+                  <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '50%', top: '55%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3' }}>
+                    <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%23ffffff" className="n-icon" alt="Antenna" />
+                    <div className="n-title">{GROUND_STATION.id}</div>
+                    <div className="n-sub">ANTENNA SYSTEM</div>
+                    {linkActive && <>
+                      {/* รับจาก Sat (บน): TM ซ้าย, TC กลาง, PL ขวา */}
+                      <div className="conn-dot" style={{ top: '0%', left: 'calc(50% - 2.5cqmin)', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                      <div className="conn-dot" style={{ top: '0%', left: '50%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                      <div className="conn-dot" style={{ top: '0%', left: 'calc(50% + 2.5cqmin)', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+                      
+                      {/* ส่งไป UP/DOWN (ซ้าย): TM บน, TC ล่าง */}
+                      <div className="conn-dot" style={{ top: 'calc(50% - 2.5cqmin)', left: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                      <div className="conn-dot" style={{ top: 'calc(50% + 2.5cqmin)', left: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                      
+                      {/* ส่งไป X-BAND (ขวา): PL ตรงกลาง */}
+                      <div className="conn-dot" style={{ top: '50%', left: '100%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+                    </>}
+                  </div>
+
+                  {/* 3. S-BAND UP/DOWN CONVERTER NODE */}
+                  <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '15%', top: '55%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3' }}>
+                    <img src="https://api.iconify.design/mdi:swap-vertical-bold.svg?color=%23ffffff" className="n-icon" alt="Converter" />
+                    <div className="n-title">UP/DOWN</div>
+                    <div className="n-sub">S-BAND CONVERTER</div>
+                    {linkActive && <>
+                      {/* จุดต่อกับ SRC (ขวา): TM บน, TC ล่าง */}
+                      <div className="conn-dot" style={{ top: 'calc(50% - 2.5cqmin)', left: '100%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                      <div className="conn-dot" style={{ top: 'calc(50% + 2.5cqmin)', left: '100%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                      
+                      {/* จุดต่อกับ TT&C (ล่าง): TM ซ้าย, TC ขวา */}
+                      <div className="conn-dot" style={{ left: 'calc(50% - 2.5cqmin)', top: '100%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                      <div className="conn-dot" style={{ left: 'calc(50% + 2.5cqmin)', top: '100%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                    </>}
+                  </div>
+
+                  {/* 3.5. TT&C NODE */}
+                  <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '15%', top: '85%', borderColor: linkActive ? 'var(--gold)' : '', zIndex: 20, width: '17cqmin', aspectRatio: '4/3' }}>
+                    <img src="https://api.iconify.design/mdi:router-wireless.svg?color=%23ffcc00" className="n-icon" alt="TTC" />
+                    <div className="n-title" style={{ color: 'var(--gold)' }}>TT&C</div>
+                    <div className="n-sub">BASEBAND SYSTEM</div>
+                    {linkActive && <>
+                      {/* จุดต่อกับ UP/DOWN (บน): TM ซ้าย, TC ขวา */}
+                      <div className="conn-dot" style={{ left: 'calc(50% - 2.5cqmin)', top: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                      <div className="conn-dot" style={{ left: 'calc(50% + 2.5cqmin)', top: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                    </>}
+                  </div>
+
+                  {/* 3.5. TT&C NODE (Moved Down to Baseband Level) */}
+                  <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '15%', top: '85%', borderColor: linkActive ? 'var(--gold)' : '', zIndex: 20, width: '17cqmin', aspectRatio: '4/3' }}>
+                    <img src="https://api.iconify.design/mdi:router-wireless.svg?color=%23ffcc00" className="n-icon" alt="TTC" />
+                    <div className="n-title" style={{ color: 'var(--gold)' }}>TT&C</div>
+                    <div className="n-sub">BASEBAND SYSTEM</div>
+                    {linkActive && <>
+                      <div className="conn-dot" style={{ left: 'calc(50% - 2.5cqmin)', top: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                      <div className="conn-dot" style={{ left: 'calc(50% + 2.5cqmin)', top: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                    </>}
+                  </div>
+
+                  {/* 4. X-BAND NODE */}
+                  <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '85%', top: '55%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3' }}>
+                    <img src="https://api.iconify.design/mdi:radio-tower.svg?color=%2300eaff" className="n-icon" alt="Tuner" />
+                    <div className="n-title">X-BAND</div>
+                    <div className="n-sub">DOWNCONVERTER</div>
+                    {linkActive && <>
+                      <div className="conn-dot" style={{ top: '50%', left: '0%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+                      <div className="conn-dot" style={{ top: '100%', left: '50%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+                    </>}
+                  </div>
+
+                  {/* 5. BASEBAND NODE */}
+                  <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '85%', top: '85%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3' }}>
+                    <img src="https://api.iconify.design/mdi:server-network.svg?color=%2300ff66" className="n-icon" alt="Baseband" />
+                    <div className="n-title">BASEBAND</div>
+                    <div className="n-sub">DEMODULATOR</div>
+                    {linkActive && <div className="conn-dot" style={{ top: '0%', left: '50%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>}
+                  </div>
+
+                 {/* --- 4. PANELS (LINK STATUS & SPECIFICATIONS) --- */}
+                  {/* มุมซ้ายบน: LINK STATUS */}
+                  <div className="bot-panel" style={{ 
+                    top: 'max(20px, 2cqmin)', left: 'max(20px, 2cqmin)', width: 'max(220px, 25cqmin)', 
+                    border: '2px solid var(--cyan)', boxShadow: '0 0 max(15px, 1.5cqmin) rgba(0, 234, 255, 0.3), inset 0 0 max(10px, 1cqmin) rgba(0, 234, 255, 0.1)'
+                  }}>
+                    <div style={{ color: 'var(--cyan)', fontSize: 'max(14px, 1.4cqmin)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(0,234,255,0.2)', paddingBottom: 'max(6px, 0.6cqmin)', marginBottom: 'max(10px, 1cqmin)', fontWeight: '900', letterSpacing: '1px' }}>LINK STATUS</div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'max(8px, 0.8cqmin)', fontSize: 'max(12px, 1.2cqmin)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
+                      <span style={{ display: 'flex', alignItems: 'center' }}><div style={{ width: 'max(8px, 0.8cqmin)', height: 'max(8px, 0.8cqmin)', borderRadius: '50%', background: 'var(--cyan)', marginRight: 'max(8px, 0.8cqmin)' }}></div> S-BAND (TM)</span>
+                      <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.3)' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'max(8px, 0.8cqmin)', fontSize: 'max(12px, 1.2cqmin)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
+                      <span style={{ display: 'flex', alignItems: 'center' }}><div style={{ width: 'max(8px, 0.8cqmin)', height: 'max(8px, 0.8cqmin)', borderRadius: '50%', background: 'var(--gold)', marginRight: 'max(8px, 0.8cqmin)' }}></div> TC UPLINK</span>
+                      <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.3)' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'max(12px, 1.2cqmin)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
+                      <span style={{ display: 'flex', alignItems: 'center' }}><div style={{ width: 'max(8px, 0.8cqmin)', height: 'max(8px, 0.8cqmin)', borderRadius: '50%', background: 'var(--green)', marginRight: 'max(8px, 0.8cqmin)' }}></div> PAYLOAD</span>
+                      <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.3)' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
+                    </div>
+                  </div>
+
+                  {/* มุมขวาบน: TECHNICAL SPECIFICATIONS สีส้มเรืองแสง */}
+                  <div className="bot-panel" style={{ 
+                    top: 'max(20px, 2cqmin)', right: 'max(20px, 2cqmin)', left: 'auto', width: 'max(450px, 45cqmin)', 
+                    display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', 
+                    boxShadow: '0 0 max(20px, 2cqmin) rgba(255,69,0,0.4), inset 0 0 max(15px, 1.5cqmin) rgba(255,69,0,0.15)', background: 'rgba(15, 5, 0, 0.95)' 
+                  }}>
+                    <div style={{ color: '#FF4500', fontSize: 'max(14px, 1.4cqmin)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.3)', paddingBottom: 'max(6px, 0.6cqmin)', marginBottom: 'max(10px, 1cqmin)', fontWeight: '900', letterSpacing: '1px', textShadow: '0 0 10px #FF4500' }}>
+                      TECHNICAL SPECIFICATIONS
+                    </div>
+                    
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', textAlign: 'center' }}>
+                      <thead>
+                        <tr style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'max(11px, 1.1cqmin)', borderBottom: '1px dashed rgba(255,255,255,0.2)' }}>
+                          <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>LINK TYPE</th>
+                          <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>CENTER FREQ</th>
+                          <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>OPERATIONAL RANGE</th>
+                          <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>DATA RATE / BW</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: 'max(12px, 1.2cqmin)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>TC (UP)</td>
+                          <td style={{ color: '#fff', fontWeight: '900', fontSize: 'max(13px, 1.3cqmin)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>{satSpecs.tcFreq}</td>
+                          <td style={{ color: 'rgba(255,255,255,0.8)', fontWeight: 'bold', fontSize: 'max(12px, 1.2cqmin)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>{satSpecs.tcRange}</td>
+                          <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'max(12px, 1.2cqmin)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>{satSpecs.tcRate}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'max(12px, 1.2cqmin)', padding: 'max(4px, 0.4cqmin) 0' }}>TM (DOWN)</td>
+                          <td style={{ color: '#fff', fontWeight: '900', fontSize: 'max(13px, 1.3cqmin)', padding: 'max(4px, 0.4cqmin) 0' }}>{satSpecs.tmFreq}</td>
+                          <td style={{ color: 'rgba(255,255,255,0.8)', fontWeight: 'bold', fontSize: 'max(12px, 1.2cqmin)', padding: 'max(4px, 0.4cqmin) 0' }}>{satSpecs.tmRange}</td>
+                          <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'max(12px, 1.2cqmin)', padding: 'max(4px, 0.4cqmin) 0' }}>{satSpecs.tmRate}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'max(12px, 1.2cqmin)', padding: 'max(4px, 0.4cqmin) 0 0 0' }}>PAYLOAD</td>
+                          <td style={{ color: '#fff', fontWeight: '900', fontSize: 'max(13px, 1.3cqmin)', padding: 'max(4px, 0.4cqmin) 0 0 0' }}>{satSpecs.xBandFreq}</td>
+                          <td style={{ color: 'rgba(255,255,255,0.8)', fontWeight: 'bold', fontSize: 'max(12px, 1.2cqmin)', padding: 'max(4px, 0.4cqmin) 0 0 0' }}>{satSpecs.xBandRange}</td>
+                          <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'max(12px, 1.2cqmin)', padding: 'max(4px, 0.4cqmin) 0 0 0' }}>{satSpecs.xBandRate}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
+
+          </div>
+        </div>
+      )}
 
       <div className="scanlines"></div>
     </>
