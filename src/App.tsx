@@ -1162,9 +1162,21 @@ useEffect(() => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // 📍 1. สมองกลควบคุมเวลา (ป้องกัน Time Drift ขั้นเด็ดขาด!)
   useEffect(() => {
     if (!isPlaying) return;
-    const timer = setInterval(() => setSimulatedTimeMs(prev => prev + (50 * speedMult)), 50);
+    const timer = setInterval(() => {
+      setSimulatedTimeMs(prev => {
+        if (isNaN(prev)) return Date.now();
+        const now = Date.now();
+        // 🟢 ถ้าโหมด LIVE (1X) และเวลาห่างจากความจริงไม่เกิน 60 วินาที -> ให้ล็อกเวลาติดกับเวลาจริง (OS) เสมอ! ระบบจะไม่มีวันหลุด LIVE
+        if (speedMult === 1 && Math.abs(prev - now) < 60000) {
+          return now;
+        }
+        // 🟠 ถ้าโหมด SIM (50X, 100X) ให้เร่งเวลาจำลอง
+        return prev + (50 * speedMult);
+      });
+    }, 50);
     return () => clearInterval(timer);
   }, [isPlaying, speedMult]);
 
@@ -1358,15 +1370,14 @@ useEffect(() => {
     return null;
   }, [simulatedTimeMs, passSchedule, linkActive]);
 
-// 📍 1. อัปเกรดเป็น useRef แทน State เพื่อความเร็วระดับมิลลิวินาที ป้องกันการยิง API ซ้ำ (Race Condition)
+// 📍 1. สมองกลเก็บประวัติการส่ง ป้องกันการยิง API เบิ้ล
 const notifiedPassesRef = useRef({});
 
-// 📍 2. สมองกลเซนเซอร์จับเวลาล่วงหน้า 10 นาที (Pre-AOS Trigger)
+// 📍 2. เซนเซอร์จับเวลา PRE-PASS (ล่วงหน้า 10 นาที) 
 useEffect(() => {
-  // 📍 ฟันธง 4: ล็อกการแจ้งเตือนตอน SIM แบบเด็ดขาด! (เวลาต้องตรงกันระดับ 5 วินาทีเท่านั้น)
-  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
+  // 🛡️ ขยายเพดานเวลาเป็น 60 วิ ป้องกันอาการ Time Drift ที่ทำให้แจ้งเตือนรัวๆ
+  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
   
-  // ถ้าไม่ใช่ LIVE ให้เตะออกทันที ห้ามแจ้งเตือน!
   if (!isLive || !nextPassTimestamp || !nextPassTimestamp.time) return;
   
   const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
@@ -1379,17 +1390,12 @@ useEffect(() => {
     notifiedPassesRef.current[passId] = true;
 
     const upcomingPass = passSchedule.find(p => p.aosTime === nextPassTimestamp.time);
-    
     if (upcomingPass) {
       const flagUrl = targetConfig.flag ? `https://flagcdn.com/w40/${targetConfig.flag}.png` : 'https://raw.githubusercontent.com/line/line-bot-sdk-nodejs/master/examples/kitchensink/public/logo.png';
       const doyStr = String(getUtcDayOfYear(new Date(upcomingPass.aosTime))).padStart(3, '0');
 
       const payloadData = {
-        isLos: false, 
-        satName: targetConfig.displayName,
-        flagUrl: flagUrl,
-        station: GROUND_STATION.name,
-        doy: doyStr,
+        isLos: false, satName: targetConfig.displayName, flagUrl: flagUrl, station: GROUND_STATION.name, doy: doyStr,
         aosUtc: new Date(upcomingPass.aosTime).toISOString().substring(11, 19) + ' UTC',
         aosLocal: new Date(upcomingPass.aosTime).toLocaleTimeString('en-GB') + ' THA',
         losUtc: new Date(upcomingPass.losTime).toISOString().substring(11, 19) + ' UTC',
@@ -1398,32 +1404,22 @@ useEffect(() => {
         duration: `${Math.floor(upcomingPass.durationMs / 60000)}m ${Math.floor((upcomingPass.durationMs % 60000)/1000)}s`
       };
       
-      const gasUrl = 'https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec';
-      
-      fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-        body: JSON.stringify(payloadData) 
-      })
-      .then(response => console.log(`[LINE] ยิงแจ้งเตือน 10 นาที (AOS) สำเร็จ! ID: ${passId}`))
-      .catch(err => {
-         console.error("LINE Notify Error:", err);
-         notifiedPassesRef.current[passId] = false; 
-      });
+      fetch('https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec', {
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payloadData) 
+      }).then(() => console.log(`[LINE] ยิงแจ้งเตือน 10 นาที (AOS) สำเร็จ! ID: ${passId}`))
+        .catch(err => console.error("LINE Notify Error:", err)); // 📍 ฟันธง: ไม่รีเซ็ตค่าเป็น false ป้องกันการยิงซ้ำเวลากระตุก
     }
   }
 }, [simulatedTimeMs, nextPassTimestamp, selectedCatnr, targetConfig, speedMult, isPlaying, passSchedule]);
 
-// 📍 3. สมองกลเซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)"
+// 📍 3. เซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)" 
 useEffect(() => {
-  // 📍 ฟันธง 4: ล็อกตายโหมด SIM ห้ามรันบรรทัดล่างเด็ดขาด
-  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
-  if (!isLive || passSchedule.length === 0) return;
+  const isLiveStrict = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+  if (!isLiveStrict || passSchedule.length === 0) return;
 
   passSchedule.forEach(pass => {
     const stableLosTime = Math.floor(pass.losTime / 3600000) * 3600000;
     const passIdLos = `LOS-${selectedCatnr}-${stableLosTime}`;
-    
     const timeSinceLos = simulatedTimeMs - pass.losTime;
     
     if (timeSinceLos >= 0 && timeSinceLos <= 15000 && !notifiedPassesRef.current[passIdLos]) {
@@ -1433,11 +1429,7 @@ useEffect(() => {
       const doyStr = String(getUtcDayOfYear(new Date(pass.aosTime))).padStart(3, '0');
 
       const payloadData = {
-        isLos: true, 
-        satName: targetConfig.displayName,
-        flagUrl: flagUrl,
-        station: GROUND_STATION.name,
-        doy: doyStr,
+        isLos: true, satName: targetConfig.displayName, flagUrl: flagUrl, station: GROUND_STATION.name, doy: doyStr,
         aosUtc: new Date(pass.aosTime).toISOString().substring(11, 19) + ' UTC',
         aosLocal: new Date(pass.aosTime).toLocaleTimeString('en-GB') + ' THA',
         losUtc: new Date(pass.losTime).toISOString().substring(11, 19) + ' UTC',
@@ -1446,71 +1438,10 @@ useEffect(() => {
         duration: `${Math.floor(pass.durationMs / 60000)}m ${Math.floor((pass.durationMs % 60000)/1000)}s`
       };
       
-      const gasUrl = 'https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec';
-      
-      fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-        body: JSON.stringify(payloadData)
-      })
-      .then(response => console.log(`[LINE] ยิงแจ้งเตือน LOS (PASS COMPLETE) สำเร็จ! ID: ${passIdLos}`))
-      .catch(err => {
-         console.error("LINE Notify Error:", err);
-         notifiedPassesRef.current[passIdLos] = false;
-      });
-    }
-  });
-}, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying]);
-
-
-// 📍 3. สมองกลเซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)"
-useEffect(() => {
-  // 📍 ฟันธง: เสริมเกราะป้องกัน SIM Mode ให้อีกชั้นที่นี่!
-  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
-  
-  // 📍 ฟันธง: ตัดจบการทำงานทันทีถ้าไม่ได้อยู่โหมด LIVE เพื่อรักษา Token LINE
-  if (passSchedule.length === 0 || !isLive) return;
-
-  passSchedule.forEach(pass => {
-    // 📍 ปัดเศษระดับ "1 ชั่วโมง" ป้องกัน ID แกว่ง
-    const stableLosTime = Math.floor(pass.losTime / 3600000) * 3600000;
-    const passIdLos = `LOS-${selectedCatnr}-${stableLosTime}`;
-    
-    const timeSinceLos = simulatedTimeMs - pass.losTime;
-    
-    if (timeSinceLos >= 0 && timeSinceLos <= 15000 && !notifiedPassesRef.current[passIdLos]) {
-      // 📍 ล็อกประตูทันที!
-      notifiedPassesRef.current[passIdLos] = true; 
-      
-      const flagUrl = targetConfig.flag ? `https://flagcdn.com/w40/${targetConfig.flag}.png` : 'https://raw.githubusercontent.com/line/line-bot-sdk-nodejs/master/examples/kitchensink/public/logo.png';
-      const doyStr = String(getUtcDayOfYear(new Date(pass.aosTime))).padStart(3, '0');
-
-      const payloadData = {
-        isLos: true, 
-        satName: targetConfig.displayName,
-        flagUrl: flagUrl,
-        station: GROUND_STATION.name,
-        doy: doyStr,
-        aosUtc: new Date(pass.aosTime).toISOString().substring(11, 19) + ' UTC',
-        aosLocal: new Date(pass.aosTime).toLocaleTimeString('en-GB') + ' THA',
-        losUtc: new Date(pass.losTime).toISOString().substring(11, 19) + ' UTC',
-        losLocal: new Date(pass.losTime).toLocaleTimeString('en-GB') + ' THA',
-        maxEl: pass.maxEl.toFixed(1),
-        duration: `${Math.floor(pass.durationMs / 60000)}m ${Math.floor((pass.durationMs % 60000)/1000)}s`
-      };
-      
-      const gasUrl = 'https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec';
-      
-      fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-        body: JSON.stringify(payloadData)
-      })
-      .then(response => console.log(`[LINE] ยิงแจ้งเตือน LOS (PASS COMPLETE) สำเร็จ! ID: ${passIdLos}`))
-      .catch(err => {
-         console.error("LINE Notify Error:", err);
-         notifiedPassesRef.current[passIdLos] = false;
-      });
+      fetch('https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec', {
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payloadData)
+      }).then(() => console.log(`[LINE] ยิงแจ้งเตือน LOS (PASS COMPLETE) สำเร็จ! ID: ${passIdLos}`))
+        .catch(err => console.error("LINE Notify Error:", err));
     }
   });
 }, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying]);
@@ -2291,6 +2222,7 @@ useEffect(() => {
       }
     }, 8000);
   } else {
+    // 📍 ฟันธง: ล้างคำสั่งกล้องออกไป ปล่อยให้เคลียร์แค่ระบบหมุนพอ
     if (globeRef.current) globeRef.current.controls().autoRotate = false;
     if (autoPilotTimer.current) clearInterval(autoPilotTimer.current);
   }
@@ -2765,44 +2697,41 @@ useEffect(() => {
               
               {(() => {
                 // 📍 ฟันธง: สมองกลล็อกการจำลองเวลา (SIM Lock)
-                // จะทำงานก็ต่อเมื่อ: อยู่ในโหมด LIVE (เวลาตรงกับความจริง) + กำลังรับสัญญาณจริงอยู่ (linkActive)
-                const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying && linkActive;
+                // จะล็อกก็ต่อเมื่อ "เวลาคือ LIVE + มีสัญญาณดาวเทียมเข้าจริงๆ" (ห้ามกด SIM ข้ามเวลา!)
+                const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
 
                 return (
                   <>
                     {/* 📍 WOW Feature 3: ปุ่ม AUTO-PILOT (Kiosk Mode) */}
                     <button 
-                      onClick={() => setIsAutoPilot(!isAutoPilot)}
+                      onClick={() => {
+                        const nextState = !isAutoPilot;
+                        setIsAutoPilot(nextState);
+                        // 📍 ฟันธง: ย้ายคำสั่งกล้องมาไว้ตรงนี้! จะทำงานแค่ครั้งเดียวตอนกดปิด (OFF)
+                        if (!nextState && globeRef.current) {
+                          globeRef.current.controls().autoRotate = false;
+                          globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
+                        }
+                      }}
                       disabled={isRealtimePassLock}
                       style={{ width: '100%', marginBottom: '12px', padding: '10px', fontSize: '18px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', borderRadius: '6px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', transition: 'all 0.3s', background: isAutoPilot ? 'linear-gradient(90deg, #ff00ff, #00eaff)' : 'rgba(255, 0, 255, 0.1)', color: isAutoPilot ? '#fff' : '#ff00ff', border: '2px solid #ff00ff', boxShadow: isAutoPilot ? '0 0 20px #ff00ff' : 'inset 0 0 10px rgba(255,0,255,0.2)', opacity: isRealtimePassLock ? 0.3 : 1 }}
                     >
                       {isAutoPilot ? '🤖 AUTO-PILOT: ACTIVE' : '🤖 AUTO-PILOT: OFF'}
                     </button>
 
-                    {/* แถว 1: ปุ่มเครื่องเล่นเทป (Media Controls) */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                      <button disabled={isRealtimePassLock} className="btn media-btn" onMouseDown={() => handleSeekDown(-30000)} onMouseUp={() => handleSeekUp(-30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(-30000)} onTouchEnd={() => handleSeekUp(-30000)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}>
-                        <span className="icon">⏪</span>
-                      </button>
-                      <button disabled={isRealtimePassLock} className={`btn media-btn btn-pause ${!isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(false)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}>
-                        <span className="icon">⏸</span>
-                      </button>
-                      <button disabled={isRealtimePassLock} className={`btn media-btn ${isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(true)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}>
-                        <span className="icon">▶</span>
-                      </button>
-                      <button disabled={isRealtimePassLock} className="btn media-btn" onMouseDown={() => handleSeekDown(30000)} onMouseUp={() => handleSeekUp(30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(30000)} onTouchEnd={() => handleSeekUp(30000)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}>
-                        <span className="icon">⏩</span>
-                      </button>
+                      <button disabled={isRealtimePassLock} className="btn media-btn" onMouseDown={() => handleSeekDown(-30000)} onMouseUp={() => handleSeekUp(-30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(-30000)} onTouchEnd={() => handleSeekUp(-30000)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}><span className="icon">⏪</span></button>
+                      <button disabled={isRealtimePassLock} className={`btn media-btn btn-pause ${!isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(false)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}><span className="icon">⏸</span></button>
+                      <button disabled={isRealtimePassLock} className={`btn media-btn ${isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(true)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}><span className="icon">▶</span></button>
+                      <button disabled={isRealtimePassLock} className="btn media-btn" onMouseDown={() => handleSeekDown(30000)} onMouseUp={() => handleSeekUp(30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(30000)} onTouchEnd={() => handleSeekUp(30000)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}><span className="icon">⏩</span></button>
                     </div>
 
-                    {/* 📍 แถว 2: ความเร็ว (อัปเดตปุ่มใหม่ ครอบคลุมตั้งแต่งานละเอียด 1X ยันข้ามวัน 900X) */}
                     <div className="speed-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '4px' }}>
-                      {[1, 20, 50, 100, 500, 900].map(s => (
+                      {[1, 20, 50, 100, 500, 1000].map(s => (
                         <button key={s} disabled={isRealtimePassLock} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, fontSize: '12px', padding: '10px 2px', opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer'}} onClick={() => setSpeedMult(s)}>{s}X</button>
                       ))}
                     </div>
 
-                    {/* แถว 3: ป้าย LIVE/SIM คู่กับปุ่ม RESET */}
                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px', height: '48px' }}>
                       {(() => {
                         const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
@@ -2813,47 +2742,19 @@ useEffect(() => {
                         );
                       })()}
                       <button className="btn" style={{ flex: '1', margin: 0, padding: '0', fontSize: '15px', letterSpacing: '2px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => {
-                        setSimulatedTimeMs(Date.now());
-                        setSpeedMult(1);
-                        setIsPlaying(true);
-                        isTrackingRef.current = false;
-                        setCameraMode('FREE LOOK');
-                        setSelectedPlanId(null); 
-                        setMapZoom(1); 
-                        setImgMapOrigin('center center'); 
-                        setTacticalZoom(1); 
-                        setZoomOrigin('center center');
+                        setSimulatedTimeMs(Date.now()); setSpeedMult(1); setIsPlaying(true); isTrackingRef.current = false; setCameraMode('FREE LOOK');
+                        setSelectedPlanId(null); setMapZoom(1); setImgMapOrigin('center center'); setTacticalZoom(1); setZoomOrigin('center center');
                         if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
                       }}>RESET TO LIVE</button>
                     </div>
 
-                    {/* 📍 แถว 4: TIME SCRUB BAR */}
                     <div className="time-scrubber-container">
                       <div className="scrubber-labels" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <span style={{ width: '70px', textAlign: 'left', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>
-                          {sliderMode === 'DAILY' ? '00:00 UTC' : 'AOS -5m'}
-                        </span>
-                        
-                        <button 
-                          onClick={() => setSliderMode(sliderMode === 'DAILY' ? 'PASS' : 'DAILY')}
-                          disabled={isRealtimePassLock}
-                          style={{ 
-                            background: sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.1)' : 'rgba(255, 204, 0, 0.15)', 
-                            border: `1px solid ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`, 
-                            color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', 
-                            borderRadius: '4px', padding: '4px 10px', fontSize: '11px',
-                            cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron', fontWeight: 'bold',
-                            letterSpacing: '1px', transition: 'all 0.3s',
-                            boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.2)' : 'rgba(255, 204, 0, 0.3)'}`,
-                            opacity: isRealtimePassLock ? 0.3 : 1
-                          }}
-                        >
+                        <span style={{ width: '70px', textAlign: 'left', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>{sliderMode === 'DAILY' ? '00:00 UTC' : 'AOS -5m'}</span>
+                        <button onClick={() => setSliderMode(sliderMode === 'DAILY' ? 'PASS' : 'DAILY')} disabled={isRealtimePassLock} style={{ background: sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.1)' : 'rgba(255, 204, 0, 0.15)', border: `1px solid ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`, color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', borderRadius: '4px', padding: '4px 10px', fontSize: '11px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '1px', transition: 'all 0.3s', boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.2)' : 'rgba(255, 204, 0, 0.3)'}`, opacity: isRealtimePassLock ? 0.3 : 1 }}>
                           MODE: {sliderMode === 'DAILY' ? '🌍 24H GLOBAL' : '🎯 ACTIVE PASS'} ⟲
                         </button>
-
-                        <span style={{ width: '70px', textAlign: 'right', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>
-                          {sliderMode === 'DAILY' ? '23:59 UTC' : 'LOS +5m'}
-                        </span>
+                        <span style={{ width: '70px', textAlign: 'right', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>{sliderMode === 'DAILY' ? '23:59 UTC' : 'LOS +5m'}</span>
                       </div>
                       
                       {(() => {
@@ -2863,47 +2764,20 @@ useEffect(() => {
 
                         if (sliderMode === 'PASS' && passSchedule.length > 0) {
                           let targetPass = passSchedule.find(p => simulatedTimeMs >= p.aosTime - 300000 && simulatedTimeMs <= p.losTime + 300000);
-                          if (!targetPass) {
-                            targetPass = passSchedule.reduce((prev, curr) => Math.abs(curr.peakTime - simulatedTimeMs) < Math.abs(prev.peakTime - simulatedTimeMs) ? curr : prev);
-                          }
-                          if (targetPass) {
-                            minTime = targetPass.aosTime - 300000; 
-                            maxTime = targetPass.losTime + 300000; 
-                          }
+                          if (!targetPass) targetPass = passSchedule.reduce((prev, curr) => Math.abs(curr.peakTime - simulatedTimeMs) < Math.abs(prev.peakTime - simulatedTimeMs) ? curr : prev);
+                          if (targetPass) { minTime = targetPass.aosTime - 300000; maxTime = targetPass.losTime + 300000; }
                         }
-                        
                         const progressPct = ((simulatedTimeMs - minTime) / (maxTime - minTime)) * 100;
 
                         return (
                           <div style={{ position: 'relative' }}>
-                            <div style={{ 
-                              position: 'absolute', top: '10px', left: 0, height: '8px', 
-                              width: `${Math.max(0, Math.min(100, progressPct))}%`, 
-                              background: isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), 
-                              borderRadius: '4px', pointerEvents: 'none',
-                              boxShadow: `0 0 10px ${isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)')}`
-                            }}></div>
-                            
-                            <input 
-                              type="range" 
-                              min={minTime} 
-                              max={maxTime} 
-                              value={simulatedTimeMs}
-                              disabled={isRealtimePassLock}
-                              className="sci-fi-slider"
-                              style={{ 
-                                '--thumb-color': isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'),
-                                '--thumb-glow': isRealtimePassLock ? 'rgba(255, 51, 51, 0.8)' : (sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.8)' : 'rgba(255, 204, 0, 0.8)'),
-                                opacity: isRealtimePassLock ? 0.5 : 1,
-                                cursor: isRealtimePassLock ? 'not-allowed' : 'grab'
-                              }}
-                              onMouseDown={() => { if(!isRealtimePassLock) setIsPlaying(false); }}
-                              onChange={(e) => { if(!isRealtimePassLock) setSimulatedTimeMs(Number(e.target.value)); }}
-                            />
+                            <div style={{ position: 'absolute', top: '10px', left: 0, height: '8px', width: `${Math.max(0, Math.min(100, progressPct))}%`, background: isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), borderRadius: '4px', pointerEvents: 'none', boxShadow: `0 0 10px ${isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)')}` }}></div>
+                            <input type="range" min={minTime} max={maxTime} value={simulatedTimeMs} disabled={isRealtimePassLock} className="sci-fi-slider"
+                              style={{ '--thumb-color': isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), '--thumb-glow': isRealtimePassLock ? 'rgba(255, 51, 51, 0.8)' : (sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.8)' : 'rgba(255, 204, 0, 0.8)'), opacity: isRealtimePassLock ? 0.5 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'grab' }}
+                              onMouseDown={() => { if(!isRealtimePassLock) setIsPlaying(false); }} onChange={(e) => { if(!isRealtimePassLock) setSimulatedTimeMs(Number(e.target.value)); }} />
                           </div>
                         );
                       })()}
-                      
                       <div style={{ textAlign: 'center', fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginTop: '5px', fontVariantNumeric: 'tabular-nums' }}>
                         CURRENT SIM: <strong style={{ color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', fontSize: '14px', textShadow: `0 0 5px ${sliderMode === 'DAILY' ? 'rgba(0,234,255,0.5)' : 'rgba(255,204,0,0.5)'}` }}>{formatTime(new Date(simulatedTimeMs))} UTC</strong>
                       </div>
@@ -3532,10 +3406,10 @@ useEffect(() => {
                       return (
                         <tr key={idx} 
                           onClick={() => { 
-                            // 📍 ฟันธง: ล็อกการกด SIM ข้ามเวลา หากกำลังอยู่ในโหมดรับสัญญาณจริง!
-                            const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying && linkActive;
+                            // 📍 ฟันธง: แจ้งเตือนด้วย Popup Sci-Fi หากพยายามข้ามเวลาตอน Live
+                            const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
                             if (isRealtimePassLock) {
-                              alert("🔒 REAL-TIME LOCK: ไม่สามารถจำลองเวลาได้ เนื่องจากระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE) อยู่ในขณะนี้!");
+                              setCustomAlert({ show: true, message: "🔒 REAL-TIME LOCK: ปฏิเสธคำสั่ง! ระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE)", type: 'error' });
                               return;
                             }
                             setSimulatedTimeMs(pass.aosTime - 60000); setSpeedMult(20); setIsPlaying(true); bringToFront('radar'); 
@@ -3896,10 +3770,10 @@ useEffect(() => {
                               }}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                // 📍 ฟันธง: ล็อกการกด SIM ข้ามเวลา หากกำลังอยู่ในโหมดรับสัญญาณจริง!
-                                const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying && linkActive;
+                                // 📍 ฟันธง: แจ้งเตือนด้วย Popup Sci-Fi หากพยายามข้ามเวลาตอน Live
+                                const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
                                 if (isRealtimePassLock) {
-                                  alert("🔒 REAL-TIME LOCK: ไม่สามารถจำลองเวลาได้ เนื่องจากระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE) อยู่ในขณะนี้!");
+                                  setCustomAlert({ show: true, message: "🔒 REAL-TIME LOCK: ปฏิเสธคำสั่ง! ระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE)", type: 'error' });
                                   return;
                                 }
                                 setSelectedPlanId(plan.id);
@@ -4270,16 +4144,16 @@ useEffect(() => {
           </div>
         </div>
       )}     
-
-    {/* 📍 WOW Feature 1: SIGNAL FLOW DIAGRAM */}
+{/* 📍 WOW Feature 1: SIGNAL FLOW DIAGRAM */}
 {isDiagramOpen && (
   <div className="modal-box diagram-modal" onMouseDownCapture={() => bringToFront('diagram')} style={{
     position: 'fixed', 
     top: maximizedWins?.diagram ? '0px' : `${diagramPos.y}px`, 
     left: maximizedWins?.diagram ? '0px' : `${diagramPos.x}px`,
-    width: maximizedWins?.diagram ? '100vw' : '1200px', 
-    height: maximizedWins?.diagram ? '100vh' : '750px', 
-    minWidth: '950px', minHeight: '600px',
+    /* 📍 ข้อ 1: ขยายกรอบเริ่มต้นให้ใหญ่ระดับ Ultra-Wide ป้องกันการทับซ้อน 1,000,000% */
+    width: maximizedWins?.diagram ? '100vw' : 'max(1400px, 92vw)', 
+    height: maximizedWins?.diagram ? '100vh' : 'max(850px, 85vh)', 
+    minWidth: '1200px', minHeight: '750px',
     resize: maximizedWins?.diagram ? 'none' : 'both', 
     overflow: 'hidden',
     background: 'linear-gradient(180deg, #020617 0%, #0a0f24 100%)', 
@@ -4324,8 +4198,6 @@ useEffect(() => {
           75% { transform: translateY(4px) rotate(2deg) translateX(3px); } 
           100% { transform: translateY(0) rotate(0deg); } 
         }
-
-        /* 📍 แอนิเมชันแสงผีกระสือ (Krasue Pulse Glow) */
         @keyframes krasue-glow {
           0% { opacity: 0.3; filter: drop-shadow(0 0 2px currentColor); }
           50% { opacity: 1.0; filter: drop-shadow(0 0 15px currentColor) drop-shadow(0 0 5px white) brightness(2.5); }
@@ -4334,7 +4206,6 @@ useEffect(() => {
         .pkt-tm { fill: var(--cyan); color: var(--cyan); animation: krasue-glow 1.2s ease-in-out infinite; }
         .pkt-tc { fill: var(--gold); color: var(--gold); animation: krasue-glow 1.2s ease-in-out infinite 0.4s; }
         .pkt-pl { fill: var(--green); color: var(--green); animation: krasue-glow 1.2s ease-in-out infinite 0.8s; }
-
         .p-line { stroke-width: 3; stroke-dasharray: 8 8; stroke-linecap: round; transition: all 0.3s; }
         .l-tm { stroke: var(--cyan); animation: dash-fwd 0.8s linear infinite; filter: drop-shadow(0 0 5px var(--cyan)); }
         .l-tc { stroke: var(--gold); animation: dash-fwd 0.6s linear infinite; filter: drop-shadow(0 0 5px var(--gold)); }
@@ -4387,146 +4258,148 @@ useEffect(() => {
           xBandFreq: '--- MHz', xBandRange: '---', xBandRate: '---'
         };
         if (selectedCatnr === '33396') {
-          satSpecs = {
-            tcFreq: '2036.00 MHz', tcRange: '2036.00 MHz (Fixed)', tcRate: '4 kbps',
-            tmFreq: '2211.00 MHz', tmRange: '2211.00 MHz (Fixed)', tmRate: '400 kSps',
-            xBandFreq: '8140.00 MHz', xBandRange: '8080 - 8200 MHz', xBandRate: 'BW: 120 MHz (60 MSps)'
-          };
+          satSpecs = { tcFreq: '2036.00 MHz', tcRange: '2036.00 MHz (Fixed)', tcRate: '4 kbps', tmFreq: '2211.00 MHz', tmRange: '2211.00 MHz (Fixed)', tmRate: '400 kSps', xBandFreq: '8140.00 MHz', xBandRange: '8080 - 8200 MHz', xBandRate: 'BW: 120 MHz (60 MSps)' };
         } else if (selectedCatnr === '58016') {
-          satSpecs = {
-            tcFreq: '2066.56 MHz', tcRange: '2025 - 2120 MHz', tcRate: '32 kbps',
-            tmFreq: '2244.228 MHz', tmRange: '2200 - 2300 MHz', tmRate: '117,647 Sps',
-            xBandFreq: '8150.00 MHz', xBandRange: '7995 - 8305 MHz', xBandRate: 'BW: 310 MHz (155 MSps)'
-          };
+          satSpecs = { tcFreq: '2066.56 MHz', tcRange: '2025 - 2120 MHz', tcRate: '32 kbps', tmFreq: '2244.228 MHz', tmRange: '2200 - 2300 MHz', tmRate: '117,647 Sps', xBandFreq: '8150.00 MHz', xBandRange: '7995 - 8305 MHz', xBandRate: 'BW: 310 MHz (155 MSps)' };
         }
 
         return (
           <>
-            {/* 📍 SVG เส้นสัญญาณทั้งหมด */}
-            <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
+           {/* 📍 1. SVG เส้นสัญญาณทั้งหมด (สมการแกนตั้ง 90 องศา สมมาตร 100%) */}
+           <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
               {/* TM (สีฟ้า) */}
-              <line x1="50%" y1="10%" x2="50%" y2="55%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateX(-4.5cqmin)' }} />
-              <line x1="50%" y1="55%" x2="15%" y2="55%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateY(-4.5cqmin)' }} />
-              <line x1="15%" y1="55%" x2="15%" y2="85%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateX(-4.5cqmin)' }} />
+              <line x1="50%" y1="16%" x2="50%" y2="55%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateX(-11cqmin)' }} />
+              <line x1="10%" y1="55%" x2="calc(50% - 9cqmin)" y2="55%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateY(-3cqmin)' }} />
+              <line x1="10%" y1="55%" x2="10%" y2="85%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateX(-3cqmin)' }} />
               
               {/* TC (สีทอง) */}
-              <line x1="15%" y1="85%" x2="15%" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateX(4.5cqmin)' }} />
-              <line x1="15%" y1="55%" x2="50%" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateY(4.5cqmin)' }} />
-              <line x1="50%" y1="55%" x2="50%" y2="10%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} />
+              <line x1="10%" y1="85%" x2="10%" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateX(3cqmin)' }} />
+              <line x1="10%" y1="55%" x2="calc(50% - 9cqmin)" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateY(3cqmin)' }} />
+              <line x1="50%" y1="55%" x2="50%" y2="16%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateX(-7cqmin)' }} />
 
               {/* Payload (สีเขียว) */}
-              <line x1="50%" y1="10%" x2="50%" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} style={{ transform: 'translateX(4.5cqmin)' }} />
-              <line x1="50%" y1="55%" x2="85%" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
-              <line x1="85%" y1="55%" x2="85%" y2="85%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
+              <line x1="50%" y1="16%" x2="50%" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} style={{ transform: 'translateX(9cqmin)' }} />
+              <line x1="calc(50% + 9cqmin)" y1="55%" x2="90%" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
+              <line x1="90%" y1="55%" x2="90%" y2="85%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
               
-              {/* 📍 เส้นเชื่อมไปหน้าจอ Analyzer ขนาดย่อ (สีเขียว วิ่งไปทางซ้าย) */}
-              <line x1="85%" y1="85%" x2="60%" y2="85%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
+              {/* 📍 เส้นเชื่อมไปหน้าจอ Analyzer ขนาดย่อ (ข้อ 3: ขยับแกน X ให้ยาวขึ้น) */}
+              <line x1="10%" y1="85%" x2="35%" y2="85%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} />
+              <line x1="90%" y1="85%" x2="65%" y2="85%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
               
-              {/* ☄️ DATA PACKETS (ลูกกลมผีกระสือ แยกสีอิสระ) */}
+              {/* 📍 สัญลักษณ์ HPA (แก้ไขเลื่อนไปทางซ้าย หลบกรอบความถี่) */}
+              <g style={{ transform: 'translateY(3cqmin)' }}>
+                <svg x="21%" y="55%" style={{ overflow: 'visible' }}>
+                  <polygon points="-30,-20 -30,20 25,0" fill="#020617" stroke="var(--gold)" strokeWidth="3" style={{ filter: linkActive ? 'drop-shadow(0 0 12px var(--gold))' : 'none' }} />
+                  <text x="-5" y="42" fill="var(--gold)" fontSize="max(14px, 1.5cqmin)" fontFamily="Orbitron" fontWeight="bold" textAnchor="middle" style={{ textShadow: '0 0 10px #000' }}>HPA</text>
+                </svg>
+              </g>
+
+              {/* ☄️ DATA PACKETS (ล็อกพิกัดวิ่งบนเส้นสมมาตร) */}
               {linkActive && (
                 <g>
-                  {/* TM Packets (ฟ้า) */}
-                  <g style={{ transform: 'translateX(-4.5cqmin)' }}>
+                  {/* TM Packets */}
+                  <g style={{ transform: 'translateX(-11cqmin)' }}>
                     <circle r="max(4px, 0.4cqmin)" className="pkt-tm">
-                      <animate attributeName="cx" from="50%" to="50%" dur="2s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="10%" to="55%" dur="2s" repeatCount="indefinite" />
+                      <animate attributeName="cx" from="50%" to="50%" dur="2.5s" repeatCount="indefinite" />
+                      <animate attributeName="cy" from="16%" to="55%" dur="2.5s" repeatCount="indefinite" />
                     </circle>
                   </g>
-                  <g style={{ transform: 'translateY(-4.5cqmin)' }}>
+                  <g style={{ transform: 'translateY(-3cqmin)' }}>
                     <circle r="max(4px, 0.4cqmin)" className="pkt-tm">
-                      <animate attributeName="cx" from="50%" to="15%" dur="2s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="55%" dur="2s" repeatCount="indefinite" />
+                      <animate attributeName="cx" from="calc(50% - 9cqmin)" to="10%" dur="2.5s" repeatCount="indefinite" />
+                      <animate attributeName="cy" from="55%" to="55%" dur="2.5s" repeatCount="indefinite" />
                     </circle>
                   </g>
-                  <g style={{ transform: 'translateX(-4.5cqmin)' }}>
+                  <g style={{ transform: 'translateX(-3cqmin)' }}>
                     <circle r="max(4px, 0.4cqmin)" className="pkt-tm">
-                      <animate attributeName="cx" from="15%" to="15%" dur="1.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="85%" dur="1.5s" repeatCount="indefinite" />
-                    </circle>
-                  </g>
-
-                  {/* TC Packets (ทอง) */}
-                  <g style={{ transform: 'translateX(4.5cqmin)' }}>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-tc">
-                      <animate attributeName="cx" from="15%" to="15%" dur="1.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="85%" to="55%" dur="1.5s" repeatCount="indefinite" />
-                    </circle>
-                  </g>
-                  <g style={{ transform: 'translateY(4.5cqmin)' }}>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-tc">
-                      <animate attributeName="cx" from="15%" to="50%" dur="2s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="55%" dur="2s" repeatCount="indefinite" />
+                      <animate attributeName="cx" from="10%" to="10%" dur="2s" repeatCount="indefinite" />
+                      <animate attributeName="cy" from="55%" to="85%" dur="2s" repeatCount="indefinite" />
                     </circle>
                   </g>
                   <g>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-tc">
-                      <animate attributeName="cx" from="50%" to="50%" dur="2s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="10%" dur="2s" repeatCount="indefinite" />
-                    </circle>
-                  </g>
-
-                  {/* Payload Packets (เขียว) */}
-                  <g style={{ transform: 'translateX(4.5cqmin)' }}>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
-                      <animate attributeName="cx" from="50%" to="50%" dur="1.8s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="10%" to="55%" dur="1.8s" repeatCount="indefinite" />
-                    </circle>
-                  </g>
-                  <g>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
-                      <animate attributeName="cx" from="50%" to="85%" dur="2s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="55%" dur="2s" repeatCount="indefinite" />
-                    </circle>
-                  </g>
-                  <g>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
-                      <animate attributeName="cx" from="85%" to="85%" dur="1.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="85%" dur="1.5s" repeatCount="indefinite" />
-                    </circle>
-                  </g>
-                  
-                  {/* 📍 Payload Packet วิ่งเข้าหน้าจอ Analyzer */}
-                  <g>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
-                      <animate attributeName="cx" from="85%" to="60%" dur="1s" repeatCount="indefinite" />
+                    <circle r="max(4px, 0.4cqmin)" className="pkt-tm">
+                      <animate attributeName="cx" from="10%" to="35%" dur="1s" repeatCount="indefinite" />
                       <animate attributeName="cy" from="85%" to="85%" dur="1s" repeatCount="indefinite" />
+                    </circle>
+                  </g>
+
+                  {/* TC Packets */}
+                  <g style={{ transform: 'translateX(3cqmin)' }}>
+                    <circle r="max(4px, 0.4cqmin)" className="pkt-tc">
+                      <animate attributeName="cx" from="10%" to="10%" dur="2s" repeatCount="indefinite" />
+                      <animate attributeName="cy" from="85%" to="55%" dur="2s" repeatCount="indefinite" />
+                    </circle>
+                  </g>
+                  <g style={{ transform: 'translateY(3cqmin)' }}>
+                    <circle r="max(4px, 0.4cqmin)" className="pkt-tc">
+                      <animate attributeName="cx" from="10%" to="calc(50% - 9cqmin)" dur="2.5s" repeatCount="indefinite" />
+                      <animate attributeName="cy" from="55%" to="55%" dur="2.5s" repeatCount="indefinite" />
+                    </circle>
+                  </g>
+                  <g style={{ transform: 'translateX(-7cqmin)' }}>
+                    <circle r="max(4px, 0.4cqmin)" className="pkt-tc">
+                      <animate attributeName="cx" from="50%" to="50%" dur="2.5s" repeatCount="indefinite" />
+                      <animate attributeName="cy" from="55%" to="16%" dur="2.5s" repeatCount="indefinite" />
+                    </circle>
+                  </g>
+
+                  {/* PL Packets */}
+                  <g style={{ transform: 'translateX(9cqmin)' }}>
+                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
+                      <animate attributeName="cx" from="50%" to="50%" dur="2.5s" repeatCount="indefinite" />
+                      <animate attributeName="cy" from="16%" to="55%" dur="2.5s" repeatCount="indefinite" />
+                    </circle>
+                  </g>
+                  <g>
+                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
+                      <animate attributeName="cx" from="calc(50% + 9cqmin)" to="90%" dur="2.5s" repeatCount="indefinite" />
+                      <animate attributeName="cy" from="55%" to="55%" dur="2.5s" repeatCount="indefinite" />
+                    </circle>
+                  </g>
+                  <g>
+                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
+                      <animate attributeName="cx" from="90%" to="90%" dur="2s" repeatCount="indefinite" />
+                      <animate attributeName="cy" from="55%" to="85%" dur="2s" repeatCount="indefinite" />
+                    </circle>
+                  </g>
+                  <g>
+                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
+                      <animate attributeName="cx" from="90%" to="65%" dur="1.5s" repeatCount="indefinite" />
+                      <animate attributeName="cy" from="85%" to="85%" dur="1.5s" repeatCount="indefinite" />
                     </circle>
                   </g>
                 </g>
               )}
             </svg>
 
-            {/* 📍 ป้ายกำกับความถี่ f-label */}
+            {/* 📍 2. ป้ายกำกับความถี่ f-label */}
             {linkActive && (
               <>
-                {/* TM Freq */}
-                <div className="f-label" style={{ left: '32%', top: 'calc(55% - 4.5cqmin)', borderColor: 'var(--cyan)', color: 'var(--cyan)', boxShadow: '0 0 10px rgba(0,234,255,0.4)', transform: 'translate(-50%, calc(-100% - max(8px, 0.8cqmin)))' }}>
+                {/* 📍 ข้อ 2: ขยับป้ายความถี่ TM/TC มาที่ 31% (หนี HPA ที่อยู่ 26%) */}
+                <div className="f-label" style={{ left: '31%', top: 'calc(55% - 4.5cqmin)', borderColor: 'var(--cyan)', color: 'var(--cyan)', boxShadow: '0 0 10px rgba(0,234,255,0.4)', transform: 'translate(-50%, calc(-100% - max(8px, 0.8cqmin)))' }}>
                   {satSpecs.tmFreq}<br/><span style={{fontSize:'0.8em', color:'#fff'}}>S-BAND TM (DOWN)</span>
                 </div>
                 
-                {/* Payload Freq */}
-                <div className="f-label" style={{ left: 'calc(50% + 4.5cqmin)', top: '32.5%', borderColor: 'var(--green)', color: 'var(--green)', boxShadow: '0 0 10px rgba(0,255,102,0.4)', transform: 'translate(max(20px, 2cqmin), -50%)' }}>
+                <div className="f-label" style={{ left: 'calc(50% + 9cqmin)', top: '32.5%', borderColor: 'var(--green)', color: 'var(--green)', boxShadow: '0 0 10px rgba(0,255,102,0.4)', transform: 'translate(max(20px, 2cqmin), -50%)' }}>
                   {satSpecs.xBandFreq}<br/><span style={{fontSize:'0.8em', color:'#fff'}}>PAYLOAD (DOWN)</span>
                 </div>
                 
-                {/* TC Freq */}
-                <div className="f-label" style={{ left: '32%', top: 'calc(55% + 4.5cqmin)', borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.4)', transform: 'translate(-50%, max(15px, 1.5cqmin))' }}>
+                {/* 📍 ข้อ 2: ขยับป้ายความถี่ TM/TC มาที่ 31% */}
+                <div className="f-label" style={{ left: '31%', top: 'calc(55% + 4.5cqmin)', borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.4)', transform: 'translate(-50%, max(15px, 1.5cqmin))' }}>
                   {satSpecs.tcFreq}<br/><span style={{fontSize:'0.8em', color:'#fff'}}>S-BAND TC (UP)</span>
                 </div>
                 
-                {/* RF Signal */}
-                <div className="f-label" style={{ left: '68%', top: '55%', borderColor: 'var(--green)', color: 'var(--green)', transform: 'translate(-50%, calc(-100% - max(12px, 1.2cqmin)))' }}>RF SIGNAL</div>
+                <div className="f-label" style={{ left: '72%', top: '55%', borderColor: 'var(--green)', color: 'var(--green)', transform: 'translate(-50%, calc(-100% - max(12px, 1.2cqmin)))' }}>RF SIGNAL</div>
                 
-                {/* 720 MHz IF */}
-                <div className="f-label" style={{ left: '85%', top: '70%', borderColor: '#00aaff', color: '#00aaff', transform: 'translate(max(20px, 2cqmin), -50%)', boxShadow: '0 0 10px rgba(0,170,255,0.4)' }}>720 MHz IF</div>
+                <div className="f-label" style={{ left: '90%', top: '70%', borderColor: '#00aaff', color: '#00aaff', transform: 'translate(max(20px, 2cqmin), -50%)', boxShadow: '0 0 10px rgba(0,170,255,0.4)' }}>720 MHz IF</div>
                 
-                {/* IF 70MHz */}
-                <div className="f-label" style={{ left: 'calc(15% + 4.5cqmin)', top: '70%', borderColor: '#ffffff', color: '#ffffff', boxShadow: '0 0 15px rgba(255,255,255,0.4)', transform: 'translate(max(20px, 2cqmin), -50%)' }}>IF 70MHz</div>
+                {/* 📍 แก้ไขป้าย IF 70MHz: ผูกสมการให้เกาะติดหลังเส้นสีฟ้า (10% - 3cqmin) จะได้ไม่ทับเส้นเด็ดขาด */}
+                <div className="f-label" style={{ left: 'calc(10% - 3cqmin)', top: '70%', borderColor: '#ffffff', color: '#ffffff', boxShadow: '0 0 15px rgba(255,255,255,0.4)', transform: 'translate(calc(-100% - max(12px, 1.2cqmin)), -50%)' }}>IF 70MHz</div>
               </>
             )}
 
-            {/* 📍 1. SATELLITE NODE (Cyan) */}
-            <div className="flow-node" style={{ left: '50%', top: '10%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--cyan)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,234,255,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,234,255,0.3)' : '' }}>
+            {/* 📍 3. SATELLITE NODE (ข้อ 1: ขยับลงมาที่ top: '16%' เลี่ยงขอบบน) */}
+            <div className="flow-node" style={{ left: '50%', top: '16%', zIndex: 20, width: '32cqmin', minWidth: '320px', aspectRatio: '4/2.5', borderColor: linkActive ? 'var(--cyan)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,234,255,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,234,255,0.3)' : '' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'max(8px, 1cqmin)', marginBottom: 'max(8px, 1cqmin)' }}>
                 {targetConfig.flag && <img src={`https://flagcdn.com/w40/${targetConfig.flag.toLowerCase()}.png`} style={{ width: 'max(24px, 3cqmin)', borderRadius: '2px' }} alt="flag" />}
                 <img src="https://api.iconify.design/mdi:satellite-variant.svg?color=%2300eaff" className={`n-icon ${linkActive ? 'anim-wobble' : ''}`} alt="Sat" style={{ marginBottom: 0 }} />
@@ -4534,55 +4407,53 @@ useEffect(() => {
               <div className="n-title" style={{ color: linkActive ? 'var(--cyan)' : '#fff' }}>{targetConfig.displayName}</div>
               <div className="n-sub">SPACE SEGMENT</div>
               {linkActive && (<>
-                <div className="conn-dot" style={{ top: '100%', left: 'calc(50% - 4.5cqmin)', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-                <div className="conn-dot" style={{ top: '100%', left: '50%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
-                <div className="conn-dot" style={{ top: '100%', left: 'calc(50% + 4.5cqmin)', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+                {/* จุดเชื่อมต่อบนดาวเทียม คำนวณแกนให้ตรงกับเส้นด้านล่าง 100% */}
+                <div className="conn-dot" style={{ top: '100%', left: 'calc(50% - 11cqmin)', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                <div className="conn-dot" style={{ top: '100%', left: 'calc(50% - 7cqmin)', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                <div className="conn-dot" style={{ top: '100%', left: 'calc(50% + 9cqmin)', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
               </>)}
             </div>
 
-            {/* 📍 2. SRC (ANTENNA SYSTEM) NODE (Green) */}
-            <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '50%', top: '55%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3' }}>
-              <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%23ffffff" className="n-icon" alt="Antenna" />
+            {/* 📍 4. SRC S-BAND ANTENNA SYSTEM */}
+            <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: 'calc(50% - 9cqmin)', top: '55%', zIndex: 20, width: '15cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--cyan)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,234,255,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,234,255,0.3)' : '' }}>
+              <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300eaff" className="n-icon" alt="Antenna" />
               <div className="n-title">{GROUND_STATION.id}</div>
-              <div className="n-sub">ANTENNA SYSTEM</div>
+              <div className="n-sub">S-BAND ANTENNA</div>
               {linkActive && (<>
-                <div className="conn-dot" style={{ top: '0%', left: 'calc(50% - 4.5cqmin)', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-                <div className="conn-dot" style={{ top: '0%', left: '50%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
-                <div className="conn-dot" style={{ top: '0%', left: 'calc(50% + 4.5cqmin)', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+                <div className="conn-dot" style={{ top: '0%', left: 'calc(50% - 2cqmin)', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                <div className="conn-dot" style={{ top: '0%', left: 'calc(50% + 2cqmin)', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
                 
-                <div className="conn-dot" style={{ top: 'calc(50% - 4.5cqmin)', left: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-                <div className="conn-dot" style={{ top: 'calc(50% + 4.5cqmin)', left: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
-                
+                <div className="conn-dot" style={{ top: 'calc(50% - 3cqmin)', left: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                <div className="conn-dot" style={{ top: 'calc(50% + 3cqmin)', left: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+              </>)}
+            </div>
+
+            {/* 📍 5. SRC X-BAND ANTENNA SYSTEM */}
+            <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: 'calc(50% + 9cqmin)', top: '55%', zIndex: 20, width: '15cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--green)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,255,102,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,255,102,0.3)' : '' }}>
+              <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300ff66" className="n-icon" alt="Antenna" />
+              <div className="n-title">{GROUND_STATION.id}</div>
+              <div className="n-sub">X-BAND ANTENNA</div>
+              {linkActive && (<>
+                <div className="conn-dot" style={{ top: '0%', left: '50%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
                 <div className="conn-dot" style={{ top: '50%', left: '100%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
               </>)}
             </div>
 
-            {/* 📍 3. S-BAND UP/DOWN CONVERTER NODE (Orange) */}
-            <div className="flow-node" style={{ left: '15%', top: '55%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3', borderColor: linkActive ? '#FF6600' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,102,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,102,0,0.3)' : '' }}>
+            {/* 📍 6. S-BAND UP/DOWN CONVERTER NODE */}
+            <div className="flow-node" style={{ left: '10%', top: '55%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? '#FF6600' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,102,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,102,0,0.3)' : '' }}>
               <img src="https://api.iconify.design/mdi:swap-vertical-bold.svg?color=%23FF6600" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px #FF6600)' : '' }} alt="Converter" />
               <div className="n-title" style={{ color: linkActive ? '#FF6600' : '#fff' }}>UP/DOWN</div>
               <div className="n-sub">S-BAND CONVERTER</div>
               {linkActive && (<>
-                <div className="conn-dot" style={{ top: 'calc(50% - 4.5cqmin)', left: '100%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-                <div className="conn-dot" style={{ top: 'calc(50% + 4.5cqmin)', left: '100%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
-                <div className="conn-dot" style={{ left: 'calc(50% - 4.5cqmin)', top: '100%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-                <div className="conn-dot" style={{ left: 'calc(50% + 4.5cqmin)', top: '100%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                <div className="conn-dot" style={{ top: 'calc(50% - 3cqmin)', left: '100%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                <div className="conn-dot" style={{ top: 'calc(50% + 3cqmin)', left: '100%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                <div className="conn-dot" style={{ left: 'calc(50% - 3cqmin)', top: '100%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                <div className="conn-dot" style={{ left: 'calc(50% + 3cqmin)', top: '100%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
               </>)}
             </div>
 
-            {/* 📍 4. TT&C NODE (Gold) */}
-            <div className="flow-node" style={{ left: '15%', top: '85%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--gold)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,204,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,204,0,0.3)' : '' }}>
-              <img src="https://api.iconify.design/mdi:router-wireless.svg?color=%23ffcc00" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px var(--gold))' : '' }} alt="TTC" />
-              <div className="n-title" style={{ color: linkActive ? 'var(--gold)' : '#fff' }}>TT&C</div>
-              <div className="n-sub">BASEBAND SYSTEM</div>
-              {linkActive && (<>
-                <div className="conn-dot" style={{ left: 'calc(50% - 4.5cqmin)', top: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-                <div className="conn-dot" style={{ left: 'calc(50% + 4.5cqmin)', top: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
-              </>)}
-            </div>
-
-            {/* 📍 5. X-BAND NODE (Blue) */}
-            <div className="flow-node" style={{ left: '85%', top: '55%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3', borderColor: linkActive ? '#00aaff' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,170,255,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,170,255,0.3)' : '' }}>
+            {/* 📍 7. X-BAND DOWNCONVERTER NODE */}
+            <div className="flow-node" style={{ left: '90%', top: '55%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? '#00aaff' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,170,255,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,170,255,0.3)' : '' }}>
               <img src="https://api.iconify.design/mdi:radio-tower.svg?color=%2300aaff" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px #00aaff)' : '' }} alt="Tuner" />
               <div className="n-title" style={{ color: linkActive ? '#00aaff' : '#fff' }}>X-BAND</div>
               <div className="n-sub">DOWNCONVERTER</div>
@@ -4592,8 +4463,20 @@ useEffect(() => {
               </>)}
             </div>
 
-            {/* 📍 6. BASEBAND NODE (Red) */}
-            <div className="flow-node" style={{ left: '85%', top: '85%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--red)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,51,51,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,51,51,0.3)' : '' }}>
+            {/* 📍 8. TT&C BASEBAND SYSTEM NODE */}
+            <div className="flow-node" style={{ left: '10%', top: '85%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--gold)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,204,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,204,0,0.3)' : '' }}>
+              <img src="https://api.iconify.design/mdi:router-wireless.svg?color=%23ffcc00" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px var(--gold))' : '' }} alt="TTC" />
+              <div className="n-title" style={{ color: linkActive ? 'var(--gold)' : '#fff' }}>TT&C</div>
+              <div className="n-sub">BASEBAND SYSTEM</div>
+              {linkActive && (<>
+                <div className="conn-dot" style={{ left: 'calc(50% - 3cqmin)', top: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                <div className="conn-dot" style={{ left: 'calc(50% + 3cqmin)', top: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                <div className="conn-dot" style={{ left: '100%', top: '50%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+              </>)}
+            </div>
+
+            {/* 📍 9. BASEBAND DEMODULATOR NODE */}
+            <div className="flow-node" style={{ left: '90%', top: '85%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--red)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,51,51,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,51,51,0.3)' : '' }}>
               <img src="https://api.iconify.design/mdi:server-network.svg?color=%23ff3333" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px var(--red))' : '' }} alt="Baseband" />
               <div className="n-title" style={{ color: linkActive ? 'var(--red)' : '#fff' }}>BASEBAND</div>
               <div className="n-sub">DEMODULATOR</div>
@@ -4603,44 +4486,38 @@ useEffect(() => {
               </>)}
             </div>
 
-            {/* 📍 7. ANALYZER MINI-HUD NODE */}
+            {/* 📍 10. TT&C MINI-HUD NODE (ข้อ 3: ขยับแกนมาที่ 36% เพื่อเว้นพื้นที่เส้นสัญญาณ) */}
             <div className={`flow-node ${linkActive ? 'active' : ''}`} 
-                 style={{ left: '60%', top: '85%', zIndex: 20, width: '24cqmin', aspectRatio: '21/9', padding: 'max(6px, 0.6cqmin)', borderColor: linkActive ? 'var(--green)' : 'rgba(0,234,255,0.3)', background: '#020617', flexDirection: 'column', gap: 'max(6px, 0.6cqmin)', cursor: 'pointer', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,255,102,0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0,255,102,0.2)' : '' }} 
+                 style={{ left: '36%', top: '85%', zIndex: 20, width: 'max(280px, 28cqmin)', height: 'max(160px, 16cqmin)', padding: 'max(6px, 0.6cqmin)', borderColor: linkActive ? 'var(--gold)' : 'rgba(255,204,0,0.3)', background: '#020617', flexDirection: 'column', gap: 'max(6px, 0.6cqmin)', cursor: 'pointer', boxShadow: linkActive ? '0 0 max(25px, 2.5cqmin) rgba(255,204,0,0.4), inset 0 0 max(15px, 1.5cqmin) rgba(255,204,0,0.2)' : '' }} 
                  onClick={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
-                 title="CLICK TO OPEN FULL ANALYZER"
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 'max(4px, 0.4cqmin)' }}>
-                <span style={{ color: '#fff', fontSize: 'max(10px, 1.1cqmin)', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
-                  <span style={{ color: linkActive ? 'var(--green)' : 'var(--red)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none', animation: linkActive ? 'pulse 1s infinite' : 'none' }}>●</span> BASEBAND
+                <span style={{ color: '#fff', fontSize: 'max(11px, 1.2cqmin)', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
+                  <span style={{ color: linkActive ? 'var(--gold)' : 'var(--red)', textShadow: linkActive ? '0 0 8px var(--gold)' : 'none', animation: linkActive ? 'pulse 1s infinite' : 'none' }}>●</span> TT&C
                 </span>
-                <span style={{ color: '#000', background: linkActive ? 'var(--gold)' : 'rgba(255,255,255,0.3)', fontSize: 'max(9px, 1cqmin)', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 6px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--gold)' : 'none' }}>720 MHz</span>
+                <span style={{ color: '#000', background: linkActive ? 'var(--cyan)' : 'rgba(255,255,255,0.3)', fontSize: 'max(9px, 1cqmin)', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 8px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--cyan)' : 'none' }}>70 MHz IF</span>
               </div>
-
               <div style={{ display: 'flex', width: '100%', flex: 1, gap: 'max(6px, 0.6cqmin)', minHeight: 0 }}>
-                {/* 🔴 ซ้าย: IQ Constellation */}
-                <div style={{ flex: '0 0 35%', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
-                  
-                  {linkActive && ['20%', '80%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
-                    <div key={`c-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
-                      <div style={{ width: '3px', height: '3px', background: 'var(--red)', borderRadius: '50%', boxShadow: '0 0 5px var(--red)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
-                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + Math.random()*0.2}s infinite alternate` }}></div>
+                  {linkActive && ['50%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
+                    <div key={`bpsk-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
+                      <div style={{ width: '3px', height: '3px', background: 'var(--cyan)', borderRadius: '50%', boxShadow: '0 0 5px var(--cyan)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
+                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(0,234,255,0.6)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + Math.random()*0.2}s infinite alternate` }}></div>
                     </div>
                   )))}
                 </div>
-
-                {/* 🟡 ขวา: Spectrum Analyzer */}
                 <div style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '10% 20%' }}></div>
                   <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '90%', overflow: 'visible' }} preserveAspectRatio="none" viewBox="0 0 100 100">
                     {linkActive ? (
                       <>
-                        <path d="M0,95 L5,93 L10,96 L15,94 L20,95 L25,93 L30,95 L35,92 L40,95 L45,94 L50,96 L55,93 L60,95 L65,94 L70,95 L75,92 L80,96 L85,93 L90,95 L95,92 L100,95" fill="none" stroke="rgba(255,204,0,0.4)" strokeWidth="1">
+                        <path d="M0,95 L5,93 L10,96 L15,94 L20,95 L25,93 L30,95 L35,92 L40,95 L45,94 L50,96 L55,93 L60,95 L65,94 L70,95 L75,92 L80,96 L85,93 L90,95 L95,92 L100,95" fill="none" stroke="rgba(0,234,255,0.4)" strokeWidth="1">
                           <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1.5; 0 1; 0 0" dur="0.1s" repeatCount="indefinite" />
                         </path>
-                        <path d="M0,95 Q15,95 25,90 T45,15 Q50,0 55,15 T75,90 Q85,95 100,95" fill="none" stroke="var(--gold)" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 3px var(--gold))', transformOrigin: 'bottom' }}>
+                        <path d="M0,95 L46,95 L49,15 C50,10 50,10 51,15 L54,95 L100,95" fill="none" stroke="var(--cyan)" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 3px var(--cyan))', transformOrigin: 'bottom' }}>
                           <animateTransform attributeName="transform" type="scale" values="1 0.95; 1 1.05; 1 0.97; 1 1" dur="0.12s" repeatCount="indefinite" />
                         </path>
                       </>
@@ -4652,8 +4529,53 @@ useEffect(() => {
                   </svg>
                 </div>
               </div>
-              <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 'max(8px, 0.9cqmin)', marginTop: 'max(2px, 0.2cqmin)', letterSpacing: '2px' }}>[ CLICK TO OPEN FULL HUD ]</div>
-              {linkActive && <div className="conn-dot" style={{ top: '50%', left: '100%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>}
+              <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 'max(8px, 0.9cqmin)', marginTop: 'max(2px, 0.2cqmin)', letterSpacing: '2px' }}>[ S-BAND TELEMETRY ]</div>
+            </div>
+
+            {/* 📍 11. ANALYZER MINI-HUD NODE (ข้อ 3: ขยับแกนมาที่ 64% เพื่อเว้นพื้นที่เส้นสัญญาณ) */}
+            <div className={`flow-node ${linkActive ? 'active' : ''}`} 
+                 style={{ left: '64%', top: '85%', zIndex: 20, width: 'max(280px, 28cqmin)', height: 'max(160px, 16cqmin)', padding: 'max(8px, 0.8cqmin)', borderColor: linkActive ? 'var(--green)' : 'rgba(0,234,255,0.3)', background: '#020617', flexDirection: 'column', gap: 'max(8px, 0.8cqmin)', cursor: 'pointer', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,255,102,0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0,255,102,0.2)' : '' }} 
+                 onClick={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 'max(4px, 0.4cqmin)' }}>
+                <span style={{ color: '#fff', fontSize: 'max(11px, 1.2cqmin)', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
+                  <span style={{ color: linkActive ? 'var(--green)' : 'var(--red)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none', animation: linkActive ? 'pulse 1s infinite' : 'none' }}>●</span> BASEBAND
+                </span>
+                <span style={{ color: '#000', background: linkActive ? 'var(--gold)' : 'rgba(255,255,255,0.3)', fontSize: 'max(9px, 1cqmin)', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 8px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--gold)' : 'none' }}>720 MHz</span>
+              </div>
+              <div style={{ display: 'flex', width: '100%', flex: 1, gap: 'max(6px, 0.6cqmin)', minHeight: 0 }}>
+                <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                  <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
+                  <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
+                  {linkActive && ['20%', '80%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
+                    <div key={`c-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
+                      <div style={{ width: '3px', height: '3px', background: 'var(--red)', borderRadius: '50%', boxShadow: '0 0 5px var(--red)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
+                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + Math.random()*0.2}s infinite alternate` }}></div>
+                    </div>
+                  )))}
+                </div>
+                <div style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                  <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '10% 20%' }}></div>
+                  <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '90%', overflow: 'visible' }} preserveAspectRatio="none" viewBox="0 0 100 100">
+                    {linkActive ? (
+                      <>
+                        <path d="M0,95 L5,93 L10,96 L15,94 L20,95 L25,93 L30,95 L35,92 L40,95 L45,94 L50,96 L55,93 L60,95 L65,94 L70,95 L75,92 L80,96 L85,93 L90,95 L95,92 L100,95" fill="none" stroke="rgba(255,204,0,0.4)" strokeWidth="1">
+                          <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1.5; 0 1; 0 0" dur="0.1s" repeatCount="indefinite" />
+                        </path>
+                        <path d="M0,95 L30,95 C38,95 42,15 50,15 C58,15 62,95 70,95 L100,95" fill="none" stroke="var(--gold)" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 3px var(--gold))', transformOrigin: 'bottom' }}>
+                          <animateTransform attributeName="transform" type="scale" values="1 0.95; 1 1.05; 1 0.97; 1 1" dur="0.12s" repeatCount="indefinite" />
+                        </path>
+                      </>
+                    ) : (
+                      <path d="M0,95 L10,94 L20,96 L30,94 L40,95 L50,93 L60,96 L70,94 L80,95 L90,93 L100,95" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1">
+                        <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1; 0 0.5; 0 0" dur="0.2s" repeatCount="indefinite" />
+                      </path>
+                    )}
+                  </svg>
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 'max(8px, 0.9cqmin)', marginTop: 'max(2px, 0.2cqmin)', letterSpacing: '2px' }}>[ X-BAND DATA ]</div>
             </div>
 
             {/* 📍 PANELS (LINK STATUS & SPECIFICATIONS) */}
