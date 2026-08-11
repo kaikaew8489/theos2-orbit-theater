@@ -1162,24 +1162,11 @@ useEffect(() => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
- // 📍 สมองกลควบคุมเวลา (อัปเกรด: ป้องกัน Time Drift และปลดล็อกให้ใช้ 1X ในโหมด SIM ได้อิสระ!)
- useEffect(() => {
-  if (!isPlaying) return;
-  const timer = setInterval(() => {
-    setSimulatedTimeMs(prev => {
-      if (isNaN(prev)) return Date.now(); // 🛡️ เซฟตี้กันแอปค้าง (แก้ปัญหา Theme แผนที่หาย)
-      
-      const now = Date.now();
-      // 🟢 ถ้าความเร็ว 1X และเวลาปัจจุบันอยู่ห่างจากเวลาจริงไม่เกิน 5 วินาที -> ให้ล็อกเป็น LIVE (ดูดติด Date.now กัน Drift)
-      if (speedMult === 1 && Math.abs(prev - now) < 5000) {
-        return now;
-      }
-      // 🟠 ถ้ากำลัง SIM (เวลาอดีต/อนาคตไกลๆ หรือความเร็ว 50X, 100X...) ให้เวลาจำลองเดินบวกไปเรื่อยๆ ตามสปีด
-      return prev + (50 * speedMult);
-    });
-  }, 50);
-  return () => clearInterval(timer);
-}, [isPlaying, speedMult]);
+  useEffect(() => {
+    if (!isPlaying) return;
+    const timer = setInterval(() => setSimulatedTimeMs(prev => prev + (50 * speedMult)), 50);
+    return () => clearInterval(timer);
+  }, [isPlaying, speedMult]);
 
   useEffect(() => {
     if (isPlaying && globeRef.current && selectedCatnr && !isFlatMap && isTrackingRef.current) {
@@ -1371,16 +1358,16 @@ useEffect(() => {
     return null;
   }, [simulatedTimeMs, passSchedule, linkActive]);
 
-// 📍 1. สมองกลเก็บประวัติการส่ง ป้องกันการยิง API เบิ้ล
+// 📍 1. อัปเกรดเป็น useRef แทน State เพื่อความเร็วระดับมิลลิวินาที ป้องกันการยิง API ซ้ำ (Race Condition)
 const notifiedPassesRef = useRef({});
 
-// 📍 2. เซนเซอร์จับเวลา PRE-PASS (ล่วงหน้า 10 นาที) 
+// 📍 2. สมองกลเซนเซอร์จับเวลาล่วงหน้า 10 นาที (Pre-AOS Trigger)
 useEffect(() => {
-  // 🛡️ ระบบล็อกนิรภัย: ตรวจสอบความแม่นยำว่าเป็น LIVE แท้ 100% หรือไม่
-  const isLiveStrict = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
+  // 📍 ฟันธง 4: ล็อกการแจ้งเตือนตอน SIM แบบเด็ดขาด! (เวลาต้องตรงกันระดับ 5 วินาทีเท่านั้น)
+  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
   
-  // ถ้าเป็นโหมด SIM หรือหยุดเวลาอยู่ ให้เตะออกทันที! ห้ามทำงานต่อ
-  if (!isLiveStrict || !nextPassTimestamp || !nextPassTimestamp.time) return;
+  // ถ้าไม่ใช่ LIVE ให้เตะออกทันที ห้ามแจ้งเตือน!
+  if (!isLive || !nextPassTimestamp || !nextPassTimestamp.time) return;
   
   const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
   const TEN_MINUTES_MS = 600000; 
@@ -1392,6 +1379,7 @@ useEffect(() => {
     notifiedPassesRef.current[passId] = true;
 
     const upcomingPass = passSchedule.find(p => p.aosTime === nextPassTimestamp.time);
+    
     if (upcomingPass) {
       const flagUrl = targetConfig.flag ? `https://flagcdn.com/w40/${targetConfig.flag}.png` : 'https://raw.githubusercontent.com/line/line-bot-sdk-nodejs/master/examples/kitchensink/public/logo.png';
       const doyStr = String(getUtcDayOfYear(new Date(upcomingPass.aosTime))).padStart(3, '0');
@@ -1426,24 +1414,73 @@ useEffect(() => {
   }
 }, [simulatedTimeMs, nextPassTimestamp, selectedCatnr, targetConfig, speedMult, isPlaying, passSchedule]);
 
-
-// 📍 3. เซนเซอร์จับจังหวะ "จบ Pass (PASS COMPLETE)" (ลบของเก่าที่ซ้ำกันทิ้ง รวมเป็นตัวเดียวที่สมบูรณ์ที่สุด!)
+// 📍 3. สมองกลเซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)"
 useEffect(() => {
-  // 🛡️ ระบบล็อกนิรภัย: ตรวจสอบว่าเป็น LIVE แท้ 100% หรือไม่ ถ้าไม่ใช่ห้ามยิง Notify เด็ดขาด!
-  const isLiveStrict = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
-  
-  if (!isLiveStrict || passSchedule.length === 0) return;
+  // 📍 ฟันธง 4: ล็อกตายโหมด SIM ห้ามรันบรรทัดล่างเด็ดขาด
+  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
+  if (!isLive || passSchedule.length === 0) return;
 
   passSchedule.forEach(pass => {
-    // ปัดเศษชั่วโมงป้องกัน ID คลาดเคลื่อน
     const stableLosTime = Math.floor(pass.losTime / 3600000) * 3600000;
     const passIdLos = `LOS-${selectedCatnr}-${stableLosTime}`;
     
     const timeSinceLos = simulatedTimeMs - pass.losTime;
     
-    // ตรวจสอบจังหวะวินาทีที่เพิ่งผ่าน LOS ไปไม่เกิน 15 วินาที
     if (timeSinceLos >= 0 && timeSinceLos <= 15000 && !notifiedPassesRef.current[passIdLos]) {
-      notifiedPassesRef.current[passIdLos] = true; // ล็อกประตูทันที ป้องกันยิงซ้ำ
+      notifiedPassesRef.current[passIdLos] = true; 
+      
+      const flagUrl = targetConfig.flag ? `https://flagcdn.com/w40/${targetConfig.flag}.png` : 'https://raw.githubusercontent.com/line/line-bot-sdk-nodejs/master/examples/kitchensink/public/logo.png';
+      const doyStr = String(getUtcDayOfYear(new Date(pass.aosTime))).padStart(3, '0');
+
+      const payloadData = {
+        isLos: true, 
+        satName: targetConfig.displayName,
+        flagUrl: flagUrl,
+        station: GROUND_STATION.name,
+        doy: doyStr,
+        aosUtc: new Date(pass.aosTime).toISOString().substring(11, 19) + ' UTC',
+        aosLocal: new Date(pass.aosTime).toLocaleTimeString('en-GB') + ' THA',
+        losUtc: new Date(pass.losTime).toISOString().substring(11, 19) + ' UTC',
+        losLocal: new Date(pass.losTime).toLocaleTimeString('en-GB') + ' THA',
+        maxEl: pass.maxEl.toFixed(1),
+        duration: `${Math.floor(pass.durationMs / 60000)}m ${Math.floor((pass.durationMs % 60000)/1000)}s`
+      };
+      
+      const gasUrl = 'https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec';
+      
+      fetch(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+        body: JSON.stringify(payloadData)
+      })
+      .then(response => console.log(`[LINE] ยิงแจ้งเตือน LOS (PASS COMPLETE) สำเร็จ! ID: ${passIdLos}`))
+      .catch(err => {
+         console.error("LINE Notify Error:", err);
+         notifiedPassesRef.current[passIdLos] = false;
+      });
+    }
+  });
+}, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying]);
+
+
+// 📍 3. สมองกลเซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)"
+useEffect(() => {
+  // 📍 ฟันธง: เสริมเกราะป้องกัน SIM Mode ให้อีกชั้นที่นี่!
+  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+  
+  // 📍 ฟันธง: ตัดจบการทำงานทันทีถ้าไม่ได้อยู่โหมด LIVE เพื่อรักษา Token LINE
+  if (passSchedule.length === 0 || !isLive) return;
+
+  passSchedule.forEach(pass => {
+    // 📍 ปัดเศษระดับ "1 ชั่วโมง" ป้องกัน ID แกว่ง
+    const stableLosTime = Math.floor(pass.losTime / 3600000) * 3600000;
+    const passIdLos = `LOS-${selectedCatnr}-${stableLosTime}`;
+    
+    const timeSinceLos = simulatedTimeMs - pass.losTime;
+    
+    if (timeSinceLos >= 0 && timeSinceLos <= 15000 && !notifiedPassesRef.current[passIdLos]) {
+      // 📍 ล็อกประตูทันที!
+      notifiedPassesRef.current[passIdLos] = true; 
       
       const flagUrl = targetConfig.flag ? `https://flagcdn.com/w40/${targetConfig.flag}.png` : 'https://raw.githubusercontent.com/line/line-bot-sdk-nodejs/master/examples/kitchensink/public/logo.png';
       const doyStr = String(getUtcDayOfYear(new Date(pass.aosTime))).padStart(3, '0');
@@ -2722,155 +2759,158 @@ useEffect(() => {
           {isRightPanelOpen && (
            <div className="right-panel">
               
-        {/* กลุ่มที่ 1: การควบคุมเวลาและความเร็ว */}
-        <div className="control-group">
+       {/* กลุ่มที่ 1: การควบคุมเวลาและความเร็ว */}
+       <div className="control-group">
               <p>TIME & PLAYBACK</p>
               
-                {/* 📍 WOW Feature 3: ปุ่ม AUTO-PILOT (Kiosk Mode) */}
-                <button 
-                onClick={() => setIsAutoPilot(!isAutoPilot)}
-                style={{ width: '100%', marginBottom: '12px', padding: '10px', fontSize: '18px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.3s', background: isAutoPilot ? 'linear-gradient(90deg, #ff00ff, #00eaff)' : 'rgba(255, 0, 255, 0.1)', color: isAutoPilot ? '#fff' : '#ff00ff', border: '2px solid #ff00ff', boxShadow: isAutoPilot ? '0 0 20px #ff00ff' : 'inset 0 0 10px rgba(255,0,255,0.2)' }}
-              >
-                {isAutoPilot ? '🤖 AUTO-PILOT: ACTIVE' : '🤖 AUTO-PILOT: OFF'}
-              </button>
+              {(() => {
+                // 📍 ฟันธง: สมองกลล็อกการจำลองเวลา (SIM Lock)
+                // จะทำงานก็ต่อเมื่อ: อยู่ในโหมด LIVE (เวลาตรงกับความจริง) + กำลังรับสัญญาณจริงอยู่ (linkActive)
+                const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying && linkActive;
 
-             {/* แถว 1: ปุ่มเครื่องเล่นเทป (Media Controls) เอาข้อความออก ขยายไอคอน */}
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                <button className="btn media-btn" onMouseDown={() => handleSeekDown(-30000)} onMouseUp={() => handleSeekUp(-30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(-30000)} onTouchEnd={() => handleSeekUp(-30000)}>
-                  <span className="icon">⏪</span>
-                </button>
-                <button className={`btn media-btn btn-pause ${!isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(false)}>
-                  <span className="icon">⏸</span>
-                </button>
-                <button className={`btn media-btn ${isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(true)}>
-                  <span className="icon">▶</span>
-                </button>
-                <button className="btn media-btn" onMouseDown={() => handleSeekDown(30000)} onMouseUp={() => handleSeekUp(30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(30000)} onTouchEnd={() => handleSeekUp(30000)}>
-                  <span className="icon">⏩</span>
-                </button>
-              </div>
+                return (
+                  <>
+                    {/* 📍 WOW Feature 3: ปุ่ม AUTO-PILOT (Kiosk Mode) */}
+                    <button 
+                      onClick={() => setIsAutoPilot(!isAutoPilot)}
+                      disabled={isRealtimePassLock}
+                      style={{ width: '100%', marginBottom: '12px', padding: '10px', fontSize: '18px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', borderRadius: '6px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', transition: 'all 0.3s', background: isAutoPilot ? 'linear-gradient(90deg, #ff00ff, #00eaff)' : 'rgba(255, 0, 255, 0.1)', color: isAutoPilot ? '#fff' : '#ff00ff', border: '2px solid #ff00ff', boxShadow: isAutoPilot ? '0 0 20px #ff00ff' : 'inset 0 0 10px rgba(255,0,255,0.2)', opacity: isRealtimePassLock ? 0.3 : 1 }}
+                    >
+                      {isAutoPilot ? '🤖 AUTO-PILOT: ACTIVE' : '🤖 AUTO-PILOT: OFF'}
+                    </button>
 
-             {/* 📍 แถว 2: ความเร็ว (เปลี่ยน 1000X เป็น 900X ป้องกันตัวหนังสือล้นปุ่ม) */}
-             <div className="speed-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '4px' }}>
-                {[1, 20, 50, 100, 500, 900].map(s => (
-                  <button key={s} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, fontSize: '12px', padding: '10px 2px'}} onClick={() => setSpeedMult(s)}>{s}X</button>
-                ))}
-              </div>
-
-           {/* 📍 ฟันธง: แถว 3 ประกอบร่างป้าย LIVE/SIM คู่กับปุ่ม RESET ปรับขนาดให้สมมาตร 50/50 */}
-           <div style={{ display: 'flex', gap: '8px', marginTop: '8px', height: '48px' }}>
-                {(() => {
-                  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
-                  return (
-                    <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ flex: '1', margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '6px', fontSize: '15px', letterSpacing: '2px' }}>
-                      {isLive ? '🟢 LIVE' : '🟠 SIM'}
+                    {/* แถว 1: ปุ่มเครื่องเล่นเทป (Media Controls) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                      <button disabled={isRealtimePassLock} className="btn media-btn" onMouseDown={() => handleSeekDown(-30000)} onMouseUp={() => handleSeekUp(-30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(-30000)} onTouchEnd={() => handleSeekUp(-30000)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}>
+                        <span className="icon">⏪</span>
+                      </button>
+                      <button disabled={isRealtimePassLock} className={`btn media-btn btn-pause ${!isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(false)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}>
+                        <span className="icon">⏸</span>
+                      </button>
+                      <button disabled={isRealtimePassLock} className={`btn media-btn ${isPlaying ? 'active' : ''}`} onClick={() => setIsPlaying(true)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}>
+                        <span className="icon">▶</span>
+                      </button>
+                      <button disabled={isRealtimePassLock} className="btn media-btn" onMouseDown={() => handleSeekDown(30000)} onMouseUp={() => handleSeekUp(30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(30000)} onTouchEnd={() => handleSeekUp(30000)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}>
+                        <span className="icon">⏩</span>
+                      </button>
                     </div>
-                  );
-                })()}
-               {/* 📍 ฟันธง: อัปเกรดปุ่ม RESET ให้เคลียร์ค้างการเลือก Plan และซูมทั้งหมด */}
-               <button className="btn" style={{ flex: '1', margin: 0, padding: '0', fontSize: '15px', letterSpacing: '2px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => {
-                  setSimulatedTimeMs(Date.now());
-                  setSpeedMult(1);
-                  setIsPlaying(true);
-                  isTrackingRef.current = false;
-                  setCameraMode('FREE LOOK');
-                  
-                  // 📍 ฟันธง: ชุดคำสั่ง "ล้างบาง" สถานะที่ค้างอยู่ทั้งหมด!
-                  setSelectedPlanId(null); 
-                  setMapZoom(1); 
-                  setImgMapOrigin('center center'); 
-                  setTacticalZoom(1); 
-                  setZoomOrigin('center center');
 
-                  if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
-                }}>RESET TO LIVE</button>
-              </div>
+                    {/* 📍 แถว 2: ความเร็ว (อัปเดตปุ่มใหม่ ครอบคลุมตั้งแต่งานละเอียด 1X ยันข้ามวัน 900X) */}
+                    <div className="speed-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '4px' }}>
+                      {[1, 20, 50, 100, 500, 900].map(s => (
+                        <button key={s} disabled={isRealtimePassLock} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, fontSize: '12px', padding: '10px 2px', opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer'}} onClick={() => setSpeedMult(s)}>{s}X</button>
+                      ))}
+                    </div>
 
-              {/* 📍 แถว 4: TIME SCRUB BAR (แบบ Dynamic Scale 2 In 1) ฟันธง! */}
-              <div className="time-scrubber-container">
-                <div className="scrubber-labels" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ width: '70px', textAlign: 'left', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>
-                    {sliderMode === 'DAILY' ? '00:00 UTC' : 'AOS -5m'}
-                  </span>
-                  
-                  {/* 📍 ปุ่มสลับโหมดสเกลเวลา (Dynamic Scale Toggle) */}
-                  <button 
-                    onClick={() => setSliderMode(sliderMode === 'DAILY' ? 'PASS' : 'DAILY')}
-                    style={{ 
-                      background: sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.1)' : 'rgba(255, 204, 0, 0.15)', 
-                      border: `1px solid ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`, 
-                      color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', 
-                      borderRadius: '4px', padding: '4px 10px', fontSize: '11px',
-                      cursor: 'pointer', fontFamily: 'Orbitron', fontWeight: 'bold',
-                      letterSpacing: '1px', transition: 'all 0.3s',
-                      boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.2)' : 'rgba(255, 204, 0, 0.3)'}`
-                    }}
-                  >
-                    MODE: {sliderMode === 'DAILY' ? '🌍 24H GLOBAL' : '🎯 ACTIVE PASS'} ⟲
-                  </button>
+                    {/* แถว 3: ป้าย LIVE/SIM คู่กับปุ่ม RESET */}
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', height: '48px' }}>
+                      {(() => {
+                        const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+                        return (
+                          <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ flex: '1', margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '6px', fontSize: '15px', letterSpacing: '2px', background: isRealtimePassLock ? 'rgba(255, 51, 51, 0.2)' : '', borderColor: isRealtimePassLock ? 'var(--red)' : '', color: isRealtimePassLock ? 'var(--red)' : '', boxShadow: isRealtimePassLock ? 'inset 0 0 15px rgba(255,51,51,0.3)' : '' }}>
+                            {isRealtimePassLock ? '🚨 REAL-TIME LOCK' : (isLive ? '🟢 LIVE' : '🟠 SIM')}
+                          </div>
+                        );
+                      })()}
+                      <button className="btn" style={{ flex: '1', margin: 0, padding: '0', fontSize: '15px', letterSpacing: '2px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => {
+                        setSimulatedTimeMs(Date.now());
+                        setSpeedMult(1);
+                        setIsPlaying(true);
+                        isTrackingRef.current = false;
+                        setCameraMode('FREE LOOK');
+                        setSelectedPlanId(null); 
+                        setMapZoom(1); 
+                        setImgMapOrigin('center center'); 
+                        setTacticalZoom(1); 
+                        setZoomOrigin('center center');
+                        if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
+                      }}>RESET TO LIVE</button>
+                    </div>
 
-                  <span style={{ width: '70px', textAlign: 'right', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>
-                    {sliderMode === 'DAILY' ? '23:59 UTC' : 'LOS +5m'}
-                  </span>
-                </div>
-                
-                {(() => {
-                  const currentSimDate = new Date(simulatedTimeMs);
-                  let minTime = Date.UTC(currentSimDate.getUTCFullYear(), currentSimDate.getUTCMonth(), currentSimDate.getUTCDate(), 0, 0, 0);
-                  let maxTime = minTime + 86400000 - 1; // 24 Hours
+                    {/* 📍 แถว 4: TIME SCRUB BAR */}
+                    <div className="time-scrubber-container">
+                      <div className="scrubber-labels" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ width: '70px', textAlign: 'left', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>
+                          {sliderMode === 'DAILY' ? '00:00 UTC' : 'AOS -5m'}
+                        </span>
+                        
+                        <button 
+                          onClick={() => setSliderMode(sliderMode === 'DAILY' ? 'PASS' : 'DAILY')}
+                          disabled={isRealtimePassLock}
+                          style={{ 
+                            background: sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.1)' : 'rgba(255, 204, 0, 0.15)', 
+                            border: `1px solid ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`, 
+                            color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', 
+                            borderRadius: '4px', padding: '4px 10px', fontSize: '11px',
+                            cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron', fontWeight: 'bold',
+                            letterSpacing: '1px', transition: 'all 0.3s',
+                            boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.2)' : 'rgba(255, 204, 0, 0.3)'}`,
+                            opacity: isRealtimePassLock ? 0.3 : 1
+                          }}
+                        >
+                          MODE: {sliderMode === 'DAILY' ? '🌍 24H GLOBAL' : '🎯 ACTIVE PASS'} ⟲
+                        </button>
 
-                  // 📍 สมองกลคำนวณช่วงเวลาของ Pass ที่ใกล้ที่สุด (โหมดเจาะจง)
-                  if (sliderMode === 'PASS' && passSchedule.length > 0) {
-                    let targetPass = passSchedule.find(p => simulatedTimeMs >= p.aosTime - 300000 && simulatedTimeMs <= p.losTime + 300000);
-                    // ถ้าไม่อยู่ในช่วง Pass ใดๆ เลย ให้จับคู่กับ Pass ที่ใกล้ที่สุดแทน
-                    if (!targetPass) {
-                      targetPass = passSchedule.reduce((prev, curr) => Math.abs(curr.peakTime - simulatedTimeMs) < Math.abs(prev.peakTime - simulatedTimeMs) ? curr : prev);
-                    }
-                    if (targetPass) {
-                      minTime = targetPass.aosTime - 300000; // เริ่มก่อน AOS 5 นาที
-                      maxTime = targetPass.losTime + 300000; // จบหลัง LOS 5 นาที
-                    }
-                  }
-                  
-                  // คำนวณเปอร์เซ็นต์สำหรับแถบ Progress
-                  const progressPct = ((simulatedTimeMs - minTime) / (maxTime - minTime)) * 100;
-
-                  return (
-                    <div style={{ position: 'relative' }}>
-                      {/* วาดแถบเส้น Progress สีวิ่งตามหัว Thumb */}
-                      <div style={{ 
-                        position: 'absolute', top: '10px', left: 0, height: '8px', 
-                        width: `${Math.max(0, Math.min(100, progressPct))}%`, 
-                        background: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', 
-                        borderRadius: '4px', pointerEvents: 'none',
-                        boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`
-                      }}></div>
+                        <span style={{ width: '70px', textAlign: 'right', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>
+                          {sliderMode === 'DAILY' ? '23:59 UTC' : 'LOS +5m'}
+                        </span>
+                      </div>
                       
-                      <input 
-                        type="range" 
-                        min={minTime} 
-                        max={maxTime} 
-                        value={simulatedTimeMs}
-                        className="sci-fi-slider"
-                        style={{ 
-                          // เปลี่ยนลูกเล่นสีสไลด์บาร์ตาม Mode ทันที
-                          '--thumb-color': sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)',
-                          '--thumb-glow': sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.8)' : 'rgba(255, 204, 0, 0.8)'
-                        }}
-                        onMouseDown={() => {
-                          // ฟันธง: ทันทีที่จับสไลด์บาร์ ต้องตัดระบบออกจากสถานะ Live อัตโนมัติ (เข้าสู่โหมดจำลอง)
-                          setIsPlaying(false);
-                        }}
-                        onChange={(e) => setSimulatedTimeMs(Number(e.target.value))}
-                      />
+                      {(() => {
+                        const currentSimDate = new Date(simulatedTimeMs);
+                        let minTime = Date.UTC(currentSimDate.getUTCFullYear(), currentSimDate.getUTCMonth(), currentSimDate.getUTCDate(), 0, 0, 0);
+                        let maxTime = minTime + 86400000 - 1; 
+
+                        if (sliderMode === 'PASS' && passSchedule.length > 0) {
+                          let targetPass = passSchedule.find(p => simulatedTimeMs >= p.aosTime - 300000 && simulatedTimeMs <= p.losTime + 300000);
+                          if (!targetPass) {
+                            targetPass = passSchedule.reduce((prev, curr) => Math.abs(curr.peakTime - simulatedTimeMs) < Math.abs(prev.peakTime - simulatedTimeMs) ? curr : prev);
+                          }
+                          if (targetPass) {
+                            minTime = targetPass.aosTime - 300000; 
+                            maxTime = targetPass.losTime + 300000; 
+                          }
+                        }
+                        
+                        const progressPct = ((simulatedTimeMs - minTime) / (maxTime - minTime)) * 100;
+
+                        return (
+                          <div style={{ position: 'relative' }}>
+                            <div style={{ 
+                              position: 'absolute', top: '10px', left: 0, height: '8px', 
+                              width: `${Math.max(0, Math.min(100, progressPct))}%`, 
+                              background: isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), 
+                              borderRadius: '4px', pointerEvents: 'none',
+                              boxShadow: `0 0 10px ${isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)')}`
+                            }}></div>
+                            
+                            <input 
+                              type="range" 
+                              min={minTime} 
+                              max={maxTime} 
+                              value={simulatedTimeMs}
+                              disabled={isRealtimePassLock}
+                              className="sci-fi-slider"
+                              style={{ 
+                                '--thumb-color': isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'),
+                                '--thumb-glow': isRealtimePassLock ? 'rgba(255, 51, 51, 0.8)' : (sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.8)' : 'rgba(255, 204, 0, 0.8)'),
+                                opacity: isRealtimePassLock ? 0.5 : 1,
+                                cursor: isRealtimePassLock ? 'not-allowed' : 'grab'
+                              }}
+                              onMouseDown={() => { if(!isRealtimePassLock) setIsPlaying(false); }}
+                              onChange={(e) => { if(!isRealtimePassLock) setSimulatedTimeMs(Number(e.target.value)); }}
+                            />
+                          </div>
+                        );
+                      })()}
+                      
+                      <div style={{ textAlign: 'center', fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginTop: '5px', fontVariantNumeric: 'tabular-nums' }}>
+                        CURRENT SIM: <strong style={{ color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', fontSize: '14px', textShadow: `0 0 5px ${sliderMode === 'DAILY' ? 'rgba(0,234,255,0.5)' : 'rgba(255,204,0,0.5)'}` }}>{formatTime(new Date(simulatedTimeMs))} UTC</strong>
+                      </div>
                     </div>
-                  );
-                })()}
-                
-                <div style={{ textAlign: 'center', fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginTop: '5px', fontVariantNumeric: 'tabular-nums' }}>
-                  CURRENT SIM: <strong style={{ color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', fontSize: '14px', textShadow: `0 0 5px ${sliderMode === 'DAILY' ? 'rgba(0,234,255,0.5)' : 'rgba(255,204,0,0.5)'}` }}>{formatTime(new Date(simulatedTimeMs))} UTC</strong>
-                </div>
-              </div>
+                  </>
+                );
+              })()}
             </div>
 
            {/* กลุ่มที่ 2: การแสดงผลมุมมอง */}
@@ -3491,8 +3531,16 @@ useEffect(() => {
 
                       return (
                         <tr key={idx} 
-                        onClick={() => { setSimulatedTimeMs(pass.aosTime - 60000); setSpeedMult(20); setIsPlaying(true); bringToFront('radar'); }}
-                        style={rowStyle}
+                          onClick={() => { 
+                            // 📍 ฟันธง: ล็อกการกด SIM ข้ามเวลา หากกำลังอยู่ในโหมดรับสัญญาณจริง!
+                            const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying && linkActive;
+                            if (isRealtimePassLock) {
+                              alert("🔒 REAL-TIME LOCK: ไม่สามารถจำลองเวลาได้ เนื่องจากระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE) อยู่ในขณะนี้!");
+                              return;
+                            }
+                            setSimulatedTimeMs(pass.aosTime - 60000); setSpeedMult(20); setIsPlaying(true); bringToFront('radar'); 
+                          }}
+                          style={rowStyle}
                           onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.15)'; e.currentTarget.style.transform = 'scale(1.01)'; }}
                           onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.transform = 'scale(1)'; }}
                         >
@@ -3846,12 +3894,18 @@ useEffect(() => {
                                 transition: 'all 0.2s', 
                                 boxShadow: isSelected ? '0 0 15px rgba(255, 69, 0, 0.6)' : 'none',
                               }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedPlanId(plan.id);
-                                        setSimulatedTimeMs(new Date(plan.start).getTime() - 5000);
-                                        setSpeedMult(1);
-                                      }}>
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // 📍 ฟันธง: ล็อกการกด SIM ข้ามเวลา หากกำลังอยู่ในโหมดรับสัญญาณจริง!
+                                const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying && linkActive;
+                                if (isRealtimePassLock) {
+                                  alert("🔒 REAL-TIME LOCK: ไม่สามารถจำลองเวลาได้ เนื่องจากระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE) อยู่ในขณะนี้!");
+                                  return;
+                                }
+                                setSelectedPlanId(plan.id);
+                                setSimulatedTimeMs(new Date(plan.start).getTime() - 5000);
+                                setSpeedMult(1);
+                              }}>
                                 ▶
                               </button>
                             </div>
@@ -4506,8 +4560,8 @@ useEffect(() => {
             {/* 📍 3. S-BAND UP/DOWN CONVERTER NODE (Orange) */}
             <div className="flow-node" style={{ left: '15%', top: '55%', zIndex: 20, width: '17cqmin', aspectRatio: '4/3', borderColor: linkActive ? '#FF6600' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,102,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,102,0,0.3)' : '' }}>
               <img src="https://api.iconify.design/mdi:swap-vertical-bold.svg?color=%23FF6600" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px #FF6600)' : '' }} alt="Converter" />
-              <div className="n-title" style={{ color: linkActive ? '#FF6600' : '#fff' }}>S-BAND</div>
-              <div className="n-sub">UP/DOWN CONVERTER</div>
+              <div className="n-title" style={{ color: linkActive ? '#FF6600' : '#fff' }}>UP/DOWN</div>
+              <div className="n-sub">S-BAND CONVERTER</div>
               {linkActive && (<>
                 <div className="conn-dot" style={{ top: 'calc(50% - 4.5cqmin)', left: '100%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
                 <div className="conn-dot" style={{ top: 'calc(50% + 4.5cqmin)', left: '100%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
@@ -4549,30 +4603,26 @@ useEffect(() => {
               </>)}
             </div>
 
-           {/* 📍 7. ANALYZER MINI-HUD NODE (Realistic Dashboard - Enlarged & Aligned perfectly with Baseband Node) */}
-           <div className={`flow-node ${linkActive ? 'active' : ''}`} 
-                 style={{ left: '60%', top: '85%', zIndex: 20, width: 'max(250px, 30cqmin)', height: 'max(105px, 12.75cqmin)', padding: 'max(8px, 0.8cqmin)', borderColor: linkActive ? 'var(--green)' : 'rgba(0,234,255,0.3)', background: '#020617', flexDirection: 'column', gap: 'max(8px, 0.8cqmin)', cursor: 'pointer', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,255,102,0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0,255,102,0.2)' : '' }} 
+            {/* 📍 7. ANALYZER MINI-HUD NODE */}
+            <div className={`flow-node ${linkActive ? 'active' : ''}`} 
+                 style={{ left: '60%', top: '85%', zIndex: 20, width: '24cqmin', aspectRatio: '21/9', padding: 'max(6px, 0.6cqmin)', borderColor: linkActive ? 'var(--green)' : 'rgba(0,234,255,0.3)', background: '#020617', flexDirection: 'column', gap: 'max(6px, 0.6cqmin)', cursor: 'pointer', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,255,102,0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0,255,102,0.2)' : '' }} 
                  onClick={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
                  title="CLICK TO OPEN FULL ANALYZER"
             >
-              {/* Title Bar แบบย่อ (ขยายฟอนต์ขึ้น) */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 'max(4px, 0.4cqmin)' }}>
-                <span style={{ color: '#fff', fontSize: 'max(12px, 1.3cqmin)', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
+                <span style={{ color: '#fff', fontSize: 'max(10px, 1.1cqmin)', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
                   <span style={{ color: linkActive ? 'var(--green)' : 'var(--red)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none', animation: linkActive ? 'pulse 1s infinite' : 'none' }}>●</span> BASEBAND
                 </span>
-                <span style={{ color: '#000', background: linkActive ? 'var(--gold)' : 'rgba(255,255,255,0.3)', fontSize: 'max(10px, 1.1cqmin)', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 8px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--gold)' : 'none' }}>720 MHz</span>
+                <span style={{ color: '#000', background: linkActive ? 'var(--gold)' : 'rgba(255,255,255,0.3)', fontSize: 'max(9px, 1cqmin)', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 6px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--gold)' : 'none' }}>720 MHz</span>
               </div>
 
-              {/* กราฟิคซ้าย/ขวา */}
-              <div style={{ display: 'flex', width: '100%', flex: 1, gap: 'max(8px, 0.8cqmin)', minHeight: 0 }}>
-                
-                {/* 🔴 ซ้าย: IQ Constellation (บังคับให้เป็นสี่เหลี่ยมจัตุรัส กราฟจะได้ไม่เบี้ยวเป็นวงรี!) */}
-                <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+              <div style={{ display: 'flex', width: '100%', flex: 1, gap: 'max(6px, 0.6cqmin)', minHeight: 0 }}>
+                {/* 🔴 ซ้าย: IQ Constellation */}
+                <div style={{ flex: '0 0 35%', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
                   
-                  {/* จุด QPSK ดิ้นได้ */}
                   {linkActive && ['20%', '80%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
                     <div key={`c-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
                       <div style={{ width: '3px', height: '3px', background: 'var(--red)', borderRadius: '50%', boxShadow: '0 0 5px var(--red)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
@@ -4581,26 +4631,20 @@ useEffect(() => {
                   )))}
                 </div>
 
-                {/* 🟡 ขวา: Spectrum Analyzer (Haystack - สมการสมมาตร 100%) */}
+                {/* 🟡 ขวา: Spectrum Analyzer */}
                 <div style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
-                  {/* พื้นหลังตาราง Grid */}
                   <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '10% 20%' }}></div>
-                  
-                  {/* SVG กราฟวูบวาบ */}
                   <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '90%', overflow: 'visible' }} preserveAspectRatio="none" viewBox="0 0 100 100">
                     {linkActive ? (
                       <>
-                        {/* ฐานกราฟ (Noise Floor) ขยับยุกยิก */}
                         <path d="M0,95 L5,93 L10,96 L15,94 L20,95 L25,93 L30,95 L35,92 L40,95 L45,94 L50,96 L55,93 L60,95 L65,94 L70,95 L75,92 L80,96 L85,93 L90,95 L95,92 L100,95" fill="none" stroke="rgba(255,204,0,0.4)" strokeWidth="1">
                           <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1.5; 0 1; 0 0" dur="0.1s" repeatCount="indefinite" />
                         </path>
-                        {/* ยอดกราฟหลัก (Main Lobe) ทรงระฆังคว่ำ สมมาตรเป๊ะ! */}
-                        <path d="M0,95 L30,95 C38,95 42,15 50,15 C58,15 62,95 70,95 L100,95" fill="none" stroke="var(--gold)" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 3px var(--gold))', transformOrigin: 'bottom' }}>
+                        <path d="M0,95 Q15,95 25,90 T45,15 Q50,0 55,15 T75,90 Q85,95 100,95" fill="none" stroke="var(--gold)" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 3px var(--gold))', transformOrigin: 'bottom' }}>
                           <animateTransform attributeName="transform" type="scale" values="1 0.95; 1 1.05; 1 0.97; 1 1" dur="0.12s" repeatCount="indefinite" />
                         </path>
                       </>
                     ) : (
-                      /* Standby (เส้นเรียบๆ ขยับนิดหน่อย) */
                       <path d="M0,95 L10,94 L20,96 L30,94 L40,95 L50,93 L60,96 L70,94 L80,95 L90,93 L100,95" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1">
                         <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1; 0 0.5; 0 0" dur="0.2s" repeatCount="indefinite" />
                       </path>
@@ -4608,12 +4652,10 @@ useEffect(() => {
                   </svg>
                 </div>
               </div>
-              
-              <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 'max(10px, 1cqmin)', marginTop: 'max(2px, 0.2cqmin)', letterSpacing: '2px' }}>[ CLICK TO OPEN FULL HUD ]</div>
+              <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 'max(8px, 0.9cqmin)', marginTop: 'max(2px, 0.2cqmin)', letterSpacing: '2px' }}>[ CLICK TO OPEN FULL HUD ]</div>
               {linkActive && <div className="conn-dot" style={{ top: '50%', left: '100%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>}
             </div>
 
-            
             {/* 📍 PANELS (LINK STATUS & SPECIFICATIONS) */}
             <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', left: 'max(20px, 2.5cqmin)', width: 'max(260px, 28cqmin)', border: '2px solid var(--cyan)', boxShadow: '0 0 max(20px, 2cqmin) rgba(0, 234, 255, 0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0, 234, 255, 0.15)' }}>
               <div style={{ color: 'var(--cyan)', fontSize: 'max(16px, 1.8cqmin)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(0,234,255,0.3)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)' }}>LINK STATUS</div>
@@ -4631,17 +4673,11 @@ useEffect(() => {
               </div>
             </div>
 
-         {/* มุมขวาบน: TECHNICAL SPECIFICATIONS สีส้มเรืองแสง */}
-         <div className="bot-panel" style={{ 
-              top: 'max(20px, 2.5cqmin)', right: 'max(20px, 2.5cqmin)', left: 'auto', 
-              width: 'max-content', boxSizing: 'border-box', 
-              display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', 
-              boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)' 
-            }}>
-              <div style={{ color: '#FF4500', fontSize: 'max(16px, 1.8cqmin)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 15px #FF4500', whiteSpace: 'nowrap' }}>
+            <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', right: 'max(20px, 2.5cqmin)', left: 'auto', width: 'max(520px, 55cqmin)', display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)' }}>
+              <div style={{ color: '#FF4500', fontSize: 'max(16px, 1.8cqmin)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 15px #FF4500' }}>
                 TECHNICAL SPECIFICATIONS
               </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', textAlign: 'center', whiteSpace: 'nowrap' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', textAlign: 'center' }}>
                 <thead>
                   <tr style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'max(13px, 1.4cqmin)', borderBottom: '1px dashed rgba(255,255,255,0.3)', letterSpacing: '1px' }}>
                     <th style={{ paddingBottom: 'max(8px, 0.8cqmin)', fontWeight: 'bold' }}>LINK TYPE</th>
