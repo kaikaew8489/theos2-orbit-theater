@@ -243,6 +243,38 @@ const injectStyles = () => {
     
     .scanlines { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1)); background-size: 100% 4px; z-index: 100; opacity: 0.6; }
     
+    /* 📍 CSS สำหรับ Loading Screen ท้องฟ้าดำสนิท (Pitch Black) เน้นดวงดาวและดาวเทียม */
+    .loading-overlay { position: fixed; inset: 0; background: #000000; z-index: 999999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.8s ease-out, visibility 0.8s; overflow: hidden; }
+    
+    /* ฟันธง: สร้างดวงดาวที่ "ค่อยๆ เคลื่อนที่ (Drifting Stars)" ให้ความรู้สึกเหมือนอวกาศของจริง */
+    .loading-overlay::before { content: ''; position: absolute; inset: -200%; background-image: radial-gradient(2px 2px at 40px 60px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 200px 150px, #ffffff, rgba(0,0,0,0)), radial-gradient(3px 3px at 400px 300px, rgba(255,255,255,0.8), rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 600px 100px, #ffffff, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 800px 400px, #ffffff, rgba(0,0,0,0)); background-repeat: repeat; background-size: 600px 600px; opacity: 0.6; animation: move-stars 150s linear infinite; z-index: 0; }
+    @keyframes move-stars { from { transform: translateY(0) translateX(0); } to { transform: translateY(-500px) translateX(-500px); } }
+    
+    .loading-overlay.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
+    
+    /* ฟันธง: ระเบิดไซส์ดาวเทียมเป็น 850px ดันให้อยู่สูงขึ้น (margin-bottom: 70px) และเพิ่มระยะเด้ง */
+    .loading-logo { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; z-index: 1; text-align: center; }
+    .hero-satellite { width: 850px; height: auto; animation: float-sat 5s ease-in-out infinite; filter: drop-shadow(0 20px 40px rgba(0,234,255,0.5)) drop-shadow(0 0 20px rgba(255,255,255,0.2)); margin-bottom: 70px; }
+    @keyframes float-sat { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-40px) rotate(3deg); } 100% { transform: translateY(0px) rotate(0deg); } }
+    
+    .loading-title { font-family: 'Orbitron', sans-serif; font-size: 80px; font-weight: 900; color: #ffffff; letter-spacing: 18px; text-shadow: 0 0 45px rgba(0,234,255,0.9), 0 0 20px rgba(255,255,255,0.8); text-align: center; line-height: 1; }
+    
+    /* ฟันธง: ขยาย THAILAND เป็น 44px ให้รับกับ SATELLITE ORBIT แบบสมมาตรเป๊ะ */
+    .loading-subtitle { font-family: 'Rajdhani', sans-serif; font-size: 44px; color: var(--gold); letter-spacing: 14px; margin-top: 20px; font-weight: 900; text-shadow: 0 0 25px rgba(255, 204, 0, 0.9); text-transform: uppercase; }
+    
+    /* ฟันธง: ขยายบาร์โหลดยาวสุดเฟี้ยว 1000px และหนาขึ้น */
+    .progress-container { width: 1000px; padding: 10px; border: 2px solid rgba(0, 234, 255, 0.5); border-radius: 16px; box-shadow: 0 0 50px rgba(0,234,255,0.3); background: rgba(0, 5, 15, 0.8); z-index: 1; margin-top: 40px; }
+    
+    /* 📍 ฟันธง: ไล่สี Gradient บาร์พลังงานจาก แดง (0%) -> เหลืองส้ม (50%) -> เขียว (100%) */
+    .progress-bar { height: 32px; background: linear-gradient(90deg, #ff3333 0%, #ffaa00 50%, #00ff66 100%); border-radius: 10px; transition: width 0.15s ease-out; box-shadow: 0 0 25px rgba(255, 255, 255, 0.2), inset 0 0 15px rgba(255,255,255,0.8); position: relative; overflow: hidden; }
+    .progress-bar::after { content: ''; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent); animation: sweep-light 1.2s infinite linear; }
+    @keyframes sweep-light { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+    
+    /* 📍 ปลดล็อกสีเขียวตายตัวออก เพื่อให้สมองกล React คำนวณสีอัตโนมัติ */
+    .progress-text { margin-top: 30px; font-family: 'Orbitron', sans-serif; font-size: 72px; font-weight: 900; z-index: 1; line-height: 1; font-variant-numeric: tabular-nums; transition: color 0.2s, text-shadow 0.2s; }
+    
+    .loading-log { margin-top: 40px; font-family: 'Rajdhani', monospace; font-size: 28px; font-weight: 900; letter-spacing: 4px; z-index: 1; text-transform: uppercase; transition: color 0.3s, text-shadow 0.3s; }
+
     .ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; display: flex; justify-content: space-between; padding: 25px; box-sizing: border-box; z-index: 10; }
     
     .left-container { display: flex; flex-direction: column; align-items: flex-start; pointer-events: none; height: 100%; z-index: 20; overflow: hidden; }
@@ -626,6 +658,28 @@ function createSatelliteModel(isTarget = false) {
 // ==========================================
 export default function App() {
   
+  // 📍 ฟันธง: สร้างสมองกลควบคุมหน้าจอ Loading (Splash Screen) สไตล์ Sci-Fi
+  const [loadingPct, setLoadingPct] = useState(0);
+  const [isAppReady, setIsAppReady] = useState(false);
+
+  useEffect(() => {
+    let pct = 0;
+    const interval = setInterval(() => {
+      // ⚙️ จุดปรับที่ 1: ความก้าวหน้า (สุ่มบวกทีละ 2% ถึง 6% จะทำให้หลอดเต็มไวขึ้น)
+      pct += Math.floor(Math.random() * 2) + 1; 
+      
+      if (pct >= 100) {
+        pct = 100;
+        clearInterval(interval);
+        // ⚙️ จุดปรับที่ 2: เวลาค้างหน้าจอ 100% (หน่วยเป็นมิลลิวินาที / 2000 = ค้าง 2 วินาทีแล้วเข้าแอป)
+        setTimeout(() => setIsAppReady(true), 2000); 
+      }
+      setLoadingPct(pct);
+    // ⚙️ จุดปรับที่ 3: ความเร็วในการรีเฟรชตัวเลข (หน่วยเป็นมิลลิวินาที / 50 = อัปเดตไวขึ้น ลื่นไหลขึ้น)
+    }, 50); 
+    return () => clearInterval(interval);
+  }, []);
+
   // 📍 ฟันธง 2: กู้คืนสมองกลควบคุมปุ่มสลับสถานี
   const [activeStation, setActiveStation] = useState(GS_NETWORK[0]);
   GROUND_STATION = activeStation;
@@ -2244,9 +2298,48 @@ useEffect(() => {
   return () => { if (autoPilotTimer.current) clearInterval(autoPilotTimer.current); };
 }, [isAutoPilot, simulatedTimeMs, nextPassTimestamp]);
 
-  return (
-    <>
-      <Globe
+return (
+  <>
+    {/* 📍 หน้าจอ Loading Screen (Splash Screen) ปิดทับทุกสิ่งจนกว่าจะโหลดเสร็จ */}
+    <div className={`loading-overlay ${isAppReady ? 'fade-out' : ''}`}>
+    <div className="loading-logo">
+          {/* 📍 ฟันธง: ดาวเทียม THEOS-2 ปลดแอกออกจากกรอบ ลอยเด่นสมจริง (Hero Image) */}
+          <img 
+            src="/textures/THEOS-2.webp" 
+            alt="THEOS-2 Satellite" 
+            className="hero-satellite"
+          />
+          <div className="loading-title">SATELLITE ORBIT</div>
+          <div className="loading-subtitle">THAILAND GROUND STATION SYSTEM</div>
+        </div>
+
+        <div className="progress-container">
+          {/* 📍 บาร์โหลดจะค่อยๆ กวาดเปิดสี Gradient แดงไปเขียวตามความกว้าง */}
+          <div className="progress-bar" style={{ width: `${loadingPct}%` }}></div>
+        </div>
+        
+        {/* 📍 ฟันธง: ลดแสงเฟลอร์ลงเหลือ 8px ให้คมชัด และเพิ่มเงาดำซ้อนด้านหลังให้ตัวเลขเด้งทะลุจอ */}
+        <div 
+          className="progress-text" 
+          style={{ 
+            color: `hsl(${Math.floor((loadingPct / 100) * 120)}, 100%, 50%)`,
+            textShadow: `0 0 8px hsl(${Math.floor((loadingPct / 100) * 120)}, 100%, 50%), 0 4px 6px rgba(0,0,0,0.8)` 
+          }}
+        >
+          {loadingPct}%
+        </div>
+      <div className="loading-log" style={{ 
+          color: loadingPct >= 85 ? 'var(--green)' : '#ffcc00', 
+          textShadow: loadingPct >= 85 ? '0 0 20px var(--green)' : '0 0 15px rgba(255, 204, 0, 0.8)' 
+        }}>
+          {loadingPct < 25 ? 'Establishing connection to GISTDA Ground Station...' : 
+           loadingPct < 55 ? 'Downloading TLE Orbital Elements...' : 
+           loadingPct < 85 ? 'Rendering 3D Earth Topology & Textures...' : 
+           'SYSTEM READY. INITIALIZING ORBIT.'}
+        </div>
+    </div>
+
+    <Globe
         ref={globeRef} width={size.width} height={size.height}
         backgroundColor="#000000"
         
