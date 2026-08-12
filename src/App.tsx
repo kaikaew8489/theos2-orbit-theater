@@ -249,7 +249,7 @@ const injectStyles = () => {
     .menu-toggle-btn-left { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(0,234,255,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--cyan); color: var(--cyan); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(0,234,255,0.6), inset 0 0 10px rgba(0,234,255,0.3); flex-shrink: 0; }
     .menu-toggle-btn-left:hover { background: var(--cyan); color: #000; box-shadow: 0 0 30px var(--cyan); transform: scale(1.1); }
     
-    .left-panel { width: 517px !important; box-sizing: border-box !important; display: flex; flex-direction: column; gap: 24px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
+    .left-panel { width: 637px !important; box-sizing: border-box !important; display: flex; flex-direction: column; gap: 24px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
     .left-panel::-webkit-scrollbar { display: none; }
     @keyframes slideInLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
 
@@ -279,37 +279,38 @@ const injectStyles = () => {
     .main-title h1 { margin: 0 0 8px 0; font-family: 'Orbitron', sans-serif; font-size: 30px; font-weight: 900; color: #ffffff; text-shadow: 0 0 20px #00eaff, 0 0 40px #00eaff; letter-spacing: 2px; }
     .main-title span { display: block !important; font-size: 13px !important; color: #ffffff !important; font-weight: 600 !important; letter-spacing: 2px !important; text-shadow: 0 0 10px rgba(255,255,255,0.8) !important; text-transform: uppercase !important; }
 
-    /* 📍 อัปเกรดนาฬิกาเป็น "ส้มเรืองแสง (Orange Flare)" และปรับขนาดฟอนต์เพื่อลดอาการตาล้าตามหลัก UI/UX */
+    /* 📍 อัปเกรดนาฬิกาเป็น "Master Clock" ขยายไซส์และจัดสมมาตร 100% */
     .global-clock-hud { 
-      display: flex; flex-direction: column; width: 460px !important; box-sizing: border-box !important; 
-      background: linear-gradient(180deg, rgba(20, 5, 0, 0.95), rgba(5, 0, 0, 0.98)); 
+      display: flex; flex-direction: column; width: 580px !important; box-sizing: border-box !important; /* ฟันธง: ปรับให้กว้าง 580px เท่ากับกรอบด้านล่างเป๊ะๆ */
+      background: linear-gradient(180deg, rgba(25, 5, 0, 0.98), rgba(5, 0, 0, 1)); 
       backdrop-filter: blur(20px); 
-      border: 1px solid rgba(255, 69, 0, 0.5); border-top: 2px solid #FF4500;
-      border-radius: 8px; padding: 15px 20px 15px 20px; 
-      box-shadow: 0 10px 30px rgba(0,0,0,0.8), inset 0 0 20px rgba(255, 69, 0, 0.15);
-      pointer-events: auto; position: relative; margin-top: 10px; gap: 15px; 
+      border: 1px solid rgba(255, 69, 0, 0.6); border-top: 3px solid #FF4500;
+      border-radius: 10px; padding: 20px 30px; /* เพิ่ม Padding ซ้ายขวาให้อลังการยิ่งขึ้น */
+      box-shadow: 0 15px 40px rgba(0,0,0,0.9), inset 0 0 25px rgba(255, 69, 0, 0.2);
+      pointer-events: auto; position: relative; gap: 15px; 
     }
-    .clock-row { display: flex; justify-content: space-between; width: 100%; align-items: center; }
-    .global-clock-hud .clock-item { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 33%; }
+    .clock-row { display: flex; justify-content: space-between; width: 100%; align-items: center; gap: 20px; }
+    /* 📍 ฟันธง: เปลี่ยน width: 33% เป็น flex: 1 และล็อกไม่ให้ตัวหนังสือตัดบรรทัด (white-space: nowrap) */
+    .global-clock-hud .clock-item { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; white-space: nowrap; }
     
     .global-clock-hud .clock-item span { 
-      font-size: 13px; color: rgba(255, 255, 255, 0.5); font-weight: 800; letter-spacing: 2px; margin-bottom: 4px; text-transform: uppercase; 
+      font-size: 15px; color: rgba(255, 255, 255, 0.6); font-weight: 900; letter-spacing: 2px; margin-bottom: 6px; text-transform: uppercase; text-shadow: 0 0 5px rgba(0,0,0,0.8);
     }
     
     .global-clock-hud .clock-item strong { 
-      font-family: 'Orbitron', sans-serif; font-size: 26px; color: #FF8800; font-weight: 900; font-variant-numeric: tabular-nums; 
-      text-shadow: 0 0 15px rgba(255, 69, 0, 0.8); letter-spacing: 1.5px; line-height: 1; 
+      font-family: 'Orbitron', sans-serif; font-size: 32px; color: #FF8800; font-weight: 900; font-variant-numeric: tabular-nums;  /* ขยายเวลา 26px -> 32px */
+      text-shadow: 0 0 20px rgba(255, 69, 0, 0.9), 0 0 10px rgba(255, 255, 255, 0.3); letter-spacing: 2px; line-height: 1; 
     }
     
-    /* 📍 ฟันธง: อัปเกรด DOY (วันที่) ขยายไซส์ให้เป็นจุดศูนย์กลางและเปลี่ยนเป็นสีทอง Golden Amber สไตล์ Sci-Fi */
+    /* 📍 ฟันธง: อัปเกรด DOY (วันที่) เป็นแกนกลางทรงพลัง */
     .global-clock-hud .clock-item.doy-item strong {
-      color: #ffcc00 !important; /* สีเหลืองทองสว่าง */
-      font-size: 35px !important; /* ขยายให้ใหญ่กระแทกตากว่าเวลาปกติ (26px -> 35px) */
-      text-shadow: 0 0 20px rgba(255, 204, 0, 0.8), 0 0 10px rgba(255, 255, 255, 0.5) !important; /* แสงออร่าสีทองเปล่งประกาย */
-      line-height: 0.85; /* จัดระเบียบบรรทัดไม่ให้ดันกล่องสูงเกินไป */
+      color: #ffcc00 !important; 
+      font-size: 46px !important; /* ขยาย DOY จาก 35px -> 46px กระแทกตาที่สุด */
+      text-shadow: 0 0 30px rgba(255, 204, 0, 0.9), 0 0 15px rgba(255, 255, 255, 0.6) !important; 
+      line-height: 0.85; 
     }
     .global-clock-hud .clock-item.doy-item span { 
-      color: rgba(255, 204, 0, 0.8) !important; /* เปลี่ยนป้ายตัวอักษร DOY เป็นสีทองให้เข้าชุดกัน */
+      color: rgba(255, 204, 0, 0.9) !important; 
       letter-spacing: 3px !important;
     }
     
@@ -323,44 +324,44 @@ const injectStyles = () => {
     .status-badge.live { background: rgba(0, 255, 102, 0.1); border-color: #00ff66; color: #00ff66; box-shadow: inset 0 0 15px rgba(0, 255, 102, 0.2); }
     .status-badge.sim { background: rgba(255, 171, 46, 0.1); border-color: #ffab2e; color: #ffab2e; box-shadow: inset 0 0 15px rgba(255, 171, 46, 0.2); }
 
-    /* 📍 แก้ข้อ 2: บังคับธงชาติและชื่อดาวเทียมให้อยู่ตรงกลางและบรรทัดเดียวกันเป๊ะๆ */
-    .target-header { display: flex; flex-direction: row !important; align-items: center; justify-content: center; gap: 15px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px dashed rgba(0,234,255,0.4); }
-    .target-header img { width: 40px; border-radius: 4px; border: 1px solid var(--cyan); box-shadow: 0 0 15px var(--cyan); }
-    .target-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: 26px; font-weight: 900; color: #fff; letter-spacing: 2px; text-shadow: 0 0 15px var(--cyan); }
+    /* 📍 อัปเกรด: บังคับธงชาติและชื่อดาวเทียมให้ใหญ่กระแทกตาระดับรัฐมนตรีมองเห็น */
+    .target-header { display: flex; flex-direction: row !important; align-items: center; justify-content: center; gap: 25px; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px dashed rgba(0,234,255,0.4); }
+    .target-header img { width: 64px; border-radius: 8px; border: 2px solid var(--cyan); box-shadow: 0 0 25px var(--cyan); }
+    .target-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: 42px; font-weight: 900; color: #fff; letter-spacing: 5px; text-shadow: 0 0 30px var(--cyan), 0 0 15px #000; line-height: 1; }
     
-    .status-banner { text-align: center; font-family: 'Orbitron', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 2px; padding: 15px; margin-bottom: 20px; border-radius: 8px; transition: all 0.3s; }
+    .status-banner { text-align: center; font-family: 'Orbitron', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 2px; padding: 25px 15px; margin-bottom: 25px; border-radius: 12px; transition: all 0.3s; min-height: 160px; justify-content: center; }
     .status-banner.standby { background: linear-gradient(180deg, rgba(255, 51, 51, 0.2), rgba(0,0,0,0.6)); border: 2px solid var(--red); color: var(--red); box-shadow: 0 0 30px rgba(255, 51, 51, 0.6), inset 0 0 20px rgba(255, 51, 51, 0.4); text-shadow: 0 0 10px var(--red); }
     .status-banner.active { background: linear-gradient(180deg, rgba(0, 234, 255, 0.2), rgba(0,0,0,0.6)); border: 2px solid var(--cyan); color: var(--cyan); box-shadow: 0 0 30px rgba(0, 234, 255, 0.6), inset 0 0 20px rgba(0, 234, 255, 0.4); text-shadow: 0 0 10px var(--cyan); }
 
-    /* 📍 แก้ไขกรอบวงสีแดง (Telemetry Grid): ขยายช่องและตัวเลขให้ใหญ่กระแทกตา ปรับสี Label ให้อ่านง่าย */
+    /* 📍 แก้ไขกรอบวงสีแดง (Telemetry Grid): ล็อกความสูงและตั้งค่าไม่ให้ตัวหนังสือตัดบรรทัด (ป้องกันการเด้ง) */
     .telemetry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-    .t-box { background: linear-gradient(145deg, rgba(0, 15, 30, 0.6) 0%, rgba(0, 5, 10, 0.8) 100%); border: 1px solid rgba(0, 234, 255, 0.15); border-left: 3px solid rgba(0, 234, 255, 0.5); border-radius: 8px; padding: 20px 24px; display: flex; flex-direction: column; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+    .t-box { background: linear-gradient(145deg, rgba(0, 15, 30, 0.6) 0%, rgba(0, 5, 10, 0.8) 100%); border: 1px solid rgba(0, 234, 255, 0.15); border-left: 3px solid rgba(0, 234, 255, 0.5); border-radius: 8px; padding: 20px 24px; display: flex; flex-direction: column; justify-content: center; min-height: 96px; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 5px 15px rgba(0,0,0,0.5); overflow: hidden; }
     .t-box:hover { border-color: var(--gold); border-left: 3px solid var(--gold); background: rgba(255, 204, 0, 0.08); box-shadow: 0 0 20px rgba(255, 204, 0, 0.2); transform: translateY(-3px); z-index: 5; }
     .t-box.highlight { border-left: 3px solid var(--red); background: linear-gradient(90deg, rgba(255, 51, 51, 0.15) 0%, transparent 100%); box-shadow: inset 0 0 20px rgba(255, 51, 51, 0.1); }
     
-    .t-box span { font-size: 14px; color: rgba(255, 255, 255, 0.65); text-transform: uppercase; letter-spacing: 2px; font-weight: 800; }
-    .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 28px; color: #ffffff; margin-top: 8px; text-shadow: 0 0 15px rgba(255, 255, 255, 0.6); letter-spacing: 1px; line-height: 1; }
+    .t-box span { font-size: 22px; color: rgba(255, 255, 255, 0.65); text-transform: uppercase; letter-spacing: 2px; font-weight: 800; white-space: nowrap; }
+    .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 35px; color: #ffffff; margin-top: 8px; text-shadow: 0 0 15px rgba(255, 255, 255, 0.6); letter-spacing: 1px; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
     /* 📍 อัปเกรด Info List (ข้อมูลดาวเทียม): ถอดเส้นคั่น ขยายฟอนต์ และกระชับบรรทัด */
-    .info-list { list-style: none; padding: 20px 0 0 0; margin: 20px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 18px; line-height: 1.6; }
+    .info-list { list-style: none; padding: 20px 0 0 0; margin: 20px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 22px; line-height: 1.6; }
     .info-list li { display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 4px; margin-bottom: 12px; }
     .info-list li:last-child { margin-bottom: 0; padding-bottom: 0; }
     .info-list span { color: rgba(255, 255, 255, 0.7); font-weight: 600; letter-spacing: 0.5px; }
-    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-align: right; font-size: 20px; letter-spacing: 1.5px; }
+    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-align: right; font-size: 25px; letter-spacing: 1.5px; }
 
     .right-container { display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; height: 100%; z-index: 20; }
     .menu-toggle-btn { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(255,204,0,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--gold); color: var(--gold); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(255,204,0,0.6), inset 0 0 10px rgba(255,204,0,0.3); }
     .menu-toggle-btn:hover { background: var(--gold); color: #000; box-shadow: 0 0 30px var(--gold); transform: scale(1.1); }
     
-    /* 📍 ขยายความกว้างแผงขวาจาก 300px เป็น 440px พร้อมเปิดระบบไถสกอร์ลแบบไร้ขอบ */
-    .right-panel { width: 440px !important; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
+    /* 📍 ฟันธง: ขยายแผงขวาให้กว้าง 637px สมมาตรกับแผงซ้าย 100% พร้อมขยายช่องไฟ (Gap) เป็น 24px */
+    .right-panel { width: 637px !important; display: flex; flex-direction: column; gap: 24px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
     .right-panel::-webkit-scrollbar { display: none; } /* 📍 ซ่อน Scrollbar ให้ UI ดูคลีนสไตล์ Sci-Fi */
 
     /* 📍 ฟันธง: อัปเกรดหัวข้อแผงขวาเป็น "ป้าย Badge ทับเส้นขอบ (Legend Style)" แยกหมวดหมู่ชัดเจนลดอาการตาล้า */
     .control-group p { 
-      text-align: center; margin: -34px auto 18px auto; width: fit-content; 
-      font-size: 16px !important; font-weight: 900; letter-spacing: 3px !important; 
-      padding: 4px 20px !important; color: #ffffff !important; 
+      text-align: center; margin: -40px auto 22px auto; width: fit-content; 
+      font-size: 20px !important; font-weight: 900; letter-spacing: 4px !important; 
+      padding: 6px 30px !important; color: #ffffff !important;
       background: #010408; border-radius: 4px; border: 1px solid; 
       font-family: 'Orbitron', sans-serif;
     }
@@ -368,8 +369,8 @@ const injectStyles = () => {
     .control-group:nth-child(2) p { border-color: var(--green); box-shadow: 0 0 15px rgba(0,255,102,0.4), inset 0 0 10px rgba(0,255,102,0.2); text-shadow: 0 0 10px var(--green); }
     .control-group:nth-child(3) p { border-color: var(--cyan); box-shadow: 0 0 15px rgba(0,234,255,0.4), inset 0 0 10px rgba(0,234,255,0.2); text-shadow: 0 0 10px var(--cyan); }
     
-    /* 📍 ขยายขนาดปุ่มทั้งหมด: Padding จาก 12px เป็น 16px และขยายฟอนต์จาก 15px เป็น 18px */
-    .btn { display: block; width: 100%; background: rgba(0, 15, 30, 0.5); border: 1px solid rgba(0, 234, 255, 0.5); color: var(--cyan); padding: 16px !important; margin-bottom: 12px; font-family: 'Rajdhani', sans-serif; font-size: 18px !important; font-weight: 800; cursor: pointer; text-align: center; border-radius: 6px; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); letter-spacing: 2px !important; text-transform: uppercase; text-shadow: 0 0 8px rgba(0, 234, 255, 0.6); box-shadow: 0 5px 15px rgba(0,0,0,0.4); position: relative; overflow: hidden; }
+    /* 📍 อัปเกรดขนาดปุ่มระดับ Masterpiece: เพิ่มความหนากล่องและขยายฟอนต์รองรับกรอบ 637px */
+    .btn { display: block; width: 100%; background: rgba(0, 15, 30, 0.5); border: 1px solid rgba(0, 234, 255, 0.5); color: var(--cyan); padding: 20px !important; margin-bottom: 12px; font-family: 'Rajdhani', sans-serif; font-size: 20px !important; font-weight: 900; cursor: pointer; text-align: center; border-radius: 6px; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); letter-spacing: 3px !important; text-transform: uppercase; text-shadow: 0 0 10px rgba(0, 234, 255, 0.8); box-shadow: 0 5px 15px rgba(0,0,0,0.4); position: relative; overflow: hidden; }
     
     .btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); transform: skewX(-20deg); transition: 0.5s; }
     .btn:hover::before { left: 150%; }
@@ -416,7 +417,7 @@ const injectStyles = () => {
 
     /* 📍 สไตล์ปุ่มเครื่องเล่นเทป (Media Controls) - ซ่อนข้อความ ขยายไอคอน */
     .media-btn { display: flex !important; flex-direction: row; align-items: center; justify-content: center; padding: 14px !important; }
-    .media-btn .icon { font-size: 32px; line-height: 1; filter: drop-shadow(0 0 10px currentColor); }
+    .media-btn .icon { font-size: 44px; line-height: 1; filter: drop-shadow(0 0 12px currentColor); }
 
     /* 🖥️ กลุ่มที่ 2: DISPLAY CONTROLS (ขอบเขียว) */
     .control-group:nth-child(2) { border-color: var(--green); border-top-color: var(--green); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(0, 255, 102, 0.15), inset 0 0 20px rgba(0, 255, 102, 0.05); }
@@ -440,8 +441,8 @@ const injectStyles = () => {
     .btn-green { background: rgba(0, 255, 102, 0.05) !important; border: 1px solid rgba(0, 255, 102, 0.5) !important; color: var(--green) !important; text-shadow: 0 0 8px var(--green) !important; }
     .btn-green:hover, .btn-green.active { background: var(--green) !important; color: #000 !important; border-color: #fff !important; text-shadow: none !important; box-shadow: 0 0 25px var(--green) !important; transform: scale(1.02) !important; }
 
-    /* 🗓️ ปุ่มล่างสุด PASS SCHEDULE (ขอบทอง -> Hover ทองอร่าม) ขยายให้ใหญ่สมส่วน */
-    .right-panel > button:last-child { background: linear-gradient(145deg, rgba(30, 15, 0, 0.8), rgba(10, 5, 0, 0.9)) !important; border: 2px solid var(--gold) !important; color: var(--gold) !important; padding: 18px !important; font-size: 20px !important; font-weight: 900 !important; letter-spacing: 3px !important; box-shadow: 0 0 20px rgba(255, 204, 0, 0.2), inset 0 0 10px rgba(255, 204, 0, 0.1) !important; margin-top: 5px; }
+    /* 🗓️ ปุ่มล่างสุด PASS SCHEDULE (ระเบิดไซส์ระดับ VIP) */
+    .right-panel > button:last-child { background: linear-gradient(145deg, rgba(30, 15, 0, 0.8), rgba(10, 5, 0, 0.9)) !important; border: 2px solid var(--gold) !important; color: var(--gold) !important; padding: 26px !important; font-size: 28px !important; font-weight: 900 !important; letter-spacing: 5px !important; box-shadow: 0 0 25px rgba(255, 204, 0, 0.4), inset 0 0 15px rgba(255, 204, 0, 0.2) !important; margin-top: 10px; }
     .right-panel > button:last-child:hover { background: linear-gradient(135deg, #ffcc00, #ff6600) !important; color: #000 !important; border-color: #fff !important; box-shadow: 0 0 35px rgba(255, 204, 0, 0.8), inset 0 0 15px rgba(255, 255, 255, 0.5) !important; text-shadow: none !important; transform: scale(1.03) !important; }
 
     .modal-clear-btn { background: rgba(255, 179, 71, 0.1); border: 1px solid var(--gold); color: var(--gold); padding: 5px 15px; border-radius: 4px; font-family: 'Orbitron', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 0 10px rgba(255, 204, 0, 0.2); margin-right: 15px; letter-spacing: 1px; display: flex; align-items: center; text-transform: uppercase; }
@@ -1384,27 +1385,23 @@ useEffect(() => {
     return null;
   }, [simulatedTimeMs, passSchedule, linkActive]);
 
-// 📍 1. สมองกลเก็บประวัติการส่ง ป้องกันการยิง API เบิ้ล
-const notifiedPassesRef = useRef({});
+// 📍 1. สมองกลเก็บประวัติการส่ง (ย้ายไปใช้ sessionStorage เพื่อให้ทนทานต่อการ Refresh/Hot Reload 100%)
+// ถอด useRef เดิมทิ้งไปเลยครับ เราจะฝังความจำไว้ในเบราว์เซอร์แทน
 
 // 📍 2. เซนเซอร์จับเวลา PRE-PASS (ล่วงหน้า 10 นาที) 
 useEffect(() => {
-  // 🛡️ ฟันธง: ตรวจสอบสถานะ LIVE แบบเข้มงวดสุดๆ ป้องกันการแจ้งเตือนรัวในโหมด SIM
-  // บังคับว่าเวลาจำลองต้องห่างจากเวลาจริงไม่เกิน 5 วินาที (5000ms) เท่านั้น จึงจะยอมยิงไลน์
   const isStrictLive = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
-  
   if (!isStrictLive || !nextPassTimestamp || !nextPassTimestamp.time) return;
   
   const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
   const TEN_MINUTES_MS = 600000; 
   
-  // 📍 ฟันธง: สร้าง ID แบบทนทาน ปัดเศษทุกๆ 30 นาที (1,800,000 ms) 
-  // แก้อาการแจ้งเตือนรัวๆ เพราะเวลา AOS ขยับไปมาทีละไม่กี่วินาที
   const stableAosTime = Math.floor(nextPassTimestamp.time / 1800000) * 1800000;
   const passId = `AOS-${selectedCatnr}-${stableAosTime}`;
 
-  if (timeToAos <= TEN_MINUTES_MS && timeToAos > 0 && !notifiedPassesRef.current[passId]) {
-    notifiedPassesRef.current[passId] = true;
+  // 📍 ฟันธง: เช็คจาก sessionStorage ถ้าเคยยิงแล้วให้ข้ามทันที ต่อให้แก้โค้ดหรือรีเฟรชจอก็ไม่ยิงซ้ำ!
+  if (timeToAos <= TEN_MINUTES_MS && timeToAos > 0 && !sessionStorage.getItem(passId)) {
+    sessionStorage.setItem(passId, 'true'); // บันทึกประวัติฝังลงเบราว์เซอร์
 
     const upcomingPass = passSchedule.find(p => p.aosTime === nextPassTimestamp.time);
     if (upcomingPass) {
@@ -1424,25 +1421,25 @@ useEffect(() => {
       fetch('https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec', {
         method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payloadData) 
       }).then(() => console.log(`[LINE] ยิงแจ้งเตือน 10 นาที (AOS) สำเร็จ! ID: ${passId}`))
-        .catch(err => console.error("LINE Notify Error:", err)); // 📍 ฟันธง: ไม่รีเซ็ตค่าเป็น false ป้องกันการยิงซ้ำเวลากระตุก
+        .catch(err => console.error("LINE Notify Error:", err));
     }
   }
 }, [simulatedTimeMs, nextPassTimestamp, selectedCatnr, targetConfig, speedMult, isPlaying, passSchedule]);
 
 // 📍 3. เซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)" 
 useEffect(() => {
-  // 🛡️ ฟันธง: ตรวจสอบสถานะ LIVE แบบเข้มงวดสุดๆ ห่างเวลาจริงไม่เกิน 5 วินาที
   const isLiveStrict = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
   if (!isLiveStrict || passSchedule.length === 0) return;
 
   passSchedule.forEach(pass => {
-    // 📍 ฟันธง: สร้าง ID ปัดเศษทุกๆ 30 นาที (1,800,000 ms) ป้องกัน ID เปลี่ยนจากการคำนวณวงโคจรคลาดเคลื่อน
     const stableLosTime = Math.floor(pass.losTime / 1800000) * 1800000;
     const passIdLos = `LOS-${selectedCatnr}-${stableLosTime}`;
     const timeSinceLos = simulatedTimeMs - pass.losTime;
     
-    if (timeSinceLos >= 0 && timeSinceLos <= 15000 && !notifiedPassesRef.current[passIdLos]) {
-      notifiedPassesRef.current[passIdLos] = true; 
+    // 📍 ฟันธง: ขยายเพดานดักจับเวลาจาก 15 วิ เป็น 2 นาที (120000ms) กันจังหวะเครื่องค้างตอนโหลด Hot Reload
+    // การันตีว่าไม่ส่งรัวซ้ำแน่นอน เพราะถูกล็อกด้วย sessionStorage ไว้แล้ว 100%
+    if (timeSinceLos >= 0 && timeSinceLos <= 120000 && !sessionStorage.getItem(passIdLos)) {
+      sessionStorage.setItem(passIdLos, 'true');
       
       const flagUrl = targetConfig.flag ? `https://flagcdn.com/w40/${targetConfig.flag}.png` : 'https://raw.githubusercontent.com/line/line-bot-sdk-nodejs/master/examples/kitchensink/public/logo.png';
       const doyStr = String(getUtcDayOfYear(new Date(pass.aosTime))).padStart(3, '0');
@@ -1464,7 +1461,6 @@ useEffect(() => {
     }
   });
 }, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying]);
-
   const allSatObjects = useMemo(() => {
     return SATELLITE_OPTIONS.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
       if (!satrecs[sat.catnr]) return null;
@@ -2562,40 +2558,17 @@ useEffect(() => {
           
           {/* 📍 ปลดล็อก Scrollbar ให้แผงซ้าย */}
           {isLeftPanelOpen && (
-          <div className="left-panel" style={{ width: '517px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '15px', flex: 1, overflowY: 'auto', paddingBottom: '30px', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+          <div className="left-panel" style={{ width: '637px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '24px', flex: 1, overflowY: 'auto', paddingBottom: '30px', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
             
             <div className="panel-box" style={{ textAlign: 'center', padding: '20px 15px', background: 'rgba(0, 10, 20, 0.45)', border: '1px solid rgba(0, 234, 255, 0.5)', borderRadius: '4px', boxShadow: '0 0 20px rgba(0, 234, 255, 0.2) inset' }}>
-              <h1 style={{ margin: '0 0 8px 0', fontFamily: 'Orbitron, sans-serif', fontSize: '30px', fontWeight: '900', color: '#ffffff', textShadow: '0 0 15px #00eaff, 0 0 30px #00eaff', letterSpacing: '2px' }}>SATELLITE ORBIT</h1>
-              <span style={{ display: 'block', fontSize: '16px', color: '#ffaa00', fontWeight: '600', letterSpacing: '2px', textShadow: '0 0 8px rgba(255,255,255,0.6)', textTransform: 'uppercase' }}>Thailand Satellite Ground Station</span>
-            </div>
-
-            {/* ☁️ CLOUD COVER FORECAST HUD */}
-            <div className="panel-box" style={{ padding: '15px 20px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px', gap: '5px' }}>
-                <span style={{ fontFamily: 'Orbitron', fontSize: '16px', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>ATMOSPHERIC CLOUD COVER</span>
-                <span style={{ fontSize: '16px', color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani', whiteSpace: 'nowrap', flexShrink: 0 }}>OPEN-METEO API</span>
-              </div>
-              
-              {/* 📍 ฟันธง: แก้ flexWrap ออก บังคับให้อยู่บรรทัดเดียวกันเสมอ และจัด align ให้ชิดขอบล่าง (flex-end) */}
-              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px' }}>
-                <div style={{ flex: '1', overflow: 'hidden' }}>
-                  {/* 📍 ฟันธง: ใช้ clamp() เพื่อให้ฟอนต์หดตัวอัตโนมัติเมื่อจอแคบ ป้องกันตัวหนังสือล้นกรอบ */}
-                  <div style={{ fontSize: 'clamp(12px, 1.2vw, 16px)', fontFamily: 'Orbitron', fontWeight: 'bold', color: cloudCover < 30 ? 'var(--green)' : (cloudCover < 70 ? 'var(--gold)' : 'var(--red)'), lineHeight: '1.2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {cloudCover === null ? 'ANALYZING...' : (cloudCover < 30 ? 'NOMINAL (CLEAR)' : (cloudCover < 70 ? 'MODERATE CLOUDS' : 'HIGH OBSCUREMENT'))}
-                  </div>
-                </div>
-                
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 'clamp(22px, 2vw, 28px)', fontFamily: 'Orbitron', fontWeight: '900', color: '#fff', textShadow: '0 0 10px var(--cyan)', lineHeight: '1' }}>
-                    {isFetchingCloud ? '--' : `${cloudCover}%`}
-                  </div>
-                </div>
-              </div>
+              <h1 style={{ margin: '0 0 8px 0', fontFamily: 'Orbitron, sans-serif', fontSize: '45px', fontWeight: '900', color: '#ffffff', textShadow: '0 0 15px #00eaff, 0 0 30px #00eaff', letterSpacing: '2px' }}>SATELLITE ORBIT</h1>
+              <span style={{ display: 'block', fontSize: '28px', color: '#ffaa00', fontWeight: '600', letterSpacing: '2px', textShadow: '0 0 8px rgba(255,255,255,0.6)', textTransform: 'uppercase' }}>Thailand Satellite Ground Station</span>
             </div>
 
             <div className="panel-box mission-status">
-              <div className="target-header">
-                {targetConfig.flag ? <img src={`https://flagcdn.com/w40/${targetConfig.flag}.png`} alt="flag" /> : <span style={{fontSize: '30px'}}>🛰️</span>}
+            <div className="target-header">
+                {/* 📍 ดึงภาพธงชาติความละเอียดสูงขึ้น (w80) และขยายขนาด Icon ดาวเทียมสำรอง */}
+                {targetConfig.flag ? <img src={`https://flagcdn.com/w80/${targetConfig.flag}.png`} alt="flag" /> : <span style={{fontSize: '50px'}}>🛰️</span>}
                 <h2>{targetConfig.displayName}</h2>
               </div>
 
@@ -2608,11 +2581,11 @@ useEffect(() => {
                 .status-banner.active { animation: pulse-glow 2s infinite ease-in-out; }
               `}</style>
 
-              <div className={`status-banner ${linkActive ? 'active' : 'standby'}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '15px 10px' }}>
+<div className={`status-banner ${linkActive ? 'active' : 'standby'}`} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px 10px' }}>
               {linkActive ? (
               <>
-                <span style={{ fontSize: '14px', fontWeight: '900', color: 'rgba(255,255,255,0.8)' }}>SIGNAL ACQUIRED</span>
-                <span style={{ fontSize: '32px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', color: 'var(--green)', textShadow: '0 0 20px rgba(0, 255, 102, 0.6)', margin: '2px 0' }}>
+                <span style={{ fontSize: '20px', fontWeight: '900', color: 'rgba(255,255,255,0.9)', letterSpacing: '3px' }}>SIGNAL ACQUIRED</span>
+                <span style={{ fontSize: '50px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '3px', color: 'var(--green)', textShadow: '0 0 25px rgba(0, 255, 102, 0.8)', margin: '4px 0', lineHeight: 1 }}>
                   {(() => {
                     const activePass = passSchedule.find(p => simulatedTimeMs >= p.aosTime && simulatedTimeMs <= p.losTime);
                     if (activePass) {
@@ -2624,12 +2597,12 @@ useEffect(() => {
                     return "TRACKING...";
                   })()}
                 </span>
-                <span style={{ fontSize: '12px', color: 'var(--green)', letterSpacing: '2px' }}>TIME TO LOS (END OF PASS)</span>
+                <span style={{ fontSize: '18px', color: 'var(--green)', letterSpacing: '2px', fontWeight: 'bold' }}>TIME TO LOS (END OF PASS)</span>
               </>
                 ) : nextPassTimestamp && nextPassTimestamp.time && (nextPassTimestamp.time > simulatedTimeMs) ? (
                    <>
-                     <span style={{ fontSize: '16px', color: 'rgba(255, 255, 255, 0.6)', letterSpacing: '1px' }}>NEXT PASS (AOS) IN</span>
-                     <span style={{ fontSize: '35px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', color: 'var(--gold)', textShadow: '0 0 15px rgba(255, 204, 0, 0.5)', margin: '2px 0' }}>
+                     <span style={{ fontSize: '20px', color: 'rgba(255, 255, 255, 0.8)', letterSpacing: '2px', fontWeight: 'bold' }}>NEXT PASS (AOS) IN</span>
+                     <span style={{ fontSize: '50px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '3px', color: 'var(--gold)', textShadow: '0 0 25px rgba(255, 204, 0, 0.8)', margin: '4px 0', lineHeight: 1 }}>
                        {(() => {
                          const diffMs = nextPassTimestamp.time - simulatedTimeMs;
                          const hrs = Math.floor(diffMs / 3600000);
@@ -2638,10 +2611,10 @@ useEffect(() => {
                          return `- ${pad2(hrs)}h ${pad2(mins)}m ${pad2(secs)}s`;
                        })()}
                      </span>
-                     <span style={{ fontSize: '16px', color: 'rgba(255, 255, 255, 0.6)' }}>EXPECTED MAX EL: <strong style={{color: 'var(--cyan)', fontSize: '16px'}}>{nextPassTimestamp.maxEl.toFixed(1)}°</strong></span>
+                     <span style={{ fontSize: '18px', color: 'rgba(255, 255, 255, 0.8)', fontWeight: 'bold' }}>EXPECTED MAX EL: <strong style={{color: 'var(--cyan)', fontSize: '20px'}}>{nextPassTimestamp.maxEl.toFixed(1)}°</strong></span>
                    </>
                 ) : (
-                   <span style={{ fontSize: '16px' }}>NO UPCOMING PASS</span>
+                   <span style={{ fontSize: '20px', fontWeight: 'bold', letterSpacing: '2px' }}>NO UPCOMING PASS</span>
                 )}
               </div>
 
@@ -2684,17 +2657,43 @@ useEffect(() => {
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tleSource}</strong></li>
               </ul>
 
-              {/* 📍 ฟันธง: ปุ่มเรียก SIGNAL ANALYZER IQ เมนูด้านซ้าย */}
-              <button 
+             {/* 📍 ฟันธง: อัปเกรดปุ่ม SIGNAL ANALYZER IQ ให้ใหญ่กระแทกตา ทะลวง !important ของ CSS */}
+             <button 
                 className={`btn ${linkActive ? 'btn-green' : 'btn-red'} ${isAnalyzerOpen ? 'active' : ''}`}
                 onClick={() => { setIsAnalyzerOpen(!isAnalyzerOpen); if (!isAnalyzerOpen) bringToFront('analyzer'); }}
-                style={{ width: '100%', marginTop: '15px', padding: '12px', fontSize: '16px', letterSpacing: '2px', fontWeight: '900', boxShadow: linkActive ? '0 0 15px rgba(0,255,102,0.4)' : '0 0 15px rgba(255,51,51,0.4)' }}
+                style={{ width: '100%', marginTop: '15px', padding: '20px 10px', boxShadow: linkActive ? '0 0 25px rgba(0,255,102,0.6)' : '0 0 25px rgba(255,51,51,0.6)' }}
               >
-                <span style={{ fontSize: '18px', marginRight: '8px' }}></span> SIGNAL ANALYZER (IQ)
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+                  <span style={{ fontSize: '32px', marginRight: '12px', filter: 'drop-shadow(0 0 5px currentColor)' }}>📡</span> 
+                  <span style={{ fontSize: '26px', letterSpacing: '3px', fontWeight: '900' }}>SIGNAL ANALYZER (IQ)</span>
+                </div>
               </button>
-
-
             </div>
+
+            {/* ☁️ CLOUD COVER FORECAST HUD */}
+            <div className="panel-box" style={{ padding: '15px 20px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px', gap: '5px' }}>
+                <span style={{ fontFamily: 'Orbitron', fontSize: '16px', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>ATMOSPHERIC CLOUD COVER</span>
+                <span style={{ fontSize: '16px', color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani', whiteSpace: 'nowrap', flexShrink: 0 }}>OPEN-METEO API</span>
+              </div>
+              
+              {/* 📍 ฟันธง: แก้ flexWrap ออก บังคับให้อยู่บรรทัดเดียวกันเสมอ และจัด align ให้ชิดขอบล่าง (flex-end) */}
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '10px' }}>
+                <div style={{ flex: '1', overflow: 'hidden' }}>
+                  {/* 📍 ฟันธง: ใช้ clamp() เพื่อให้ฟอนต์หดตัวอัตโนมัติเมื่อจอแคบ ป้องกันตัวหนังสือล้นกรอบ */}
+                  <div style={{ fontSize: 'clamp(12px, 1.2vw, 16px)', fontFamily: 'Orbitron', fontWeight: 'bold', color: cloudCover < 30 ? 'var(--green)' : (cloudCover < 70 ? 'var(--gold)' : 'var(--red)'), lineHeight: '1.2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {cloudCover === null ? 'ANALYZING...' : (cloudCover < 30 ? 'NOMINAL (CLEAR)' : (cloudCover < 70 ? 'MODERATE CLOUDS' : 'HIGH OBSCUREMENT'))}
+                  </div>
+                </div>
+                
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontSize: 'clamp(22px, 2vw, 28px)', fontFamily: 'Orbitron', fontWeight: '900', color: '#fff', textShadow: '0 0 10px var(--cyan)', lineHeight: '1' }}>
+                    {isFetchingCloud ? '--' : `${cloudCover}%`}
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
           )}
         </div>
@@ -2733,7 +2732,7 @@ useEffect(() => {
                         }
                       }}
                       disabled={isRealtimePassLock}
-                      style={{ width: '100%', marginBottom: '12px', padding: '10px', fontSize: '18px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', borderRadius: '6px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', transition: 'all 0.3s', background: isAutoPilot ? 'linear-gradient(90deg, #ff00ff, #00eaff)' : 'rgba(255, 0, 255, 0.1)', color: isAutoPilot ? '#fff' : '#ff00ff', border: '2px solid #ff00ff', boxShadow: isAutoPilot ? '0 0 20px #ff00ff' : 'inset 0 0 10px rgba(255,0,255,0.2)', opacity: isRealtimePassLock ? 0.3 : 1 }}
+                      style={{ width: '100%', marginBottom: '16px', padding: '18px', fontSize: '24px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '3px', borderRadius: '6px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', transition: 'all 0.3s', background: isAutoPilot ? 'linear-gradient(90deg, #ff00ff, #00eaff)' : 'rgba(255, 0, 255, 0.1)', color: isAutoPilot ? '#fff' : '#ff00ff', border: '2px solid #ff00ff', boxShadow: isAutoPilot ? '0 0 20px #ff00ff' : 'inset 0 0 10px rgba(255,0,255,0.2)', opacity: isRealtimePassLock ? 0.3 : 1 }}
                     >
                       {isAutoPilot ? '🤖 AUTO-PILOT: ACTIVE' : '🤖 AUTO-PILOT: OFF'}
                     </button>
@@ -2745,22 +2744,22 @@ useEffect(() => {
                       <button disabled={isRealtimePassLock} className="btn media-btn" onMouseDown={() => handleSeekDown(30000)} onMouseUp={() => handleSeekUp(30000)} onMouseLeave={() => handleSeekUp(0)} onTouchStart={() => handleSeekDown(30000)} onTouchEnd={() => handleSeekUp(30000)} style={{ opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer' }}><span className="icon">⏩</span></button>
                     </div>
 
-                    <div className="speed-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '4px' }}>
+                    <div className="speed-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginTop: '16px' }}>
                       {[1, 20, 50, 100, 500, 1000].map(s => (
-                        <button key={s} disabled={isRealtimePassLock} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, fontSize: '12px', padding: '10px 2px', opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer'}} onClick={() => setSpeedMult(s)}>{s}X</button>
+                        <button key={s} disabled={isRealtimePassLock} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, fontSize: '18px', padding: '16px 4px', opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer'}} onClick={() => setSpeedMult(s)}>{s}X</button>
                       ))}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', height: '48px' }}>
+                    <div style={{ display: 'flex', gap: '15px', marginTop: '15px', height: '60px' }}>
                       {(() => {
                         const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
                         return (
-                          <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ flex: '1', margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '6px', fontSize: '15px', letterSpacing: '2px', background: isRealtimePassLock ? 'rgba(255, 51, 51, 0.2)' : '', borderColor: isRealtimePassLock ? 'var(--red)' : '', color: isRealtimePassLock ? 'var(--red)' : '', boxShadow: isRealtimePassLock ? 'inset 0 0 15px rgba(255,51,51,0.3)' : '' }}>
+                          <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ flex: '1', margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '6px', fontSize: '20px', letterSpacing: '3px', background: isRealtimePassLock ? 'rgba(255, 51, 51, 0.2)' : '', borderColor: isRealtimePassLock ? 'var(--red)' : '', color: isRealtimePassLock ? 'var(--red)' : '', boxShadow: isRealtimePassLock ? 'inset 0 0 15px rgba(255,51,51,0.3)' : '' }}>
                             {isRealtimePassLock ? '🚨 REAL-TIME LOCK' : (isLive ? '🟢 LIVE' : '🟠 SIM')}
                           </div>
                         );
                       })()}
-                      <button className="btn" style={{ flex: '1', margin: 0, padding: '0', fontSize: '15px', letterSpacing: '2px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => {
+                      <button className="btn" style={{ flex: '1', margin: 0, padding: '0', fontSize: '20px', letterSpacing: '3px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => {
                         setSimulatedTimeMs(Date.now()); setSpeedMult(1); setIsPlaying(true); isTrackingRef.current = false; setCameraMode('FREE LOOK');
                         setSelectedPlanId(null); setMapZoom(1); setImgMapOrigin('center center'); setTacticalZoom(1); setZoomOrigin('center center');
                         if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
@@ -2768,12 +2767,12 @@ useEffect(() => {
                     </div>
 
                     <div className="time-scrubber-container">
-                      <div className="scrubber-labels" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <span style={{ width: '70px', textAlign: 'left', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>{sliderMode === 'DAILY' ? '00:00 UTC' : 'AOS -5m'}</span>
-                        <button onClick={() => setSliderMode(sliderMode === 'DAILY' ? 'PASS' : 'DAILY')} disabled={isRealtimePassLock} style={{ background: sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.1)' : 'rgba(255, 204, 0, 0.15)', border: `1px solid ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`, color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', borderRadius: '4px', padding: '4px 10px', fontSize: '11px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '1px', transition: 'all 0.3s', boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.2)' : 'rgba(255, 204, 0, 0.3)'}`, opacity: isRealtimePassLock ? 0.3 : 1 }}>
+                    <div className="scrubber-labels" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <span style={{ width: '90px', textAlign: 'left', color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontFamily: 'Orbitron', fontWeight: 'bold' }}>{sliderMode === 'DAILY' ? '00:00 UTC' : 'AOS -5m'}</span>
+                        <button onClick={() => setSliderMode(sliderMode === 'DAILY' ? 'PASS' : 'DAILY')} disabled={isRealtimePassLock} style={{ background: sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.1)' : 'rgba(255, 204, 0, 0.15)', border: `1px solid ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`, color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', borderRadius: '6px', padding: '8px 16px', fontSize: '14px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', transition: 'all 0.3s', boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.2)' : 'rgba(255, 204, 0, 0.3)'}`, opacity: isRealtimePassLock ? 0.3 : 1 }}>
                           MODE: {sliderMode === 'DAILY' ? '🌍 24H GLOBAL' : '🎯 ACTIVE PASS'} ⟲
                         </button>
-                        <span style={{ width: '70px', textAlign: 'right', color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontFamily: 'Orbitron' }}>{sliderMode === 'DAILY' ? '23:59 UTC' : 'LOS +5m'}</span>
+                        <span style={{ width: '90px', textAlign: 'right', color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontFamily: 'Orbitron', fontWeight: 'bold' }}>{sliderMode === 'DAILY' ? '23:59 UTC' : 'LOS +5m'}</span>
                       </div>
                       
                       {(() => {
@@ -2797,8 +2796,8 @@ useEffect(() => {
                           </div>
                         );
                       })()}
-                      <div style={{ textAlign: 'center', fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginTop: '5px', fontVariantNumeric: 'tabular-nums' }}>
-                        CURRENT SIM: <strong style={{ color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', fontSize: '14px', textShadow: `0 0 5px ${sliderMode === 'DAILY' ? 'rgba(0,234,255,0.5)' : 'rgba(255,204,0,0.5)'}` }}>{formatTime(new Date(simulatedTimeMs))} UTC</strong>
+                      <div style={{ textAlign: 'center', fontSize: '16px', color: 'rgba(255,255,255,0.7)', marginTop: '12px', fontVariantNumeric: 'tabular-nums', fontWeight: 'bold', letterSpacing: '1px' }}>
+                        CURRENT SIM: <strong style={{ color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', fontSize: '22px', textShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0,234,255,0.8)' : 'rgba(255,204,0,0.8)'}`, marginLeft: '8px' }}>{formatTime(new Date(simulatedTimeMs))} UTC</strong>
                       </div>
                     </div>
                   </>
