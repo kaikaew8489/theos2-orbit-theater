@@ -4748,22 +4748,7 @@ return (
               <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 'max(8px, 0.9cqmin)', marginTop: 'max(2px, 0.2cqmin)', letterSpacing: '2px' }}>[ X-BAND DATA ]</div>
             </div>
 
-            {/* 📍 PANELS (LINK STATUS & SPECIFICATIONS) */}
-            <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', left: 'max(20px, 2.5cqmin)', width: 'max(260px, 28cqmin)', border: '2px solid var(--cyan)', boxShadow: '0 0 max(20px, 2cqmin) rgba(0, 234, 255, 0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0, 234, 255, 0.15)' }}>
-              <div style={{ color: 'var(--cyan)', fontSize: 'max(16px, 1.8cqmin)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(0,234,255,0.3)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)' }}>LINK STATUS</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'max(10px, 1cqmin)', fontSize: 'max(14px, 1.5cqmin)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
-                <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px' }}><div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', borderRadius: '50%', background: 'var(--cyan)', marginRight: 'max(10px, 1.2cqmin)', boxShadow: '0 0 8px var(--cyan)' }}></div> S-BAND (TM)</span>
-                <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'max(10px, 1cqmin)', fontSize: 'max(14px, 1.5cqmin)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
-                <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px' }}><div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', borderRadius: '50%', background: 'var(--gold)', marginRight: 'max(10px, 1.2cqmin)', boxShadow: '0 0 8px var(--gold)' }}></div> TC UPLINK</span>
-                <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'max(14px, 1.5cqmin)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
-                <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px' }}><div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', borderRadius: '50%', background: 'var(--green)', marginRight: 'max(10px, 1.2cqmin)', boxShadow: '0 0 8px var(--green)' }}></div> PAYLOAD</span>
-                <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
-              </div>
-            </div>
+          
 {/* 📍 PANELS (LINK STATUS & SPECIFICATIONS) */}
 <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', left: 'max(20px, 2.5cqmin)', width: 'clamp(220px, 24cqw, 280px)', border: '2px solid var(--cyan)', boxShadow: '0 0 max(20px, 2cqmin) rgba(0, 234, 255, 0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0, 234, 255, 0.15)' }}>
               <div style={{ color: 'var(--cyan)', fontSize: 'clamp(14px, 1.6cqw, 18px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(0,234,255,0.3)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)' }}>LINK STATUS</div>
@@ -4809,7 +4794,7 @@ return (
                     <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(6px, 0.6cqmin) 0' }}>{satSpecs.tmRate}</td>
                   </tr>
                   <tr>
-                    <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.2cqw, 14px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>PAYLOAD</td>
+                    <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.2cqw, 14px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>DOWNLINK</td>
                     <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(12px, 1.3cqw, 15px)', padding: 'max(6px, 0.6cqmin) 0 0 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.xBandFreq}</td>
                     <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>{satSpecs.xBandRange}</td>
                     <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>{satSpecs.xBandRate}</td>
