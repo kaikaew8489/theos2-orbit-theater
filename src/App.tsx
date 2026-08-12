@@ -4261,10 +4261,12 @@ return (
     position: 'fixed', 
     top: maximizedWins?.diagram ? '0px' : `${diagramPos.y}px`, 
     left: maximizedWins?.diagram ? '0px' : `${diagramPos.x}px`,
-    /* 📍 ข้อ 1: ขยายกรอบเริ่มต้นให้ใหญ่ระดับ Ultra-Wide ป้องกันการทับซ้อน 1,000,000% */
-    width: maximizedWins?.diagram ? '100vw' : 'max(1400px, 92vw)', 
-    height: maximizedWins?.diagram ? '100vh' : 'max(850px, 85vh)', 
-    minWidth: '1200px', minHeight: '750px',
+
+   /* 📍 ฟันธง: ย่อขนาดกรอบเริ่มต้นให้กะทัดรัดพอดีคำ (ตามรูปที่ 1) ให้เปิดมาแล้วไม่บังจอจนมิด */
+    width: maximizedWins?.diagram ? '100vw' : 'max(850px, 55vw)', 
+    height: maximizedWins?.diagram ? '100vh' : 'max(500px, 55vh)', 
+    minWidth: '900px', minHeight: '550px',
+    
     resize: maximizedWins?.diagram ? 'none' : 'both', 
     overflow: 'hidden',
     background: 'linear-gradient(180deg, #020617 0%, #0a0f24 100%)', 
@@ -4397,11 +4399,11 @@ return (
               <line x1="10%" y1="85%" x2="35%" y2="85%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} />
               <line x1="90%" y1="85%" x2="65%" y2="85%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
               
-              {/* 📍 สัญลักษณ์ HPA (แก้ไขเลื่อนไปทางซ้าย หลบกรอบความถี่) */}
+              {/* 📍 ฟันธงข้อ 2: ขยายสามเหลี่ยม HPA ให้ใหญ่ขึ้น 1.5 เท่า และดันตัวหนังสือลงมาให้สมมาตร ไม่เบียดขอบ */}
               <g style={{ transform: 'translateY(3cqmin)' }}>
                 <svg x="21%" y="55%" style={{ overflow: 'visible' }}>
-                  <polygon points="-30,-20 -30,20 25,0" fill="#020617" stroke="var(--gold)" strokeWidth="3" style={{ filter: linkActive ? 'drop-shadow(0 0 12px var(--gold))' : 'none' }} />
-                  <text x="-5" y="42" fill="var(--gold)" fontSize="max(14px, 1.5cqmin)" fontFamily="Orbitron" fontWeight="bold" textAnchor="middle" style={{ textShadow: '0 0 10px #000' }}>HPA</text>
+                  <polygon points="-45,-30 -45,30 38,0" fill="#020617" stroke="var(--gold)" strokeWidth="4" style={{ filter: linkActive ? 'drop-shadow(0 0 15px var(--gold))' : 'none' }} />
+                  <text x="-3" y="55" fill="var(--gold)" fontSize="max(18px, 1.8cqmin)" fontFamily="Orbitron" fontWeight="900" textAnchor="middle" style={{ textShadow: '0 0 12px #000', letterSpacing: '2px' }}>HPA</text>
                 </svg>
               </g>
 
@@ -4705,38 +4707,55 @@ return (
                 <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
               </div>
             </div>
+{/* 📍 PANELS (LINK STATUS & SPECIFICATIONS) */}
+<div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', left: 'max(20px, 2.5cqmin)', width: 'clamp(220px, 24cqw, 280px)', border: '2px solid var(--cyan)', boxShadow: '0 0 max(20px, 2cqmin) rgba(0, 234, 255, 0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0, 234, 255, 0.15)' }}>
+              <div style={{ color: 'var(--cyan)', fontSize: 'clamp(14px, 1.6cqw, 18px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(0,234,255,0.3)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)' }}>LINK STATUS</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'max(10px, 1cqmin)', fontSize: 'clamp(12px, 1.4cqw, 15px)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
+                <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px' }}><div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', borderRadius: '50%', background: 'var(--cyan)', marginRight: 'max(10px, 1.2cqmin)', boxShadow: '0 0 8px var(--cyan)' }}></div> S-BAND (TM)</span>
+                <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'max(10px, 1cqmin)', fontSize: 'clamp(12px, 1.4cqw, 15px)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
+                <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px' }}><div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', borderRadius: '50%', background: 'var(--gold)', marginRight: 'max(10px, 1.2cqmin)', boxShadow: '0 0 8px var(--gold)' }}></div> TC UPLINK</span>
+                <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'clamp(12px, 1.4cqw, 15px)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
+                <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px' }}><div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', borderRadius: '50%', background: 'var(--green)', marginRight: 'max(10px, 1.2cqmin)', boxShadow: '0 0 8px var(--green)' }}></div> PAYLOAD</span>
+                <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
+              </div>
+            </div>
 
-            <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', right: 'max(20px, 2.5cqmin)', left: 'auto', width: 'max(520px, 55cqmin)', display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)' }}>
-              <div style={{ color: '#FF4500', fontSize: 'max(16px, 1.8cqmin)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 15px #FF4500' }}>
+            {/* 📍 ฟันธงข้อ 3: ใช้ clamp() ผูกความกว้างแผง TECH SPECS ไว้ที่ 34cqw (34% ของจอ) ป้องกันการขยายไปทับ THEOS-2 เด็ดขาด พร้อมย่อฟอนต์ให้สมมาตร 100% */}
+            <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', right: 'max(20px, 2.5cqmin)', left: 'auto', width: 'clamp(360px, 34cqw, 480px)', display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)' }}>
+              <div style={{ color: '#FF4500', fontSize: 'clamp(14px, 1.6cqw, 18px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '1px', textShadow: '0 0 15px #FF4500' }}>
                 TECHNICAL SPECIFICATIONS
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', textAlign: 'center' }}>
                 <thead>
-                  <tr style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'max(13px, 1.4cqmin)', borderBottom: '1px dashed rgba(255,255,255,0.3)', letterSpacing: '1px' }}>
-                    <th style={{ paddingBottom: 'max(8px, 0.8cqmin)', fontWeight: 'bold' }}>LINK TYPE</th>
-                    <th style={{ paddingBottom: 'max(8px, 0.8cqmin)', fontWeight: 'bold' }}>CENTER FREQ</th>
-                    <th style={{ paddingBottom: 'max(8px, 0.8cqmin)', fontWeight: 'bold' }}>OPERATIONAL RANGE</th>
-                    <th style={{ paddingBottom: 'max(8px, 0.8cqmin)', fontWeight: 'bold' }}>DATA RATE / BW</th>
+                  <tr style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(10px, 1.1cqw, 13px)', borderBottom: '1px dashed rgba(255,255,255,0.3)', letterSpacing: '0.5px' }}>
+                    <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>LINK TYPE</th>
+                    <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>CENTER FREQ</th>
+                    <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>OPERATIONAL RANGE</th>
+                    <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>DATA RATE / BW</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: 'max(14px, 1.5cqmin)', padding: 'max(10px, 1cqmin) 0 max(6px, 0.6cqmin) 0' }}>TC (UP)</td>
-                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'max(15px, 1.6cqmin)', padding: 'max(10px, 1cqmin) 0 max(6px, 0.6cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.tcFreq}</td>
-                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'max(13px, 1.4cqmin)', padding: 'max(10px, 1cqmin) 0 max(6px, 0.6cqmin) 0' }}>{satSpecs.tcRange}</td>
-                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'max(13px, 1.4cqmin)', padding: 'max(10px, 1cqmin) 0 max(6px, 0.6cqmin) 0' }}>{satSpecs.tcRate}</td>
+                    <td style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.2cqw, 14px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>TC (UP)</td>
+                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(12px, 1.3cqw, 15px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.tcFreq}</td>
+                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>{satSpecs.tcRange}</td>
+                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>{satSpecs.tcRate}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'max(14px, 1.5cqmin)', padding: 'max(8px, 0.8cqmin) 0' }}>TM (DOWN)</td>
-                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'max(15px, 1.6cqmin)', padding: 'max(8px, 0.8cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.tmFreq}</td>
-                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'max(13px, 1.4cqmin)', padding: 'max(8px, 0.8cqmin) 0' }}>{satSpecs.tmRange}</td>
-                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'max(13px, 1.4cqmin)', padding: 'max(8px, 0.8cqmin) 0' }}>{satSpecs.tmRate}</td>
+                    <td style={{ color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.2cqw, 14px)', padding: 'max(6px, 0.6cqmin) 0' }}>TM (DOWN)</td>
+                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(12px, 1.3cqw, 15px)', padding: 'max(6px, 0.6cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.tmFreq}</td>
+                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(6px, 0.6cqmin) 0' }}>{satSpecs.tmRange}</td>
+                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(6px, 0.6cqmin) 0' }}>{satSpecs.tmRate}</td>
                   </tr>
                   <tr>
-                    <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'max(14px, 1.5cqmin)', padding: 'max(8px, 0.8cqmin) 0 0 0' }}>PAYLOAD</td>
-                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'max(15px, 1.6cqmin)', padding: 'max(8px, 0.8cqmin) 0 0 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.xBandFreq}</td>
-                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'max(13px, 1.4cqmin)', padding: 'max(8px, 0.8cqmin) 0 0 0' }}>{satSpecs.xBandRange}</td>
-                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'max(13px, 1.4cqmin)', padding: 'max(8px, 0.8cqmin) 0 0 0' }}>{satSpecs.xBandRate}</td>
+                    <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.2cqw, 14px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>PAYLOAD</td>
+                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(12px, 1.3cqw, 15px)', padding: 'max(6px, 0.6cqmin) 0 0 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.xBandFreq}</td>
+                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>{satSpecs.xBandRange}</td>
+                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>{satSpecs.xBandRate}</td>
                   </tr>
                 </tbody>
               </table>
