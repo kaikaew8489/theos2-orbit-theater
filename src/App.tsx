@@ -1531,9 +1531,24 @@ useEffect(() => {
     }).filter(Boolean);
   }, [currentDate, satrecs, selectedCatnr, selectedCatnrs]); 
 
-  const orbitVisualPath = useMemo(() => {
-    if (!targetSatrec) return [];
-    const points = [];
+ // 📍 ฟันธง: อัปเกรดสมองกลวาดเส้นวงโคจร (Orbit Path) สร้าง The GEO Belt สำหรับดาวเทียมค้างฟ้า
+ const orbitVisualPath = useMemo(() => {
+  if (!targetSatrec) return [];
+  
+  // 🚀 สกัดความสูงปัจจุบันเพื่อเช็คว่าเป็น GEO หรือ LEO
+  const initPos = calculateSatData(currentDate, targetSatrec);
+  if (!initPos) return [];
+  const isGEO = initPos.altKm > 30000;
+
+  const points = [];
+  if (isGEO) {
+    // 🟢 สำหรับ GEO (THAICOM): วาดวงแหวนวงยักษ์ 360 องศา ที่เส้นศูนย์สูตร (lat 0)
+    for (let lng = -180; lng <= 180; lng += 2) {
+      points.push({ lat: 0, lng: lng, alt: initPos.altKm / EARTH_RADIUS_KM });
+    }
+    return [{ points, color: 'rgba(255, 204, 0, 0.8)', stroke: 1.5 }];
+  } else {
+    // 🔵 สำหรับ LEO (THEOS): วาดเส้นโคจรเฉพาะช่วงเวลาล่วงหน้า/ย้อนหลัง 60 นาที
     for (let m = -60; m <= 60; m += 0.5) {
       const d = new Date(currentDate.getTime() + m * 60 * 1000);
       const pos = calculateSatData(d, targetSatrec);
@@ -1543,7 +1558,8 @@ useEffect(() => {
     }
     if (points.length < 2) return [];
     return [{ points, color: 'rgba(255, 204, 0, 0.8)', stroke: 1.0 }]; 
-  }, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000)]);
+  }
+}, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000)]);
 
  // 📍 ฟันธง 2: ระบบวาดเส้นแดงบน 3D (อัปเกรดให้รองรับไฟล์ PDF และกันบั๊กเวลา)
 const imagingSwathPaths = useMemo(() => {
@@ -1596,19 +1612,25 @@ const imagingPlansData = useMemo(() => {
   });
 }, [satrecs, sourcePlans]);
 
-  const groundTrackPath = useMemo(() => {
-    if (!targetSatrec || !showGroundTrack) return [];
-    const points = [];
-    for (let m = 0; m <= 1440; m += 1) {
-      const d = new Date(currentDate.getTime() + m * 60 * 1000);
-      const pos = calculateSatData(d, targetSatrec);
-      if (pos && !isNaN(pos.lat) && !isNaN(pos.lng) && !isNaN(pos.altKm)) {
-        points.push({ lat: pos.lat, lng: pos.lng, alt: Math.max(0.01, pos.altKm / EARTH_RADIUS_KM) });
-      }
+ // 📍 ฟันธง: บังคับตัดวงจรเส้น Ground Track สีแดง/ทอง ที่วิ่งรอบโลกออกทันทีสำหรับดาวเทียม GEO (Thaicom)
+ const groundTrackPath = useMemo(() => {
+  if (!targetSatrec || !showGroundTrack) return [];
+  
+  // เช็คสเปก ถ้าความสูงเกิน 30,000 กม. (GEO) ห้ามวาดเส้นรอบโลกเด็ดขาด!
+  const initPos = calculateSatData(currentDate, targetSatrec);
+  if (initPos && initPos.altKm > 30000) return []; 
+
+  const points = [];
+  for (let m = 0; m <= 1440; m += 1) {
+    const d = new Date(currentDate.getTime() + m * 60 * 1000);
+    const pos = calculateSatData(d, targetSatrec);
+    if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+      points.push({ lat: pos.lat, lng: pos.lng, alt: 0.005 }); // แนบติดพื้นโลก
     }
-    if (points.length < 2) return [];
-    return [{ points, color: 'rgba(255, 215, 0, 0.8)', stroke: 0.5 }];
-  }, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000), showGroundTrack]);
+  }
+  if (points.length < 2) return [];
+  return [{ points, color: 'rgba(255, 215, 0, 0.8)', stroke: 0.5 }];
+}, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000), showGroundTrack]);
   
 // 📍 อัปเกรดเส้นขอบ Footprint ให้เนียนกริบและเป็นสีแดง Tactical ตามบัญชา Commander!
 const footprintBoundaryPath = useMemo(() => {
@@ -2297,6 +2319,41 @@ useEffect(() => {
   }
   return () => { if (autoPilotTimer.current) clearInterval(autoPilotTimer.current); };
 }, [isAutoPilot, simulatedTimeMs, nextPassTimestamp]);
+
+// 📍 ฟันธง: สมองกลดักจับการเข้าสู่วงโคจร (AOS Interceptor) อัตโนมัติ (บังคับกลับโหมด LIVE)
+const autoSnapRef = useRef({});
+
+useEffect(() => {
+  if (!passSchedule || passSchedule.length === 0) return;
+
+  const now = Date.now();
+  const activeRealPass = passSchedule.find(p => now >= p.aosTime && now <= p.losTime);
+
+  // 🚀 กรณีที่ 1: ดาวเทียมของจริงเข้าเขตรับสัญญาณ (Real-Time AOS)
+  if (activeRealPass) {
+    const passId = `SNAP-REAL-${activeRealPass.aosTime}`;
+    if (!autoSnapRef.current[passId]) {
+      autoSnapRef.current[passId] = true;
+      setSimulatedTimeMs(now);
+      setSpeedMult(1);
+      setIsPlaying(true);
+      console.log("[SYSTEM] 🚨 REAL-TIME AOS DETECTED! Auto-snapping to LIVE mode.");
+    }
+  } 
+  // 🚀 กรณีที่ 2: กำลังกรอเวลาจำลอง (SIM) ด้วยความเร็วสูง (แตะขอบ AOS ปุ๊บเบรกทันที)
+  else {
+    const activeSimPass = passSchedule.find(p => simulatedTimeMs >= p.aosTime && simulatedTimeMs <= p.losTime);
+    if (activeSimPass && speedMult > 1) {
+      const passIdSim = `SNAP-SIM-${activeSimPass.aosTime}`;
+      if (!autoSnapRef.current[passIdSim]) {
+        autoSnapRef.current[passIdSim] = true;
+        setSpeedMult(1);
+        setIsPlaying(true);
+        console.log("[SYSTEM] ⏱️ SIMULATED AOS REACHED! Auto-dropping to 1X speed.");
+      }
+    }
+  }
+}, [simulatedTimeMs, passSchedule, speedMult, isPlaying]);
 
 return (
   <>
@@ -3144,9 +3201,9 @@ return (
              </button>
            </div>
 
-           {/* 📍 เครดิตลิขสิทธิ์และผู้พัฒนา */}
-           <div style={{ textAlign: 'center', marginTop: '15px', fontSize: '16px', color: 'rgba(255, 255, 255, 0.8)', fontFamily: 'Rajdhani', letterSpacing: '1px' }}>
-             © 2026 GISTDA.Ground System Engineering Division
+          {/* 📍 เครดิตลิขสิทธิ์และผู้พัฒนา */}
+          <div style={{ textAlign: 'center', marginTop: '15px', fontSize: '20px', color: 'rgba(255, 255, 255, 0.8)', fontFamily: 'Rajdhani', letterSpacing: '1px', lineHeight: '1.6' }}>
+             © 2026 GISTDA.Ground System Engineering Division <br />
              Developed by Nawattakorn Kaikaew
            </div>
          </div>
