@@ -249,7 +249,7 @@ const injectStyles = () => {
     .menu-toggle-btn-left { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(0,234,255,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--cyan); color: var(--cyan); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(0,234,255,0.6), inset 0 0 10px rgba(0,234,255,0.3); flex-shrink: 0; }
     .menu-toggle-btn-left:hover { background: var(--cyan); color: #000; box-shadow: 0 0 30px var(--cyan); transform: scale(1.1); }
     
-    .left-panel { width: 517px !important; box-sizing: border-box !important; display: flex; flex-direction: column; gap: 15px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
+    .left-panel { width: 517px !important; box-sizing: border-box !important; display: flex; flex-direction: column; gap: 24px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
     .left-panel::-webkit-scrollbar { display: none; }
     @keyframes slideInLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
 
@@ -334,19 +334,19 @@ const injectStyles = () => {
 
     /* 📍 แก้ไขกรอบวงสีแดง (Telemetry Grid): ขยายช่องและตัวเลขให้ใหญ่กระแทกตา ปรับสี Label ให้อ่านง่าย */
     .telemetry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-    .t-box { background: linear-gradient(145deg, rgba(0, 15, 30, 0.6) 0%, rgba(0, 5, 10, 0.8) 100%); border: 1px solid rgba(0, 234, 255, 0.15); border-left: 3px solid rgba(0, 234, 255, 0.5); border-radius: 8px; padding: 15px 18px; display: flex; flex-direction: column; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+    .t-box { background: linear-gradient(145deg, rgba(0, 15, 30, 0.6) 0%, rgba(0, 5, 10, 0.8) 100%); border: 1px solid rgba(0, 234, 255, 0.15); border-left: 3px solid rgba(0, 234, 255, 0.5); border-radius: 8px; padding: 20px 24px; display: flex; flex-direction: column; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
     .t-box:hover { border-color: var(--gold); border-left: 3px solid var(--gold); background: rgba(255, 204, 0, 0.08); box-shadow: 0 0 20px rgba(255, 204, 0, 0.2); transform: translateY(-3px); z-index: 5; }
     .t-box.highlight { border-left: 3px solid var(--red); background: linear-gradient(90deg, rgba(255, 51, 51, 0.15) 0%, transparent 100%); box-shadow: inset 0 0 20px rgba(255, 51, 51, 0.1); }
     
-    .t-box span { font-size: 13px; color: rgba(255, 255, 255, 0.6); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
-    .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 22px; color: #ffffff; margin-top: 6px; text-shadow: 0 0 10px rgba(255, 255, 255, 0.4); letter-spacing: 1px; }
+    .t-box span { font-size: 14px; color: rgba(255, 255, 255, 0.65); text-transform: uppercase; letter-spacing: 2px; font-weight: 800; }
+    .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 28px; color: #ffffff; margin-top: 8px; text-shadow: 0 0 15px rgba(255, 255, 255, 0.6); letter-spacing: 1px; line-height: 1; }
 
     /* 📍 อัปเกรด Info List (ข้อมูลดาวเทียม): ถอดเส้นคั่น ขยายฟอนต์ และกระชับบรรทัด */
-    .info-list { list-style: none; padding: 15px 0 0 0; margin: 15px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 16px; line-height: 1.6; }
-    .info-list li { display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 2px; margin-bottom: 6px; }
+    .info-list { list-style: none; padding: 20px 0 0 0; margin: 20px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 18px; line-height: 1.6; }
+    .info-list li { display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 4px; margin-bottom: 12px; }
     .info-list li:last-child { margin-bottom: 0; padding-bottom: 0; }
-    .info-list span { color: rgba(255, 255, 255, 0.65); font-weight: 600; letter-spacing: 0.5px; }
-    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-align: right; font-size: 18px; letter-spacing: 1px; }
+    .info-list span { color: rgba(255, 255, 255, 0.7); font-weight: 600; letter-spacing: 0.5px; }
+    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-align: right; font-size: 20px; letter-spacing: 1.5px; }
 
     .right-container { display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; height: 100%; z-index: 20; }
     .menu-toggle-btn { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(255,204,0,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--gold); color: var(--gold); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(255,204,0,0.6), inset 0 0 10px rgba(255,204,0,0.3); }
@@ -732,44 +732,52 @@ const mapThemes = [
   
   const [isModalOpen, setIsModalOpen] = useState(false);
 
- // 📍 สมองกลดึงข้อมูลเปอร์เซ็นต์เมฆจาก Open-Meteo API
- const [cloudCover, setCloudCover] = useState(null);
- const [isFetchingCloud, setIsFetchingCloud] = useState(false);
+// 📍 สมองกลดึงข้อมูลเปอร์เซ็นต์เมฆจาก Open-Meteo API
+const [cloudCover, setCloudCover] = useState(null);
+const [isFetchingCloud, setIsFetchingCloud] = useState(false);
+const [cloudDataCache, setCloudDataCache] = useState(null); // 📍 เพิ่ม Cache เก็บข้อมูลดิบป้องกันการยิง API สแปม
 
- useEffect(() => {
-   // 📍 ฟันธง: เปลี่ยนมาดึงค่าจาก activeStation แทน GROUND_STATION ที่เป็น Global 
-   const lat = activeStation.lat;
-   const lng = activeStation.lng;
-   setIsFetchingCloud(true);
+// 1. ยิง API ขอข้อมูลล่วงหน้า 3 วัน "แค่ครั้งเดียว" หรือตอนเปลี่ยนสถานีเท่านั้น!
+useEffect(() => {
+  const lat = activeStation.lat;
+  const lng = activeStation.lng;
+  setIsFetchingCloud(true);
 
-   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=cloud_cover&forecast_days=3&timezone=UTC`;
-   
-   fetch(url)
-     .then(r => r.json())
-     .then(data => {
-       if (data && data.hourly && data.hourly.cloud_cover) {
-         const nowMs = simulatedTimeMs;
-         let closestIdx = 0;
-         let minDiff = Infinity;
-         
-         data.hourly.time.forEach((tStr, idx) => {
-           const tMs = new Date(tStr + 'Z').getTime();
-           const diff = Math.abs(tMs - nowMs);
-           if (diff < minDiff) {
-             minDiff = diff;
-             closestIdx = idx;
-           }
-         });
-         
-         setCloudCover(data.hourly.cloud_cover[closestIdx]);
-       }
-       setIsFetchingCloud(false);
-     })
-     .catch(err => {
-       console.warn("Cloud API Error:", err);
-       setIsFetchingCloud(false);
-     });
- }, [Math.floor(simulatedTimeMs / 3600000), activeStation.id]); // <-- 📍 ฟันธง: เพิ่ม activeStation.id ตรงนี้! เพื่อบังคับให้ดึงข้อมูลใหม่ทันทีที่กดสลับปุ่มสถานี
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=cloud_cover&forecast_days=3&timezone=UTC`;
+  
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.hourly && data.hourly.cloud_cover) {
+        setCloudDataCache(data.hourly); // เก็บใส่โกดังไว้
+      }
+      setIsFetchingCloud(false);
+    })
+    .catch(err => {
+      console.warn("Cloud API Error:", err);
+      setIsFetchingCloud(false);
+    });
+}, [activeStation.id]); // ⚠️ ผูกเงื่อนไขไว้ที่รหัสสถานีเท่านั้น ห้ามผูกกับเวลาเด็ดขาด!
+
+// 2. สมองกลดึงค่าเมฆจากโกดัง (Cache) ตามเวลาจำลอง (ซิงค์ Real-time ทันทีแม้กด 1000X โดยไม่ต้องยิง API ใหม่)
+useEffect(() => {
+  if (!cloudDataCache) return;
+  
+  const nowMs = simulatedTimeMs;
+  let closestIdx = 0;
+  let minDiff = Infinity;
+  
+  cloudDataCache.time.forEach((tStr, idx) => {
+    const tMs = new Date(tStr + 'Z').getTime();
+    const diff = Math.abs(tMs - nowMs);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestIdx = idx;
+    }
+  });
+  
+  setCloudCover(cloudDataCache.cloud_cover[closestIdx]);
+}, [Math.floor(simulatedTimeMs / 3600000), cloudDataCache]);
 
   // --- ระบบ PASS PREDICTION ---
   const [isPassModalOpen, setIsPassModalOpen] = useState(false);
@@ -1165,16 +1173,22 @@ useEffect(() => {
   // 📍 1. สมองกลควบคุมเวลา (ป้องกัน Time Drift ขั้นเด็ดขาด!)
   useEffect(() => {
     if (!isPlaying) return;
+    let lastTick = Date.now(); // 📍 เก็บเวลาจริงเพื่อคำนวณ Delta
     const timer = setInterval(() => {
+      const now = Date.now();
+      const deltaMs = now - lastTick;
+      lastTick = now;
+
       setSimulatedTimeMs(prev => {
-        if (isNaN(prev)) return Date.now();
-        const now = Date.now();
-        // 🟢 ถ้าโหมด LIVE (1X) และเวลาห่างจากความจริงไม่เกิน 60 วินาที -> ให้ล็อกเวลาติดกับเวลาจริง (OS) เสมอ! ระบบจะไม่มีวันหลุด LIVE
-        if (speedMult === 1 && Math.abs(prev - now) < 60000) {
+        if (isNaN(prev)) return now;
+        
+        // 🟢 ถ้าโหมด LIVE (1X) และเวลาห่างจากความจริงไม่เกิน 5 นาที (300,000ms) ป้องกัน Browser Throttling
+        // ฟันธง: บังคับล็อกเวลา Date.now() ทันที ระบบจะไม่มีวันหลุด LIVE ยกเว้นผู้ใช้จงใจไถลเวลาไปไกล
+        if (speedMult === 1 && Math.abs(prev - now) < 300000) {
           return now;
         }
-        // 🟠 ถ้าโหมด SIM (50X, 100X) ให้เร่งเวลาจำลอง
-        return prev + (50 * speedMult);
+        // 🟠 ถ้าโหมด SIM (หรือไถลเวลาไปไกลแล้ว) ให้บวกเวลาตาม Delta จริงที่ผ่านไป (แก้บั๊ก setInterval ไม่แม่นยำ)
+        return prev + (deltaMs * speedMult);
       });
     }, 50);
     return () => clearInterval(timer);
@@ -1375,15 +1389,18 @@ const notifiedPassesRef = useRef({});
 
 // 📍 2. เซนเซอร์จับเวลา PRE-PASS (ล่วงหน้า 10 นาที) 
 useEffect(() => {
-  // 🛡️ ขยายเพดานเวลาเป็น 60 วิ ป้องกันอาการ Time Drift ที่ทำให้แจ้งเตือนรัวๆ
-  const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+  // 🛡️ ฟันธง: ตรวจสอบสถานะ LIVE แบบเข้มงวดสุดๆ ป้องกันการแจ้งเตือนรัวในโหมด SIM
+  // บังคับว่าเวลาจำลองต้องห่างจากเวลาจริงไม่เกิน 5 วินาที (5000ms) เท่านั้น จึงจะยอมยิงไลน์
+  const isStrictLive = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
   
-  if (!isLive || !nextPassTimestamp || !nextPassTimestamp.time) return;
+  if (!isStrictLive || !nextPassTimestamp || !nextPassTimestamp.time) return;
   
   const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
   const TEN_MINUTES_MS = 600000; 
   
-  const stableAosTime = Math.floor(nextPassTimestamp.time / 3600000) * 3600000;
+  // 📍 ฟันธง: สร้าง ID แบบทนทาน ปัดเศษทุกๆ 30 นาที (1,800,000 ms) 
+  // แก้อาการแจ้งเตือนรัวๆ เพราะเวลา AOS ขยับไปมาทีละไม่กี่วินาที
+  const stableAosTime = Math.floor(nextPassTimestamp.time / 1800000) * 1800000;
   const passId = `AOS-${selectedCatnr}-${stableAosTime}`;
 
   if (timeToAos <= TEN_MINUTES_MS && timeToAos > 0 && !notifiedPassesRef.current[passId]) {
@@ -1414,11 +1431,13 @@ useEffect(() => {
 
 // 📍 3. เซนเซอร์จับจังหวะ "จบ Pass (LOS Notification)" 
 useEffect(() => {
-  const isLiveStrict = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+  // 🛡️ ฟันธง: ตรวจสอบสถานะ LIVE แบบเข้มงวดสุดๆ ห่างเวลาจริงไม่เกิน 5 วินาที
+  const isLiveStrict = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
   if (!isLiveStrict || passSchedule.length === 0) return;
 
   passSchedule.forEach(pass => {
-    const stableLosTime = Math.floor(pass.losTime / 3600000) * 3600000;
+    // 📍 ฟันธง: สร้าง ID ปัดเศษทุกๆ 30 นาที (1,800,000 ms) ป้องกัน ID เปลี่ยนจากการคำนวณวงโคจรคลาดเคลื่อน
+    const stableLosTime = Math.floor(pass.losTime / 1800000) * 1800000;
     const passIdLos = `LOS-${selectedCatnr}-${stableLosTime}`;
     const timeSinceLos = simulatedTimeMs - pass.losTime;
     
@@ -2790,7 +2809,7 @@ useEffect(() => {
            {/* กลุ่มที่ 2: การแสดงผลมุมมอง */}
            <div className="control-group">
               <p>DISPLAY CONTROLS</p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '10px' }}>
                 {/* 📍 สลับสีปุ่มให้หลากหลาย ไม่เขียวล้วนจนลายตา */}
                 
                 {/* STATION MASK -> Cyan */}
@@ -2893,7 +2912,7 @@ useEffect(() => {
              </button>
 
              {/* แถว 2: TLE Sync & Upload รวมไว้ด้วยกัน */}
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '15px' }}>
                <button 
                  className="btn btn-cyan" 
                  onClick={handleAutoUpdateTle} 
@@ -2924,7 +2943,7 @@ useEffect(() => {
              </button>
 
              {/* 📍 แถว 4: ระบบ 2x2 Grid สมมาตร 100% พร้อมสีสัน Hover สุดล้ำ */}
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '15px' }}>
                 
                 {/* 1. GROUND STATION (Cyan) */}
                 <button 
