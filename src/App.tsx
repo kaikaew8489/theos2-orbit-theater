@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import * as satelliteJs from 'satellite.js';
 
 // =========================================================================
-// 📍 PDF PARSER ENGINE (Theos-2 Mission Plan) - อ้างอิงจากโค้ดของทีมงาน GISTDA
+// 📍 PDF PARSER ENGINE (Theos-2 Mission Plan)
 // =========================================================================
 if (window.pdfjsLib) {
   window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -2355,6 +2355,9 @@ useEffect(() => {
   }
 }, [simulatedTimeMs, passSchedule, speedMult, isPlaying]);
 
+// 📍 ฟันธง: สมองกล Auto-Scale ปรับขนาด UI ให้พอดีกับทุกหน้าจออัตโนมัติ
+const uiScale = Math.min(1, size.width / 1920, size.height / 1080);
+
 return (
   <>
     {/* 📍 หน้าจอ Loading Screen (Splash Screen) ปิดทับทุกสิ่งจนกว่าจะโหลดเสร็จ */}
@@ -2676,7 +2679,9 @@ return (
 
       <div className="ui-layer">
 
-      <div className="left-container">
+     {/* 📍 ฟันธง: ล็อกจุดหมุนการหดตัวไว้มุมซ้ายบน (top left) ไม่ให้ UI ลอยหลุดขอบ */}
+     <div className="left-container" style={{ transform: `scale(${uiScale})`, transformOrigin: 'top left' }}>
+
           {/* 📍 แถวควบคุมหลักด้านบนซ้าย: เพิ่ม flexShrink: 0 ป้องกันเมนูบีบตัว */}
           <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', pointerEvents: 'none', marginBottom: '15px', zIndex: 100, flexShrink: 0 }}>
             
@@ -2848,7 +2853,8 @@ return (
           )}
         </div>
 
-        <div className="right-container">
+       {/* 📍 ฟันธง: ล็อกจุดหมุนการหดตัวไว้มุมขวาบน (top right) ไม่ให้ UI ลอยหลุดขอบ */}
+        <div className="right-container" style={{ transform: `scale(${uiScale})`, transformOrigin: 'top right' }}>
           <button 
             className="menu-toggle-btn"
             onClick={toggleRightPanel}
@@ -2859,8 +2865,8 @@ return (
           {isRightPanelOpen && (
            <div className="right-panel">
               
-       {/* กลุ่มที่ 1: การควบคุมเวลาและความเร็ว */}
-       <div className="control-group">
+      {/* กลุ่มที่ 1: การควบคุมเวลาและความเร็ว */}
+      <div className="control-group">
               <p>TIME & PLAYBACK</p>
               
               {(() => {
@@ -2903,9 +2909,11 @@ return (
                     <div style={{ display: 'flex', gap: '15px', marginTop: '15px', height: '60px' }}>
                       {(() => {
                         const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+                        
+                        // 📍 ฟันธง: ย้ายคอมเมนต์ออกมาไว้ตรงนี้ เพื่อไม่ให้ผิด Syntax JSX และกล่องกลายเป็นสีเขียวทั้งหมด
                         return (
-                          <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ flex: '1', margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '6px', fontSize: '20px', letterSpacing: '3px', background: isRealtimePassLock ? 'rgba(255, 51, 51, 0.2)' : '', borderColor: isRealtimePassLock ? 'var(--red)' : '', color: isRealtimePassLock ? 'var(--red)' : '', boxShadow: isRealtimePassLock ? 'inset 0 0 15px rgba(255,51,51,0.3)' : '' }}>
-                            {isRealtimePassLock ? '🚨 REAL-TIME LOCK' : (isLive ? '🟢 LIVE' : '🟠 SIM')}
+                          <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ flex: '1', margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '6px', fontSize: '20px', letterSpacing: '3px', background: isRealtimePassLock ? 'rgba(0, 255, 102, 0.2)' : '', borderColor: isRealtimePassLock ? 'var(--green)' : '', color: isRealtimePassLock ? 'var(--green)' : '', boxShadow: isRealtimePassLock ? 'inset 0 0 15px rgba(0, 255, 102, 0.3)' : '' }}>
+                            {isRealtimePassLock ? '🟢 REAL-TIME' : (isLive ? '🟢 LIVE' : '🟠 SIM')}
                           </div>
                         );
                       })()}
@@ -2913,7 +2921,7 @@ return (
                         setSimulatedTimeMs(Date.now()); setSpeedMult(1); setIsPlaying(true); isTrackingRef.current = false; setCameraMode('FREE LOOK');
                         setSelectedPlanId(null); setMapZoom(1); setImgMapOrigin('center center'); setTacticalZoom(1); setZoomOrigin('center center');
                         if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
-                      }}>RESET TO LIVE</button>
+                      }}>RESET</button>
                     </div>
 
                     <div className="time-scrubber-container">
@@ -2939,9 +2947,9 @@ return (
 
                         return (
                           <div style={{ position: 'relative' }}>
-                            <div style={{ position: 'absolute', top: '10px', left: 0, height: '8px', width: `${Math.max(0, Math.min(100, progressPct))}%`, background: isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), borderRadius: '4px', pointerEvents: 'none', boxShadow: `0 0 10px ${isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)')}` }}></div>
+                            <div style={{ position: 'absolute', top: '10px', left: 0, height: '8px', width: `${Math.max(0, Math.min(100, progressPct))}%`, background: isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), borderRadius: '4px', pointerEvents: 'none', boxShadow: `0 0 10px ${isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)')}` }}></div>
                             <input type="range" min={minTime} max={maxTime} value={simulatedTimeMs} disabled={isRealtimePassLock} className="sci-fi-slider"
-                              style={{ '--thumb-color': isRealtimePassLock ? 'var(--red)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), '--thumb-glow': isRealtimePassLock ? 'rgba(255, 51, 51, 0.8)' : (sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.8)' : 'rgba(255, 204, 0, 0.8)'), opacity: isRealtimePassLock ? 0.5 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'grab' }}
+                              style={{ '--thumb-color': isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), '--thumb-glow': isRealtimePassLock ? 'rgba(0, 255, 102, 0.8)' : (sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.8)' : 'rgba(255, 204, 0, 0.8)'), opacity: isRealtimePassLock ? 0.5 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'grab' }}
                               onMouseDown={() => { if(!isRealtimePassLock) setIsPlaying(false); }} onChange={(e) => { if(!isRealtimePassLock) setSimulatedTimeMs(Number(e.target.value)); }} />
                           </div>
                         );
@@ -4749,8 +4757,8 @@ return (
             </div>
 
           
-{/* 📍 PANELS (LINK STATUS & SPECIFICATIONS) */}
-<div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', left: 'max(20px, 2.5cqmin)', width: 'clamp(220px, 24cqw, 280px)', border: '2px solid var(--cyan)', boxShadow: '0 0 max(20px, 2cqmin) rgba(0, 234, 255, 0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0, 234, 255, 0.15)' }}>
+              {/* 📍 PANELS (LINK STATUS & SPECIFICATIONS) */}
+              <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', left: 'max(20px, 2.5cqmin)', width: 'clamp(220px, 24cqw, 280px)', border: '2px solid var(--cyan)', boxShadow: '0 0 max(20px, 2cqmin) rgba(0, 234, 255, 0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0, 234, 255, 0.15)' }}>
               <div style={{ color: 'var(--cyan)', fontSize: 'clamp(14px, 1.6cqw, 18px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(0,234,255,0.3)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)' }}>LINK STATUS</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'max(10px, 1cqmin)', fontSize: 'clamp(12px, 1.4cqw, 15px)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
                 <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px' }}><div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', borderRadius: '50%', background: 'var(--cyan)', marginRight: 'max(10px, 1.2cqmin)', boxShadow: '0 0 8px var(--cyan)' }}></div> S-BAND (TM)</span>
@@ -4807,7 +4815,7 @@ return (
         );
       })()}
 
-    </div>
+</div>
   </div>
 )}
 
