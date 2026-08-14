@@ -246,16 +246,21 @@ const injectStyles = () => {
     /* 📍 CSS สำหรับ Loading Screen ท้องฟ้าดำสนิท (Pitch Black) เน้นดวงดาวและดาวเทียม */
     .loading-overlay { position: fixed; inset: 0; background: #000000; z-index: 999999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.8s ease-out, visibility 0.8s; overflow: hidden; }
     
-    /* ฟันธง: สร้างดวงดาวที่ "ค่อยๆ เคลื่อนที่ (Drifting Stars)" ให้ความรู้สึกเหมือนอวกาศของจริง */
-    .loading-overlay::before { content: ''; position: absolute; inset: -200%; background-image: radial-gradient(2px 2px at 40px 60px, #ffffff, rgba(0,0,0,0)), radial-gradient(2px 2px at 200px 150px, #ffffff, rgba(0,0,0,0)), radial-gradient(3px 3px at 400px 300px, rgba(255,255,255,0.8), rgba(0,0,0,0)), radial-gradient(1.5px 1.5px at 600px 100px, #ffffff, rgba(0,0,0,0)), radial-gradient(2.5px 2.5px at 800px 400px, #ffffff, rgba(0,0,0,0)); background-repeat: repeat; background-size: 600px 600px; opacity: 0.6; animation: move-stars 150s linear infinite; z-index: 0; }
+    /* 📍 ฟันธง: ปรับดวงดาวให้เป็นจุดแสงสีขาวชัดเจน (ลบขอบเบลอทิ้ง) ให้ดูเป็นอวกาศระดับ 4K */
+    .loading-overlay::before { content: ''; position: absolute; inset: -200%; background-image: radial-gradient(3px 3px at 40px 60px, rgba(255,255,255,1), transparent), radial-gradient(2px 2px at 150px 250px, rgba(255,255,255,0.9), transparent), radial-gradient(4px 4px at 300px 100px, rgba(255,255,255,1), transparent), radial-gradient(2px 2px at 500px 350px, rgba(0,234,255,0.8), transparent), radial-gradient(3px 3px at 250px 20px, rgba(255,255,255,0.9), transparent); background-repeat: repeat; background-size: 350px 350px; opacity: 1.0; animation: move-stars 100s linear infinite; z-index: 0; }
     @keyframes move-stars { from { transform: translateY(0) translateX(0); } to { transform: translateY(-500px) translateX(-500px); } }
     
     .loading-overlay.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
     
-    /* ฟันธง: ระเบิดไซส์ดาวเทียมเป็น 850px ดันให้อยู่สูงขึ้น (margin-bottom: 70px) และเพิ่มระยะเด้ง */
+    /* 📍 ฟันธง: ขยายดาวเทียมใหญ่ขึ้น (1050px) ให้สมดุลกับตัวหนังสือ และปรับช่องไฟให้สมมาตร 100% */
     .loading-logo { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; z-index: 1; text-align: center; }
-    .hero-satellite { width: 850px; height: auto; animation: float-sat 5s ease-in-out infinite; filter: drop-shadow(0 20px 40px rgba(0,234,255,0.5)) drop-shadow(0 0 20px rgba(255,255,255,0.2)); margin-bottom: 70px; }
-    @keyframes float-sat { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-40px) rotate(3deg); } 100% { transform: translateY(0px) rotate(0deg); } }
+    .hero-satellite { width: 1050px; max-width: 85vw; height: auto; animation: float-sat 6s ease-in-out infinite; filter: drop-shadow(0 40px 30px rgba(0,0,0,0.85)); margin-bottom: 40px; }
+    @keyframes float-sat { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-25px) rotate(1.5deg); } 100% { transform: translateY(0px) rotate(0deg); } }
+
+    /* 📍 ฟันธง: CSS สำหรับป้ายชื่อดาวเทียมและธงชาติไทย (ย้ายไปอยู่ด้านบนดาวเทียม) */
+    .loading-badge { display: flex; align-items: center; justify-content: center; background: linear-gradient(90deg, rgba(0,234,255,0.05), rgba(0,234,255,0.15), rgba(0,234,255,0.05)); border: 1px solid rgba(0, 234, 255, 0.4); padding: 8px 35px; border-radius: 50px; margin-bottom: 30px; box-shadow: 0 0 20px rgba(0, 234, 255, 0.2), inset 0 0 10px rgba(0, 234, 255, 0.1); backdrop-filter: blur(5px); }
+    .loading-badge img { width: 36px; border-radius: 3px; margin-right: 15px; box-shadow: 0 0 10px rgba(255,255,255,0.3); }
+    .loading-badge span { font-family: 'Orbitron', sans-serif; font-size: 26px; font-weight: 900; color: #fff; letter-spacing: 6px; text-shadow: 0 0 15px var(--cyan); }
     
     .loading-title { font-family: 'Orbitron', sans-serif; font-size: 80px; font-weight: 900; color: #ffffff; letter-spacing: 18px; text-shadow: 0 0 45px rgba(0,234,255,0.9), 0 0 20px rgba(255,255,255,0.8); text-align: center; line-height: 1; }
     
@@ -1855,14 +1860,20 @@ useEffect(() => {
   }, [isRadarOpen]);
 
   const radarLayout = useMemo(() => {
-    const uiScale = Math.max(1, Math.min(1.8, radarDim.w / 360)); 
-    // 📍 ฟันธง: เพิ่ม Margin บนและล่าง เพื่อสร้าง Safe Zone ให้ตัวหนังสือลอยได้อย่างอิสระ ไม่บัง UI
-    const topMargin = 95 * uiScale; 
-    const bottomMargin = 65 * uiScale;
-    const sideMargin = 45 * uiScale;
+    // 📍 ฟันธง 1: คุมสเกลการขยายสุด ไม่ให้พองจนล้นขอบจอ
+    const uiScale = Math.max(1, Math.min(2.5, radarDim.w / 350));
+    
+    // 📍 ฟันธง 2: เพิ่มระยะพื้นที่กันชน (Margin) บน-ล่าง ให้กว้างขึ้น 
+    // เพื่อเว้นที่ว่างให้ตัวอักษร N (0°) และ S (180°) ลอยได้อิสระโดยไม่ชนขอบ
+    const topMargin = 85 * uiScale; 
+    const bottomMargin = 70 * uiScale;
+    const sideMargin = 25 * uiScale;
+    
+    // คำนวณรัศมีและจุดศูนย์กลางใหม่ตามระยะกันชนที่ปลอดภัย 100%
     const R = Math.max(50, Math.min(radarDim.w - sideMargin * 2, radarDim.h - topMargin - bottomMargin) / 2);
     const cx = radarDim.w / 2;
-    const cy = (radarDim.h - topMargin - bottomMargin) / 2 + topMargin - 10; 
+    const cy = (radarDim.h - topMargin - bottomMargin) / 2 + topMargin; 
+    
     return { R, cx, cy, uiScale };
   }, [radarDim]);
 
@@ -2115,7 +2126,8 @@ useEffect(() => {
       const spec = SAT_SPECS[selectedCatnr] || { name: 'UNKNOWN', xBand: { bw: 120, mod: 'QPSK' }, sBand: { bw: 2, mod: 'PSK' } };
       
       const uiScale = h / 220; 
-      const textScale = Math.min(uiScale, 1.05); 
+      // 📍 ฟันธง: ปลดล็อกขีดจำกัดตัวหนังสือบนกราฟเรดาร์ ให้ขยายสมมาตรกับหน้าต่างเต็มที่!
+      const textScale = Math.max(1, Math.min(uiScale, 1.8));
 
       const graphW = w - (15 * textScale); 
       
@@ -2364,11 +2376,18 @@ return (
     <div className={`loading-overlay ${isAppReady ? 'fade-out' : ''}`}>
     <div className="loading-logo">
           {/* 📍 ฟันธง: ดาวเทียม THEOS-2 ปลดแอกออกจากกรอบ ลอยเด่นสมจริง (Hero Image) */}
+         {/* 📍 ฟันธง: ย้ายป้ายธงชาติและชื่อ THEOS-2 ไว้บนสุด เพื่อความสง่างามระดับชาติ */}
+         <div className="loading-badge">
+            <img src="https://flagcdn.com/w40/th.png" alt="Thailand Flag" />
+            <span>THEOS-2</span>
+          </div>
+
           <img 
             src="/textures/THEOS-2.webp" 
             alt="THEOS-2 Satellite" 
             className="hero-satellite"
           />
+
           <div className="loading-title">SATELLITE ORBIT</div>
           <div className="loading-subtitle">THAILAND GROUND STATION SYSTEM</div>
         </div>
@@ -3219,14 +3238,14 @@ return (
         </div>
       </div>
       
-{/* --- SKP GISTDA GROUND STATION (ป๊อปอัปขยายได้อิสระ + Auto-Scale) --- */}
-{isGsModalOpen && (
+          {/* --- SKP GISTDA GROUND STATION (ป๊อปอัปขยายได้อิสระ + Auto-Scale) --- */}
+          {isGsModalOpen && (
         <div className="modal-box gs-modal" onMouseDownCapture={() => bringToFront('gs')} style={{ 
           position: 'fixed', 
           top: maximizedWins.gs ? '0px' : `${gsPos.y}px`, 
           left: maximizedWins.gs ? '0px' : `${gsPos.x}px`, 
-          width: maximizedWins.gs ? '100vw' : '480px', /* 📍 ขยายความกว้างให้อ่านสบายตาขึ้น */
-          height: maximizedWins.gs ? '100vh' : '690px', /* 📍 ขยายความสูงเริ่มต้นเป็น 690px เพื่อให้เห็นข้อมูลครบถ้วนโดยไม่ต้องเลื่อน */
+          width: maximizedWins.gs ? '100vw' : '480px', 
+          height: maximizedWins.gs ? '100vh' : '690px', 
           minWidth: '400px', minHeight: '650px',
           maxWidth: 'none', maxHeight: 'none', 
           resize: maximizedWins.gs ? 'none' : 'both', overflow: 'hidden', padding: '0',
@@ -3239,47 +3258,46 @@ return (
           transition: isDraggingGs ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)' 
         }}>
           
-          {/* 📍 ปรับสมดุลสีตามหลัก UX: แยกสีส้มและสีขาวเพื่อให้มองง่ายแยกแยะข้อมูลชัดเจน */}
+          {/* 📍 ฟันธง: ขยายฟอนต์ Ground Station ให้ใหญ่กระแทกตาและสมมาตรเมื่อย่อขยาย */}
           <style>{`
-            .gs-modal .gs-header-text { font-size: 22px !important; }
-            .gs-modal .gs-icon { font-size: 24px !important; filter: drop-shadow(0 0 5px #FF6600); }
-            .gs-modal .gs-row { padding: 14px 0 !important; display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(255, 102, 0, 0.3) !important; align-items: center; }
+            .gs-modal .gs-header-text { font-size: clamp(22px, 3cqw, 40px) !important; }
+            .gs-modal .gs-icon { font-size: clamp(28px, 4cqw, 50px) !important; filter: drop-shadow(0 0 5px #FF6600); }
+            .gs-modal .gs-row { padding: clamp(16px, 2.5cqw, 35px) 0 !important; display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(255, 102, 0, 0.3) !important; align-items: center; }
             .gs-modal .gs-row:last-child { border-bottom: none !important; }
-            .gs-modal .gs-label { font-size: 14px !important; color: rgba(255,255,255,0.7) !important; font-weight: bold; letter-spacing: 1px; }
-            .gs-modal .gs-value { font-size: 16px !important; color: #fff !important; font-weight: 900 !important; text-shadow: 0 0 8px rgba(255, 255, 255, 0.4); text-align: right; }
+            .gs-modal .gs-label { font-size: clamp(16px, 2.2cqw, 28px) !important; color: rgba(255,255,255,0.7) !important; font-weight: bold; letter-spacing: 1px; }
+            .gs-modal .gs-value { font-size: clamp(18px, 2.5cqw, 32px) !important; color: #fff !important; font-weight: 900 !important; text-shadow: 0 0 8px rgba(255, 255, 255, 0.4); text-align: right; }
             .gs-modal .gs-value.highlight { color: #FF6600 !important; text-shadow: 0 0 10px rgba(255, 102, 0, 0.6); }
             .gs-no-scroll::-webkit-scrollbar { display: none; }
             .gs-no-scroll { -ms-overflow-style: none; scrollbar-width: none; }
           `}</style>
           
-          <div className="modal-header" style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', cursor: maximizedWins.gs ? 'default' : (isDraggingGs ? 'grabbing' : 'grab'), flexWrap: 'nowrap', borderBottom: '2px solid rgba(255, 102, 0, 0.5)', background: 'linear-gradient(180deg, rgba(255, 102, 0, 0.15) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(255, 102, 0, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.gs) handleGsMouseDown(e); }}>
+          <div className="modal-header" style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'clamp(12px, 1.5cqw, 20px) clamp(20px, 2.5cqw, 35px)', cursor: maximizedWins.gs ? 'default' : (isDraggingGs ? 'grabbing' : 'grab'), flexWrap: 'nowrap', borderBottom: '2px solid rgba(255, 102, 0, 0.5)', background: 'linear-gradient(180deg, rgba(255, 102, 0, 0.15) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(255, 102, 0, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.gs) handleGsMouseDown(e); }}>
             <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center' }}>
                <span className="gs-icon">📡</span>
             </div>
             
-            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(255, 102, 0, 0.1)', border: '1px solid #FF6600', padding: '6px 20px', borderRadius: '6px', margin: '0 10px', whiteSpace: 'nowrap', boxShadow: 'inset 0 0 10px rgba(255, 102, 0, 0.2)' }}>
-              <span style={{ color: '#fff', fontSize: '15px', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px #FF6600', pointerEvents: 'none' }}>
+            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(255, 102, 0, 0.1)', border: '1px solid #FF6600', padding: 'clamp(6px, 1cqw, 15px) clamp(20px, 2.5cqw, 40px)', borderRadius: '6px', margin: '0 10px', whiteSpace: 'nowrap', boxShadow: 'inset 0 0 10px rgba(255, 102, 0, 0.2)' }}>
+              <span style={{ color: '#fff', fontSize: 'clamp(15px, 2cqw, 30px)', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px #FF6600', pointerEvents: 'none' }}>
               GISTDA GROUND STATION
               </span>
             </div>
 
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', flexShrink: 0, border: '1px solid #FF6600', color: '#FF6600', background: 'rgba(0,0,0,0.5)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('gs'); }}>{maximizedWins.gs ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', flexShrink: 0, border: '1px solid #FF6600', color: '#FF6600', background: 'rgba(0,0,0,0.5)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsGsModalOpen(false); }}>✕</button>
+            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: 'clamp(8px, 1cqw, 15px)' }}>
+              <button className="modal-close-btn" style={{ width: 'clamp(32px, 4cqw, 55px)', height: 'clamp(32px, 4cqw, 55px)', fontSize: 'clamp(15px, 2cqw, 30px)', flexShrink: 0, border: '1px solid #FF6600', color: '#FF6600', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('gs'); }}>{maximizedWins.gs ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: 'clamp(32px, 4cqw, 55px)', height: 'clamp(32px, 4cqw, 55px)', fontSize: 'clamp(16px, 2.2cqw, 32px)', flexShrink: 0, border: '1px solid #FF6600', color: '#FF6600', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsGsModalOpen(false); }}>✕</button>
             </div>
           </div>
           
-          <div className="gs-no-scroll" style={{ padding: '20px 30px', display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', fontFamily: 'Rajdhani', letterSpacing: '0.5px' }}>
+          <div className="gs-no-scroll" style={{ padding: 'clamp(20px, 2.5cqw, 40px) clamp(30px, 3.5cqw, 50px)', display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', fontFamily: 'Rajdhani', letterSpacing: '0.5px' }}>
 
-              {/* 📍 ฟันธง 3: แผงควบคุมสลับสถานี 4 จังหวัด (ลบตัวซ้ำซ้อนออกแล้ว) */}
-              <div style={{ background: 'rgba(0, 234, 255, 0.05)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(0, 234, 255, 0.2)', marginBottom: '20px' }}>
-                <h3 style={{ margin: '0 0 10px 0', color: 'var(--cyan)', fontSize: '14px', letterSpacing: '2px' }}>🌐 ACTIVE GROUND STATION NETWORK</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
+              <div style={{ background: 'rgba(0, 234, 255, 0.05)', padding: 'clamp(15px, 2cqw, 25px)', borderRadius: '8px', border: '1px solid rgba(0, 234, 255, 0.2)', marginBottom: 'clamp(20px, 2.5cqw, 35px)' }}>
+                <h3 style={{ margin: '0 0 clamp(10px, 1.2cqw, 20px) 0', color: 'var(--cyan)', fontSize: 'clamp(14px, 1.8cqw, 24px)', letterSpacing: '2px' }}>🌐 ACTIVE GROUND STATION NETWORK</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 'clamp(8px, 1cqw, 15px)' }}>
                   {GS_NETWORK.map(station => (
                     <button 
                       key={station.id}
                       className={`btn ${activeStation.id === station.id ? 'btn-cyan active' : 'btn-cyan'}`}
-                      style={{ padding: '10px 5px', fontSize: '14px', margin: 0, fontWeight: activeStation.id === station.id ? '900' : 'normal' }}
+                      style={{ padding: 'clamp(10px, 1.5cqw, 20px) 5px', fontSize: 'clamp(14px, 1.8cqw, 26px)', margin: 0, fontWeight: activeStation.id === station.id ? '900' : 'normal' }}
                       onClick={() => {
                         setActiveStation(station);
                         if (selectedCatnr) calculateFuturePasses(selectedCatnr);
@@ -3291,7 +3309,6 @@ return (
                 </div>
               </div>
 
-              {/* 📍 ฟันธง: ดึงพิกัดสถานีแบบ Real-time */}
               <div className="gs-row">
                 <span className="gs-label">LOCATION:</span>
                 <span className="gs-value">{GROUND_STATION.name}</span>
@@ -3326,9 +3343,8 @@ return (
               <span className="gs-value">5.0°</span>
             </div>
             
-            {/* 📍 ฟันธง: สร้างเกราะป้องกันหุ้มกล่อง Status บังคับให้เบราว์เซอร์ดันขอบล่างออกไป 40px เสมอ! */}
             <div style={{ paddingBottom: '40px' }}>
-              <div className="gs-status-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: linkActive ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 102, 0, 0.1)', borderRadius: '6px', border: `1px solid ${linkActive ? 'var(--green)' : '#FF6600'}`, boxShadow: `inset 0 0 15px ${linkActive ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 102, 0, 0.2)'}`, padding: '15px', marginTop: '15px' }}>
+              <div className="gs-status-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: linkActive ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 102, 0, 0.1)', borderRadius: '6px', border: `1px solid ${linkActive ? 'var(--green)' : '#FF6600'}`, boxShadow: `inset 0 0 15px ${linkActive ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 102, 0, 0.2)'}`, padding: 'clamp(15px, 2cqw, 25px)', marginTop: 'clamp(15px, 2cqw, 25px)' }}>
                 <span className="gs-label" style={{ color: 'rgba(255,255,255,0.8)' }}>ANTENNA STATUS:</span>
                 <span className="gs-value highlight" style={{ color: linkActive ? 'var(--green)' : '#FF6600', fontWeight: 'bold', textShadow: `0 0 10px ${linkActive ? 'var(--green)' : '#FF6600'}`, animation: linkActive ? 'pulse-glow 2s infinite' : 'none' }}>
                   {linkActive ? 'TRACKING (LOCKED)' : 'STANDBY'}
@@ -3336,7 +3352,6 @@ return (
               </div>
             </div>
 
-            {/* 📍 ฟันธง: ใส่กล่องอากาศ (Spacer) ดันขอบล่าง บังคับไม่ให้ทับเส้นขอบ 100% */}
             <div style={{ minHeight: '40px', flexShrink: 0, width: '100%' }}></div>
 
           </div>
@@ -3482,11 +3497,9 @@ return (
           transition: isDraggingPass ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
         }}>
           <style>{`
-            .pass-modal .auto-scale-header { font-size: clamp(16px, 2.2cqw, 40px) !important; }
-            .pass-modal .auto-scale-badge { font-size: clamp(12px, 1.5cqw, 28px) !important; padding: clamp(4px, 0.8cqw, 15px) clamp(15px, 2cqw, 30px) !important; }
-            .pass-modal .auto-scale-flag { width: clamp(18px, 2.2cqw, 40px) !important; margin-right: clamp(8px, 1cqw, 15px) !important; }
-            .pass-modal th { font-size: clamp(11px, 1.5cqw, 26px) !important; padding: clamp(8px, 1.2cqw, 20px) clamp(4px, 0.8cqw, 15px) !important; }
-            .pass-modal td { font-size: clamp(13px, 1.7cqw, 30px) !important; padding: clamp(8px, 1.2cqw, 20px) clamp(4px, 0.8cqw, 15px) !important; }
+            .pass-modal .auto-scale-header { font-size: clamp(20px, 3cqw, 40px) !important; }
+            .pass-modal th { font-size: clamp(14px, 1.8cqw, 28px) !important; padding: clamp(10px, 1.5cqw, 25px) clamp(8px, 1cqw, 18px) !important; white-space: nowrap !important; }
+            .pass-modal td { font-size: clamp(15px, 2cqw, 32px) !important; padding: clamp(10px, 1.5cqw, 25px) clamp(8px, 1cqw, 18px) !important; white-space: nowrap !important; }
           `}</style>
 
 <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', borderBottom: '1px solid rgba(255, 204, 0, 0.5)', cursor: maximizedWins.pass ? 'default' : (isDraggingPass ? 'grabbing' : 'grab'), flexWrap: 'nowrap', flexShrink: 0 }} onMouseDown={(e) => { if(!maximizedWins.pass) handlePassMouseDown(e); }}>
@@ -3495,15 +3508,16 @@ return (
               <span className="auto-scale-header" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>PASS SCHEDULE</span>
             </div>
             
-            {/* 📍 ฟันธง: เพิ่มเมนูเลือกวัน (1D, 3D, 7D) ไว้ตรงกลาง Header */}
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'center', gap: '5px' }}>
+            {/* 📍 ฟันธง: ขยายปุ่มเลือกวันให้สมดุลตอนขยายเต็มจอ */}
+            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'center', gap: '8px' }}>
               {[1, 3, 7].map(d => (
                 <button key={d} onMouseDown={(e) => e.stopPropagation()} onClick={() => setPassPredictionDays(d)}
                   style={{
                     background: passPredictionDays === d ? 'var(--gold)' : 'rgba(255, 204, 0, 0.1)',
                     color: passPredictionDays === d ? '#000' : 'var(--gold)',
                     border: '1px solid var(--gold)',
-                    padding: '4px 15px', borderRadius: '4px', fontSize: '13px', fontWeight: 'bold', fontFamily: 'Orbitron',
+                    padding: 'clamp(4px, 1cqw, 12px) clamp(15px, 2cqw, 30px)', borderRadius: '6px', 
+                    fontSize: 'clamp(13px, 1.8cqw, 24px)', fontWeight: '900', fontFamily: 'Orbitron',
                     cursor: 'pointer', transition: 'all 0.2s',
                     boxShadow: passPredictionDays === d ? '0 0 15px rgba(255,204,0,0.6)' : 'none'
                   }}>
@@ -3619,8 +3633,8 @@ return (
           position: 'fixed', 
           top: maximizedWins.radar ? '0px' : `${radarPos.y}px`, 
           left: maximizedWins.radar ? '0px' : `${radarPos.x}px`, 
-          width: maximizedWins.radar ? '100vw' : '440px', /* 📍 ขยายความกว้างเริ่มต้นจาก 360px เป็น 440px */
-          height: maximizedWins.radar ? '100vh' : '520px', /* 📍 ขยายความสูงเริ่มต้นจาก 460px เป็น 520px */
+          width: maximizedWins.radar ? '100vw' : '440px',
+          height: maximizedWins.radar ? '100vh' : '520px',
           minWidth: '350px', minHeight: '400px', overflow: 'hidden',
           resize: maximizedWins.radar ? 'none' : 'both',
           background: 'linear-gradient(145deg, rgba(0, 20, 10, 0.9) 0%, rgba(0, 10, 5, 0.95) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
@@ -3628,6 +3642,7 @@ return (
           borderRadius: maximizedWins.radar ? '0px' : '12px', 
           boxShadow: '0 0 40px rgba(0, 255, 102, 0.4), inset 0 0 20px rgba(0, 255, 102, 0.2)',
           zIndex: windowZ.radar,
+          containerType: 'inline-size', /* 📍 ฟันธง: เพิ่มคำสั่งนี้เพื่อเปิดให้ปุ่มใช้ cqw ขยายได้ */
           transition: isDraggingRadar ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
         }}>
           
@@ -3636,34 +3651,34 @@ return (
               {/* ซ้าย: ว่างไว้ดันให้ตรงกลาง */}
               <div style={{ flex: 1 }}></div>
               
-              {/* 📍 2. จัดกึ่งกลางชื่อดาวเทียมและธงชาติ */}
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: '18px', textShadow: '0 0 10px var(--green)', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+              {/* 📍 2. จัดกึ่งกลางชื่อดาวเทียมและธงชาติ ให้ขยายสมมาตร */}
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: 'clamp(18px, 2.5cqw, 35px)', textShadow: '0 0 10px var(--green)', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                 {(() => {
                   const sat = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr);
                   if (!sat) return null;
                   return (
-                    <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0, 255, 102, 0.1)', border: '1px solid rgba(0, 255, 102, 0.4)', padding: '4px 15px', borderRadius: '6px', boxShadow: '0 0 10px rgba(0, 255, 102, 0.2)' }}>
-                      {sat.flag && <img src={`https://flagcdn.com/w20/${sat.flag.toLowerCase()}.png`} style={{ width: '22px', marginRight: '10px', borderRadius: '2px', boxShadow: '0 0 5px var(--green)' }} alt="flag" />}
+                    <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0, 255, 102, 0.1)', border: '1px solid rgba(0, 255, 102, 0.4)', padding: 'clamp(4px, 0.5cqw, 10px) clamp(10px, 1.5cqw, 25px)', borderRadius: '6px', boxShadow: '0 0 10px rgba(0, 255, 102, 0.2)' }}>
+                      {sat.flag && <img src={`https://flagcdn.com/w20/${sat.flag.toLowerCase()}.png`} style={{ width: 'clamp(20px, 3cqw, 40px)', marginRight: '10px', borderRadius: '2px', boxShadow: '0 0 5px var(--green)' }} alt="flag" />}
                       {sat.displayName}
                     </div>
                   );
                 })()}
               </div>
               
-              {/* ขวา: ปุ่ม Audio, Maximize, Close */}
-              <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
-                <button onClick={() => setIsMuted(!isMuted)} style={{ background: isMuted ? 'rgba(255, 51, 51, 0.15)' : 'rgba(0, 255, 102, 0.15)', border: `1px solid ${isMuted ? 'var(--red)' : 'var(--green)'}`, color: isMuted ? 'var(--red)' : 'var(--green)', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Rajdhani', fontWeight: 'bold', fontSize: '12px', transition: 'all 0.2s' }}>
+              {/* 📍 ฟันธง: ขยายปุ่ม AUDIO และปุ่มปิดให้ใหญ่สะใจแบบสมมาตร */}
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: 'clamp(8px, 1cqw, 15px)', alignItems: 'center' }}>
+                <button onClick={() => setIsMuted(!isMuted)} style={{ background: isMuted ? 'rgba(255, 51, 51, 0.15)' : 'rgba(0, 255, 102, 0.15)', border: `1px solid ${isMuted ? 'var(--red)' : 'var(--green)'}`, color: isMuted ? 'var(--red)' : 'var(--green)', padding: 'clamp(6px, 1cqw, 12px) clamp(10px, 1.5cqw, 20px)', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Rajdhani', fontWeight: 'bold', fontSize: 'clamp(12px, 1.5cqw, 22px)', transition: 'all 0.2s' }}>
                   {isMuted ? '🔇 MUTE' : '🔊 AUDIO'}
                 </button>
-                <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', padding: 0, borderColor: 'var(--green)', color: 'var(--green)' }} onClick={() => toggleMaximize('radar')}>{maximizedWins.radar ? '🗗' : '🗖'}</button>
-                <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', padding: 0, borderColor: 'var(--green)', color: 'var(--green)' }} onClick={() => setIsRadarOpen(false)}>✕</button>
+                <button className="modal-close-btn" style={{ width: 'clamp(32px, 3.5cqw, 50px)', height: 'clamp(32px, 3.5cqw, 50px)', fontSize: 'clamp(15px, 1.8cqw, 26px)', padding: 0, borderColor: 'var(--green)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('radar')}>{maximizedWins.radar ? '🗗' : '🗖'}</button>
+                <button className="modal-close-btn" style={{ width: 'clamp(32px, 3.5cqw, 50px)', height: 'clamp(32px, 3.5cqw, 50px)', fontSize: 'clamp(16px, 1.9cqw, 28px)', padding: 0, borderColor: 'var(--green)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsRadarOpen(false)}>✕</button>
               </div>
           </div>
 
           <svg width="100%" height="100%" style={{ display: 'block', position: 'relative', zIndex: 10 }}>
             {/* ข้อมูลมุม EL */}
-            <text x="15" y={75 * radarLayout.uiScale} fill="var(--cyan)" fontSize={11 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron" textAnchor="start">EL: {radarCurrentPos && radarCurrentPos.el ? Math.max(0, radarCurrentPos.el).toFixed(1) : '0.0'}°</text>
-            <text x={radarDim.w - 15} y={75 * radarLayout.uiScale} fill="var(--cyan)" fontSize={11 * radarLayout.uiScale} fontWeight="bold" fontFamily="Orbitron" textAnchor="end">MAX EL: {radarData.maxEl !== 'N/A' ? `${radarData.maxEl}°` : 'N/A'}</text>
+            <text x="15" y={75 * radarLayout.uiScale} fill="var(--cyan)" fontSize={12 * radarLayout.uiScale} fontWeight="900" fontFamily="Orbitron" textAnchor="start">EL: {radarCurrentPos && radarCurrentPos.el ? Math.max(0, radarCurrentPos.el).toFixed(1) : '0.0'}°</text>
+            <text x={radarDim.w - 15} y={75 * radarLayout.uiScale} fill="var(--cyan)" fontSize={12 * radarLayout.uiScale} fontWeight="900" fontFamily="Orbitron" textAnchor="end">MAX EL: {radarData.maxEl !== 'N/A' ? `${radarData.maxEl}°` : 'N/A'}</text>
 
             {/* วงแหวนเรดาร์และเส้น Grid */}
             <g style={{ pointerEvents: 'none' }}>
@@ -3680,7 +3695,6 @@ return (
                        const x2 = cx + R * Math.sin((az * Math.PI) / 180);
                        const y2 = cy - R * Math.cos((az * Math.PI) / 180);
                        const isMain = az % 90 === 0;
-                       {/* 📍 3. เพิ่มความเข้มเส้นแฉก */}
                        return <line key={`az-${az}`} x1={cx} y1={cy} x2={x2} y2={y2} stroke="rgba(0, 255, 102, 0.85)" strokeWidth={isMain ? "1.8" : "1.0"} strokeDasharray={isMain ? "none" : "3 3"} />
                     })}
 
@@ -3688,9 +3702,8 @@ return (
                       const r = R * ((90 - el) / 90);
                       return (
                         <React.Fragment key={`el-${el}`}>
-                          {/* 📍 3. เพิ่มความเข้มวงแหวน */}
                           <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(0, 255, 102, 0.9)" strokeWidth="1.5" strokeDasharray="4 4" />
-                          {R > 120 && el % 30 === 0 && ( <text x={cx + 2} y={cy - r + (9 * uiScale)} fill="#ffcc00" fontSize={10 * uiScale} fontWeight="bold">{el}°</text> )}
+                          {R > 120 && el % 30 === 0 && ( <text x={cx + (6 * uiScale)} y={cy - r + (12 * uiScale)} fill="#ffcc00" fontSize={12 * uiScale} fontWeight="900" style={{ textShadow: '0 0 5px #000' }}>{el}°</text> )}
                         </React.Fragment>
                       )
                     })}
@@ -3700,7 +3713,7 @@ return (
                     
                     {[0, 45, 90, 135, 180, 225, 270, 315].map(az => {
                       const isMain = az % 90 === 0;
-                      const padding = isMain ? 15 * uiScale : 12 * uiScale; 
+                      const padding = isMain ? 28 * uiScale : 20 * uiScale; 
                       const lx = cx + (R + padding) * Math.sin((az * Math.PI) / 180);
                       const ly = cy - (R + padding) * Math.cos((az * Math.PI) / 180);
                       
@@ -3710,7 +3723,7 @@ return (
                       let dy = "0.3em"; if (az === 0) dy = "0em"; if (az === 180) dy = "0.8em";
 
                       return (
-                        <text key={`az-label-${az}`} x={lx} y={ly} dy={dy} fill={isMain ? "#00eaff" : "#ffcc00"} fontSize={isMain ? 12 * uiScale : 10 * uiScale} fontWeight={isMain ? "bold" : "normal"} textAnchor={anchor} >
+                        <text key={`az-label-${az}`} x={lx} y={ly} dy={dy} fill={isMain ? "#00eaff" : "#ffcc00"} fontSize={isMain ? 15 * uiScale : 12 * uiScale} fontWeight="900" textAnchor={anchor} style={{ textShadow: '0 0 8px #000' }} >
                           {label}
                         </text>
                       );
@@ -3719,23 +3732,23 @@ return (
                 );
               })()}
 
-             {/* ชิ้นพิซซ่า */}
+             {/* ชิ้นพิซซ่า & AOS/LOS Labels */}
              {radarData.sectorEdgePoints && radarData.sectorEdgePoints.length > 0 && radarData.aosAz !== null && (
                 <g>
                   <polygon points={`${radarLayout.cx},${radarLayout.cy} ${radarData.sectorEdgePoints.join(' ')}`} fill="rgba(0, 255, 102, 0.15)" />
                   {(() => {
                     const s = radarLayout.uiScale;
-                    
                     const aosX = radarLayout.cx + radarLayout.R * Math.sin((radarData.aosAz * Math.PI) / 180); 
                     const aosY = radarLayout.cy - radarLayout.R * Math.cos((radarData.aosAz * Math.PI) / 180);
                     const losX = radarLayout.cx + radarLayout.R * Math.sin((radarData.losAz * Math.PI) / 180); 
                     const losY = radarLayout.cy - radarLayout.R * Math.cos((radarData.losAz * Math.PI) / 180);
                     
+                    // 📍 ฟันธง: ดัน AOS/LOS ออกไปให้พ้นระยะตัวอักษรทิศ
                     const getPad = (az) => {
-                     if (az > 150 && az < 210) return 38 * s; 
-                     if (az > 330 || az < 30) return 30 * s;  
-                     if ((az > 60 && az < 120) || (az > 240 && az < 300)) return 34 * s; 
-                     return 22 * s; 
+                     if (az > 150 && az < 210) return 45 * s; 
+                     if (az > 330 || az < 30) return 38 * s;  
+                     if ((az > 60 && az < 120) || (az > 240 && az < 300)) return 40 * s; 
+                     return 30 * s; 
                    };
                    
                    const padAos = getPad(radarData.aosAz);
@@ -3754,8 +3767,8 @@ return (
                          <circle cx={aosX} cy={aosY} r={4 * s} fill="var(--gold)" style={{ filter: 'drop-shadow(0 0 8px var(--gold))' }} />
                          <circle cx={losX} cy={losY} r={4 * s} fill="var(--red)" style={{ filter: 'drop-shadow(0 0 8px var(--red))' }} />
 
-                         <text x={textAosX} y={textAosY} fill="var(--gold)" fontSize={12 * s} fontWeight="bold" fontFamily="Orbitron" textAnchor="middle" alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--gold)' }}>AOS {radarData.aosAz.toFixed(1)}°</text>
-                         <text x={textLosX} y={textLosY} fill="var(--red)" fontSize={12 * s} fontWeight="bold" fontFamily="Orbitron" textAnchor="middle" alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--red)' }}>LOS {radarData.losAz.toFixed(1)}°</text>
+                         <text x={textAosX} y={textAosY} fill="var(--gold)" fontSize={12 * s} fontWeight="900" fontFamily="Orbitron" textAnchor="middle" alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--gold)' }}>AOS {radarData.aosAz.toFixed(1)}°</text>
+                         <text x={textLosX} y={textLosY} fill="var(--red)" fontSize={12 * s} fontWeight="900" fontFamily="Orbitron" textAnchor="middle" alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--red)' }}>LOS {radarData.losAz.toFixed(1)}°</text>
                        </>
                      );
                   })()}
@@ -4083,7 +4096,7 @@ return (
       )}
 
   {/* --- SIGNAL ANALYZER (IQ & DUAL SPECTRUM Analyzer) --- */}
-      {isAnalyzerOpen && (
+  {isAnalyzerOpen && (
         <div className="modal-box analyzer-modal" onMouseDownCapture={() => bringToFront('analyzer')} style={{
           position: 'fixed', top: maximizedWins.analyzer ? '0px' : `${analyzerPos.y}px`, left: maximizedWins.analyzer ? '0px' : `${analyzerPos.x}px`,
           width: maximizedWins.analyzer ? '100vw' : '1000px', height: maximizedWins.analyzer ? '100vh' : '650px',
@@ -4093,64 +4106,65 @@ return (
           borderRadius: maximizedWins.analyzer ? '0px' : '10px',
           boxShadow: `0 0 30px rgba(0,0,0,0.8), inset 0 0 10px rgba(255,255,255,0.05)`,
           display: 'flex', flexDirection: 'column', zIndex: windowZ.analyzer || 10001,
+          containerType: 'inline-size', /* 📍 ฟันธง: เปิดโหมดการคำนวณสมมาตร */
           transition: isDraggingAnalyzer ? 'none' : 'all 0.2s ease-out'
         }}>
           {/* Header */}
           <div className="modal-header" style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '15px 20px', cursor: maximizedWins.analyzer ? 'default' : (isDraggingAnalyzer ? 'grabbing' : 'grab'),
+            padding: 'clamp(12px, 1.5cqw, 20px) clamp(20px, 2.5cqw, 30px)', cursor: maximizedWins.analyzer ? 'default' : (isDraggingAnalyzer ? 'grabbing' : 'grab'),
             borderBottom: `1px solid rgba(255, 255, 255, 0.1)`, background: 'rgba(255,255,255,0.03)'
           }} onMouseDown={(e) => { if(!maximizedWins.analyzer) handleAnalyzerMouseDown(e); }}>
             <div style={{ flex: 1 }}></div>
-            <div style={{ flex: 3, textAlign: 'center', color: '#ffffff', fontFamily: 'Orbitron', fontWeight: '900', fontSize: '26px', letterSpacing: '3px', pointerEvents: 'none', textShadow: '0 0 15px rgba(255,255,255,0.4)' }}>
+            <div style={{ flex: 3, textAlign: 'center', color: '#ffffff', fontFamily: 'Orbitron', fontWeight: '900', fontSize: 'clamp(20px, 2.5cqw, 42px)', letterSpacing: '3px', pointerEvents: 'none', textShadow: '0 0 15px rgba(255,255,255,0.4)' }}>
               <span style={{ marginRight: '10px' }}>📻</span> BASEBAND DEMODULATOR & RF SPECTRUM ANALYZER
             </div>
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button className="modal-close-btn" style={{ width: '45px', height: '45px', fontSize: '24px', borderColor: 'rgba(255,255,255,0.3)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('analyzer')}>{maximizedWins.analyzer ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '45px', height: '45px', fontSize: '26px', borderColor: 'var(--red)', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsAnalyzerOpen(false)}>✕</button>
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: 'clamp(8px, 1cqw, 15px)' }}>
+              <button className="modal-close-btn" style={{ width: 'clamp(35px, 4cqw, 65px)', height: 'clamp(35px, 4cqw, 65px)', fontSize: 'clamp(18px, 2.2cqw, 35px)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('analyzer')}>{maximizedWins.analyzer ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: 'clamp(35px, 4cqw, 65px)', height: 'clamp(35px, 4cqw, 65px)', fontSize: 'clamp(20px, 2.5cqw, 38px)', borderColor: 'var(--red)', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsAnalyzerOpen(false)}>✕</button>
             </div>
           </div>
 
           {/* Body */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'row', padding: '15px', gap: '15px', minHeight: 0 }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'row', padding: 'clamp(15px, 2cqw, 25px)', gap: 'clamp(15px, 2cqw, 25px)', minHeight: 0 }}>
             
             {/* ซ้าย: IQ Constellation */}
-            <div style={{ flex: '0 0 35%', display: 'flex', flexDirection: 'column', background: '#0b1121', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '15px' }}>
-              <div style={{ textAlign: 'center', fontFamily: 'Orbitron', fontSize: '16px', color: '#a0aec0', marginBottom: '12px', letterSpacing: '2px', fontWeight: 'bold' }}>BASEBAND CONSTELLATION</div>
+            <div style={{ flex: '0 0 35%', display: 'flex', flexDirection: 'column', background: '#0b1121', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: 'clamp(15px, 2cqw, 25px)' }}>
+              <div style={{ textAlign: 'center', fontFamily: 'Orbitron', fontSize: 'clamp(14px, 1.8cqw, 26px)', color: '#a0aec0', marginBottom: 'clamp(10px, 1.5cqw, 20px)', letterSpacing: '2px', fontWeight: 'bold' }}>BASEBAND CONSTELLATION</div>
               <div style={{ flex: 1, position: 'relative', width: '100%', minHeight: 0 }}>
                 <canvas ref={iqCanvasRef} style={{ display: 'block', width: '100%', height: '100%' }}></canvas>
               </div>
-              <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '16px', color: '#a0aec0', fontWeight: 'bold' }}>
+              <div style={{ textAlign: 'center', marginTop: 'clamp(10px, 1.5cqw, 20px)', fontSize: 'clamp(14px, 1.8cqw, 26px)', color: '#a0aec0', fontWeight: 'bold' }}>
                 MODULATION: <strong style={{color:'#fff'}}>{selectedCatnr === '58016' ? 'O-QPSK' : 'QPSK'}</strong>
               </div>
             </div>
 
             {/* ขวา: Dual Spectrum แบบเปิด/ปิดได้อิสระ */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px', minHeight: 0 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'clamp(15px, 2cqw, 25px)', minHeight: 0 }}>
               
               {/* 📍 แถบควบคุม เปิด-ปิด กราฟ (Toggle UI) */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexShrink: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'clamp(10px, 1.2cqw, 20px)', flexShrink: 0 }}>
                 <button 
                   onClick={() => { if (showXBand && !showSBand) return; setShowXBand(!showXBand); }}
-                  style={{ background: showXBand ? 'rgba(255,204,0,0.15)' : 'transparent', border: `1px solid ${showXBand ? '#ffcc00' : 'rgba(255,204,0,0.3)'}`, color: showXBand ? '#ffcc00' : 'rgba(255,204,0,0.5)', padding: '6px 15px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Orbitron', fontSize: '12px', fontWeight: 'bold', transition: 'all 0.2s' }}>
+                  style={{ background: showXBand ? 'rgba(255,204,0,0.15)' : 'transparent', border: `1px solid ${showXBand ? '#ffcc00' : 'rgba(255,204,0,0.3)'}`, color: showXBand ? '#ffcc00' : 'rgba(255,204,0,0.5)', padding: 'clamp(6px, 0.8cqw, 14px) clamp(15px, 2cqw, 30px)', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Orbitron', fontSize: 'clamp(12px, 1.5cqw, 22px)', fontWeight: 'bold', transition: 'all 0.2s' }}>
                   {showXBand ? '👁 CH1: X-BAND (ON)' : ' CH1: X-BAND (OFF)'}
                 </button>
                 <button 
                   onClick={() => { if (showSBand && !showXBand) return; setShowSBand(!showSBand); }}
-                  style={{ background: showSBand ? 'rgba(0,234,255,0.15)' : 'transparent', border: `1px solid ${showSBand ? '#00eaff' : 'rgba(0,234,255,0.3)'}`, color: showSBand ? '#00eaff' : 'rgba(0,234,255,0.5)', padding: '6px 15px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Orbitron', fontSize: '12px', fontWeight: 'bold', transition: 'all 0.2s' }}>
+                  style={{ background: showSBand ? 'rgba(0,234,255,0.15)' : 'transparent', border: `1px solid ${showSBand ? '#00eaff' : 'rgba(0,234,255,0.3)'}`, color: showSBand ? '#00eaff' : 'rgba(0,234,255,0.5)', padding: 'clamp(6px, 0.8cqw, 14px) clamp(15px, 2cqw, 30px)', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Orbitron', fontSize: 'clamp(12px, 1.5cqw, 22px)', fontWeight: 'bold', transition: 'all 0.2s' }}>
                   {showSBand ? '👁 CH2: S-BAND (ON)' : ' CH2: S-BAND (OFF)'}
                 </button>
               </div>
 
               {/* CH1: X-Band 720MHz*/}
               {showXBand && (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0b1121', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '15px', minHeight: 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'Orbitron', fontSize: '15px', color: '#a0aec0', marginBottom: '8px', fontWeight: 'bold' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0b1121', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: 'clamp(12px, 1.5cqw, 20px)', minHeight: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'Orbitron', fontSize: 'clamp(14px, 1.8cqw, 26px)', color: '#a0aec0', marginBottom: 'clamp(8px, 1cqw, 15px)', fontWeight: 'bold' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(15px, 2cqw, 30px)' }}>
                       <span>CH1: X-BAND PAYLOAD (BW: {selectedCatnr === '58016' ? '310' : '120'} MHz)</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px 12px', borderRadius: '6px' }}>
-                        <span style={{ fontSize: '13px', color: '#ffcc00' }}>SPAN</span>
-                        <input type="range" min="100" max="1000" step="10" value={xBandSpan} onChange={(e) => setXBandSpan(Number(e.target.value))} className="sci-fi-slider" style={{ width: '120px', margin: 0, '--thumb-color': '#ffcc00', '--thumb-glow': 'rgba(255,204,0,0.8)' }} />
+                        <span style={{ fontSize: 'clamp(12px, 1.5cqw, 20px)', color: '#ffcc00' }}>SPAN</span>
+                        <input type="range" min="100" max="1000" step="10" value={xBandSpan} onChange={(e) => setXBandSpan(Number(e.target.value))} className="sci-fi-slider" style={{ width: 'clamp(100px, 12cqw, 220px)', margin: 0, '--thumb-color': '#ffcc00', '--thumb-glow': 'rgba(255,204,0,0.8)' }} />
                       </div>
                     </div>
                     <span style={{ color: linkActive ? 'var(--green)' : 'var(--red)' }}>{linkActive ? 'LOCKED' : 'NO CARRIER'}</span>
@@ -4163,13 +4177,13 @@ return (
 
               {/* CH2: S-Band 70MHz THEOS*/}
               {showSBand && (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0b1121', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '15px', minHeight: 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'Orbitron', fontSize: '15px', color: '#a0aec0', marginBottom: '8px', fontWeight: 'bold' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0b1121', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: 'clamp(12px, 1.5cqw, 20px)', minHeight: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'Orbitron', fontSize: 'clamp(14px, 1.8cqw, 26px)', color: '#a0aec0', marginBottom: 'clamp(8px, 1cqw, 15px)', fontWeight: 'bold' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(15px, 2cqw, 30px)' }}>
                       <span>CH2: S-BAND TELEMETRY (BW: {selectedCatnr === '58016' ? '1.0' : '2.0'} MHz)</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px 12px', borderRadius: '6px' }}>
-                        <span style={{ fontSize: '13px', color: '#00eaff' }}>SPAN</span>
-                        <input type="range" min="5" max="50" step="1" value={sBandSpan} onChange={(e) => setSBandSpan(Number(e.target.value))} className="sci-fi-slider" style={{ width: '120px', margin: 0, '--thumb-color': '#00eaff', '--thumb-glow': 'rgba(0,234,255,0.8)' }} />
+                        <span style={{ fontSize: 'clamp(12px, 1.5cqw, 20px)', color: '#00eaff' }}>SPAN</span>
+                        <input type="range" min="5" max="50" step="1" value={sBandSpan} onChange={(e) => setSBandSpan(Number(e.target.value))} className="sci-fi-slider" style={{ width: 'clamp(100px, 12cqw, 220px)', margin: 0, '--thumb-color': '#00eaff', '--thumb-glow': 'rgba(0,234,255,0.8)' }} />
                       </div>
                     </div>
                     <span style={{ color: linkActive ? 'var(--green)' : 'var(--red)' }}>{linkActive ? 'LOCKED' : 'NO CARRIER'}</span>
@@ -4184,142 +4198,6 @@ return (
         </div>
       )}
 
-     {/* --- TRACKING ANGLES (MODERN TACTICAL DATRON) --- */}
-     {isAnglesOpen && (
-        <div className="modal-box angles-modal" onMouseDownCapture={() => bringToFront('angles')} style={{
-          position: 'fixed', top: maximizedWins.angles ? '0px' : `${anglesPos.y}px`, left: maximizedWins.angles ? '0px' : `${anglesPos.x}px`,
-          width: maximizedWins.angles ? '100vw' : '850px', height: maximizedWins.angles ? '100vh' : '650px',
-          minWidth: '600px', minHeight: '400px', resize: maximizedWins.angles ? 'none' : 'both', overflow: 'hidden',
-          background: 'linear-gradient(145deg, rgba(10, 15, 25, 0.95) 0%, rgba(5, 10, 15, 0.98) 100%)', 
-          border: maximizedWins.angles ? 'none' : '2px solid var(--cyan)', 
-          borderRadius: maximizedWins.angles ? '0px' : '8px', 
-          boxShadow: '0 0 40px rgba(0, 234, 255, 0.3), inset 0 0 15px rgba(0, 234, 255, 0.1)',
-          display: 'flex', flexDirection: 'column', zIndex: windowZ.angles || 10002, transition: isDraggingAngles ? 'none' : 'all 0.1s ease-out'
-        }}>
-          
-          <style>{`
-            /* 📍 ฟันธง: ซ่อน Scrollbar ของตาราง แต่ยังเลื่อนล้อเมาส์ได้ปกติ */
-            .hide-scroll-angles::-webkit-scrollbar { display: none; }
-            .hide-scroll-angles { -ms-overflow-style: none; scrollbar-width: none; }
-          `}</style>
-
-          {/* Header */}
-          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', cursor: maximizedWins.angles ? 'default' : (isDraggingAngles ? 'grabbing' : 'grab'), background: 'linear-gradient(90deg, rgba(0, 234, 255, 0.15), transparent)', borderBottom: '1px solid rgba(0, 234, 255, 0.4)', zIndex: 10 }} onMouseDown={(e) => { if(!maximizedWins.angles) handleAnglesMouseDown(e); }}>
-            <div style={{ display: 'flex', alignItems: 'center', color: '#fff', fontFamily: 'Orbitron, sans-serif', fontWeight: 'bold', fontSize: '16px', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
-              <span style={{ marginRight: '10px' }}>📐</span> POINTING ANGLES
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', borderColor: 'var(--cyan)', color: 'var(--cyan)', background: 'transparent' }} onClick={() => toggleMaximize('angles')}>{maximizedWins.angles ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', borderColor: 'var(--red)', color: 'var(--red)', background: 'transparent' }} onClick={() => setIsAnglesOpen(false)}>✕</button>
-            </div>
-          </div>
-
-          {/* Body & Logic */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '15px', overflow: 'hidden' }}>
-            
-            {/* 📍 สมองกลดึงข้อมูลและคำนวณ */}
-            {(() => {
-              if (!targetSatrec || passSchedule.length === 0) return <div style={{ color: 'var(--red)', textAlign: 'center', marginTop: '50px', fontSize: '20px', fontFamily: 'Orbitron', textShadow: '0 0 10px var(--red)' }}>NO PASS SCHEDULE AVAILABLE</div>;
-              
-              let targetPass = passSchedule.find(p => p.losTime > simulatedTimeMs);
-              if (!targetPass) targetPass = passSchedule[passSchedule.length - 1]; 
-
-              const getSunPos = (timestamp) => {
-                  const d = new Date(timestamp);
-                  const tDays = (d.getTime() / 86400000) + 2440587.5 - 2451545.0;
-                  const L = (280.460 + 0.9856474 * tDays) % 360;
-                  const g = (357.528 + 0.9856003 * tDays) % 360;
-                  const lambda = L + 1.915 * Math.sin(g*Math.PI/180) + 0.020 * Math.sin(2*g*Math.PI/180);
-                  const eps = 23.439 - 0.0000004 * tDays;
-                  const alpha = Math.atan2(Math.cos(eps*Math.PI/180)*Math.sin(lambda*Math.PI/180), Math.cos(lambda*Math.PI/180)) * 180/Math.PI;
-                  const delta = Math.asin(Math.sin(eps*Math.PI/180)*Math.sin(lambda*Math.PI/180)) * 180/Math.PI;
-                  
-                  const gmst = (18.697374558 + 24.06570982441908 * tDays) % 24;
-                  const lmst = (gmst * 15 + GROUND_STATION.lng) % 360;
-                  const ha = (lmst - alpha + 360) % 360;
-                  
-                  const latRad = GROUND_STATION.lat * Math.PI/180;
-                  const decRad = delta * Math.PI/180;
-                  const haRad = ha * Math.PI/180;
-                  
-                  const sunElRad = Math.asin(Math.sin(decRad)*Math.sin(latRad) + Math.cos(decRad)*Math.cos(latRad)*Math.cos(haRad));
-                  const sunEl = sunElRad * 180/Math.PI;
-                  const sunAzRad = Math.acos((Math.sin(decRad) - Math.sin(sunElRad)*Math.sin(latRad)) / (Math.cos(sunElRad)*Math.cos(latRad)));
-                  let sunAz = sunAzRad * 180/Math.PI;
-                  if (Math.sin(haRad) > 0) sunAz = 360 - sunAz;
-                  return { el: sunEl, az: sunAz };
-              };
-
-              const stepMs = angleInterval * 1000;
-              const rows = [];
-              for (let t = targetPass.aosTime; t <= targetPass.losTime; t += stepMs) {
-                 const pos = calculateSatData(new Date(t), targetSatrec);
-                 const sun = getSunPos(t);
-                 rows.push({ time: new Date(t), satEl: pos ? Math.max(0, pos.elevationDeg) : 0, satAz: pos ? pos.azimuthDeg : 0, sunEl: sun.el, sunAz: sun.az });
-              }
-
-              const fmt3 = (num) => String(num.toFixed(3)).padStart(7, '0');
-              const dStr = new Date(targetPass.aosTime).toISOString().substring(0, 10).toUpperCase();
-
-              return (
-                <>
-                  {/* 📍 Info Header (Sci-Fi HUD Redesign) */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px', fontFamily: 'Orbitron', fontSize: '13px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '20px' }}>
-                      <span style={{ background: 'rgba(0, 234, 255, 0.1)', padding: '4px 15px', border: '1px solid var(--cyan)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>TARGET: <strong style={{ color: '#fff', fontSize: '15px', textShadow: '0 0 8px var(--cyan)' }}>{targetConfig.displayName}</strong></span>
-                      <span style={{ background: 'rgba(255, 204, 0, 0.1)', padding: '4px 15px', border: '1px solid var(--gold)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>ORBIT: <strong style={{ color: 'var(--gold)', fontSize: '15px', textShadow: '0 0 8px var(--gold)' }}>{tles[selectedCatnr]?.line2.substring(63, 68).trim() || 'N/A'}</strong></span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', fontSize: '12px' }}>
-                      <span style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '4px 12px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px', color: '#fff' }}>{dStr}</span>
-                      <span style={{ background: 'rgba(0, 255, 102, 0.1)', padding: '4px 12px', border: '1px solid var(--green)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>AOS: <strong style={{ color: 'var(--green)' }}>{new Date(targetPass.aosTime).toISOString().substring(11, 19)}</strong></span>
-                      <span style={{ background: 'rgba(255, 204, 0, 0.1)', padding: '4px 12px', border: '1px solid var(--gold)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>PCA: <strong style={{ color: 'var(--gold)' }}>{new Date(targetPass.peakTime).toISOString().substring(11, 19)}</strong></span>
-                      <span style={{ background: 'rgba(255, 51, 51, 0.1)', padding: '4px 12px', border: '1px solid var(--red)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>LOS: <strong style={{ color: 'var(--red)' }}>{new Date(targetPass.losTime).toISOString().substring(11, 19)}</strong></span>
-                    </div>
-                  </div>
-
-                  {/* 📍 Interval Settings (Sci-Fi Slider) */}
-                  <div style={{ background: 'rgba(0, 0, 0, 0.5)', border: '1px solid rgba(0, 234, 255, 0.3)', padding: '12px 20px', borderRadius: '6px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '20px' }}>
-                    <span style={{ fontFamily: 'Orbitron', fontSize: '13px', color: 'var(--cyan)' }}>INTERVAL SETTING:</span>
-                    <input type="range" min="1" max="60" value={angleInterval} onChange={(e) => setAngleInterval(Number(e.target.value))} className="sci-fi-slider" style={{ flex: 1, '--thumb-color': 'var(--cyan)', '--thumb-glow': 'rgba(0,234,255,0.8)' }} />
-                    <span style={{ background: 'rgba(0, 234, 255, 0.1)', padding: '4px 15px', border: '1px solid var(--cyan)', borderRadius: '4px', fontFamily: 'Rajdhani', fontSize: '18px', fontWeight: 'bold', color: '#fff', textShadow: '0 0 10px var(--cyan)', minWidth: '90px', textAlign: 'center' }}>{angleInterval} <span style={{fontSize:'12px', color:'rgba(255,255,255,0.6)'}}>SEC</span></span>
-                  </div>
-
-                  {/* 📍 Data Table (BG ขาวสะอาด + Header โคตรล้ำ) */}
-                  <div className="hide-scroll-angles" style={{ flex: 1, overflowY: 'auto', background: '#f8fafc', borderRadius: '6px', border: '2px solid var(--cyan)', boxShadow: '0 0 15px rgba(0, 234, 255, 0.2)' }}>
-                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: 'monospace', fontSize: '15px', color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
-                      <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
-                        <tr style={{ background: '#0b1121', color: '#e2e8f0', fontFamily: 'Orbitron', fontSize: '12px', letterSpacing: '1px' }}>
-                          <th style={{ borderBottom: '1px solid var(--cyan)', padding: '8px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }} rowSpan={2}>TIME (UTC)</th>
-                          <th style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '8px', textAlign: 'center', color: 'var(--cyan)', borderRight: '1px solid rgba(255,255,255,0.1)' }} colSpan={2}>PREDICTED SATELLITE</th>
-                          <th style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '8px', textAlign: 'center', color: 'var(--gold)' }} colSpan={2}>SUN POSITION</th>
-                        </tr>
-                        <tr style={{ background: '#0f172a', color: '#94a3b8', fontFamily: 'Orbitron', fontSize: '11px' }}>
-                          <th style={{ borderBottom: '2px solid var(--cyan)', padding: '6px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>ELEVATION</th>
-                          <th style={{ borderBottom: '2px solid var(--cyan)', padding: '6px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>AZIMUTH</th>
-                          <th style={{ borderBottom: '2px solid var(--gold)', padding: '6px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>ELEVATION</th>
-                          <th style={{ borderBottom: '2px solid var(--gold)', padding: '6px', textAlign: 'center' }}>AZIMUTH</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((r, i) => (
-                          <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#ffffff' : '#f1f5f9', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e0f2fe'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#ffffff' : '#f1f5f9'}>
-                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: '6px 8px', textAlign: 'center', fontWeight: 'bold' }}>{r.time.toISOString().substring(11, 23)}</td>
-                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: '6px 8px', textAlign: 'center', color: '#0369a1', fontWeight: 'bold' }}>{fmt3(r.satEl)}</td>
-                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #94a3b8', padding: '6px 8px', textAlign: 'center', color: '#0369a1', fontWeight: 'bold' }}>{fmt3(r.satAz)}</td>
-                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: '6px 8px', textAlign: 'center', color: '#b45309' }}>{fmt3(r.sunEl)}</td>
-                            <td style={{ borderBottom: '1px solid #e2e8f0', padding: '6px 8px', textAlign: 'center', color: '#b45309' }}>{fmt3(r.sunAz)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              );
-            })()}
-
-          </div>
-        </div>
-      )}     
 {/* 📍 WOW Feature 1: SIGNAL FLOW DIAGRAM */}
 {isDiagramOpen && (
   <div className="modal-box diagram-modal" onMouseDownCapture={() => bringToFront('diagram')} style={{
@@ -4774,14 +4652,14 @@ return (
               </div>
             </div>
 
-            {/* 📍 ฟันธงข้อ 3: ใช้ clamp() ผูกความกว้างแผง TECH SPECS ไว้ที่ 34cqw (34% ของจอ) ป้องกันการขยายไปทับ THEOS-2 เด็ดขาด พร้อมย่อฟอนต์ให้สมมาตร 100% */}
-            <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', right: 'max(20px, 2.5cqmin)', left: 'auto', width: 'clamp(360px, 34cqw, 480px)', display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)' }}>
-              <div style={{ color: '#FF4500', fontSize: 'clamp(14px, 1.6cqw, 18px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '1px', textShadow: '0 0 15px #FF4500' }}>
+            {/* 📍 ฟันธง: ขยายกรอบ Technical Specs ให้สมดุล ย่อไม่ทับ ขยายตัวหนังสือใหญ่ */}
+            <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', right: 'max(20px, 2.5cqmin)', left: 'auto', width: 'clamp(340px, 32cqw, 700px)', display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)' }}>
+              <div style={{ color: '#FF4500', fontSize: 'clamp(16px, 2cqw, 32px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '1px', textShadow: '0 0 15px #FF4500' }}>
                 TECHNICAL SPECIFICATIONS
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', textAlign: 'center' }}>
                 <thead>
-                  <tr style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(10px, 1.1cqw, 13px)', borderBottom: '1px dashed rgba(255,255,255,0.3)', letterSpacing: '0.5px' }}>
+                  <tr style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(11px, 1.3cqw, 20px)', borderBottom: '1px dashed rgba(255,255,255,0.3)', letterSpacing: '0.5px' }}>
                     <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>LINK TYPE</th>
                     <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>CENTER FREQ</th>
                     <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>OPERATIONAL RANGE</th>
@@ -4790,22 +4668,22 @@ return (
                 </thead>
                 <tbody>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.2cqw, 14px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>TC (UP)</td>
-                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(12px, 1.3cqw, 15px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.tcFreq}</td>
-                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>{satSpecs.tcRange}</td>
-                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>{satSpecs.tcRate}</td>
+                    <td style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.5cqw, 22px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>TC (UP)</td>
+                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(13px, 1.6cqw, 24px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.tcFreq}</td>
+                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>{satSpecs.tcRange}</td>
+                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>{satSpecs.tcRate}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.2cqw, 14px)', padding: 'max(6px, 0.6cqmin) 0' }}>TM (DOWN)</td>
-                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(12px, 1.3cqw, 15px)', padding: 'max(6px, 0.6cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.tmFreq}</td>
-                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(6px, 0.6cqmin) 0' }}>{satSpecs.tmRange}</td>
-                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(6px, 0.6cqmin) 0' }}>{satSpecs.tmRate}</td>
+                    <td style={{ color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.5cqw, 22px)', padding: 'max(6px, 0.6cqmin) 0' }}>TM (DOWN)</td>
+                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(13px, 1.6cqw, 24px)', padding: 'max(6px, 0.6cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.tmFreq}</td>
+                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0' }}>{satSpecs.tmRange}</td>
+                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0' }}>{satSpecs.tmRate}</td>
                   </tr>
                   <tr>
-                    <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.2cqw, 14px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>DOWNLINK</td>
-                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(12px, 1.3cqw, 15px)', padding: 'max(6px, 0.6cqmin) 0 0 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.xBandFreq}</td>
-                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>{satSpecs.xBandRange}</td>
-                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(10px, 1.1cqw, 13px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>{satSpecs.xBandRate}</td>
+                    <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.5cqw, 22px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>PAYLOAD</td>
+                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(13px, 1.6cqw, 24px)', padding: 'max(6px, 0.6cqmin) 0 0 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.xBandFreq}</td>
+                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>{satSpecs.xBandRange}</td>
+                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>{satSpecs.xBandRate}</td>
                   </tr>
                 </tbody>
               </table>
