@@ -252,13 +252,13 @@ const injectStyles = () => {
     
     .loading-overlay.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
     
-    /* 📍 ฟันธง: ดันกลุ่มดาวเทียมและป้ายชื่อขึ้นด้านบน (margin-top: -12vh) เพื่อใช้พื้นที่อวกาศให้คุ้มค่า */
-    .loading-logo { display: flex; flex-direction: column; align-items: center; margin-top: -12vh; margin-bottom: 20px; z-index: 1; text-align: center; }
-    .hero-satellite { width: 1050px; max-width: 85vw; height: auto; animation: float-sat 6s ease-in-out infinite; filter: drop-shadow(0 40px 30px rgba(0,0,0,0.85)); margin-bottom: 50px; }
+    /* 📍 ฟันธง: จัดระเบียบระยะห่างใหม่ ดันดาวเทียมขึ้น ⬆️ และดันตัวหนังสือลง ⬇️ ให้สมดุลหน้าจอ 100% */
+    .loading-logo { display: flex; flex-direction: column; align-items: center; margin-top: -6vh; margin-bottom: 20px; z-index: 1; text-align: center; }
+    .hero-satellite { width: 1050px; max-width: 85vw; height: auto; animation: float-sat 6s ease-in-out infinite; filter: drop-shadow(0 40px 30px rgba(0,0,0,0.85)); margin-bottom: 14vh; }
     @keyframes float-sat { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-25px) rotate(1.5deg); } 100% { transform: translateY(0px) rotate(0deg); } }
 
-    /* 📍 ฟันธง: ขยายป้ายธงชาติและชื่อ THEOS-2 ให้ใหญ่ระดับ VIP สมเกียรติการนำเสนอ */
-    .loading-badge { display: flex; align-items: center; justify-content: center; background: linear-gradient(90deg, rgba(0,234,255,0.05), rgba(0,234,255,0.15), rgba(0,234,255,0.05)); border: 2px solid rgba(0, 234, 255, 0.5); padding: 12px 50px; border-radius: 50px; margin-bottom: 40px; box-shadow: 0 0 30px rgba(0, 234, 255, 0.3), inset 0 0 15px rgba(0, 234, 255, 0.2); backdrop-filter: blur(5px); }
+    /* 📍 ฟันธง: ป้ายชื่อ THEOS-2 (ปรับช่องไฟให้สมมาตร) */
+    .loading-badge { display: flex; align-items: center; justify-content: center; background: linear-gradient(90deg, rgba(0,234,255,0.05), rgba(0,234,255,0.15), rgba(0,234,255,0.05)); border: 2px solid rgba(0, 234, 255, 0.5); padding: 12px 50px; border-radius: 50px; margin-bottom: 5vh; box-shadow: 0 0 30px rgba(0, 234, 255, 0.3), inset 0 0 15px rgba(0, 234, 255, 0.2); backdrop-filter: blur(5px); }
     .loading-badge img { width: 60px; border-radius: 6px; margin-right: 20px; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
     .loading-badge span { font-family: 'Orbitron', sans-serif; font-size: 42px; font-weight: 900; color: #fff; letter-spacing: 8px; text-shadow: 0 0 25px var(--cyan); }
     
@@ -4193,6 +4193,139 @@ return (
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+{/* --- TRACKING ANGLES (MODERN TACTICAL DATRON) --- */}
+{isAnglesOpen && (
+        <div className="modal-box angles-modal" onMouseDownCapture={() => bringToFront('angles')} style={{
+          position: 'fixed', top: maximizedWins.angles ? '0px' : `${anglesPos.y}px`, left: maximizedWins.angles ? '0px' : `${anglesPos.x}px`,
+          width: maximizedWins.angles ? '100vw' : '850px', height: maximizedWins.angles ? '100vh' : '650px',
+          minWidth: '600px', minHeight: '400px', resize: maximizedWins.angles ? 'none' : 'both', overflow: 'hidden',
+          background: 'linear-gradient(145deg, rgba(10, 15, 25, 0.95) 0%, rgba(5, 10, 15, 0.98) 100%)', 
+          border: maximizedWins.angles ? 'none' : '2px solid var(--cyan)', 
+          borderRadius: maximizedWins.angles ? '0px' : '8px', 
+          boxShadow: '0 0 40px rgba(0, 234, 255, 0.3), inset 0 0 15px rgba(0, 234, 255, 0.1)',
+          display: 'flex', flexDirection: 'column', zIndex: windowZ.angles || 10002, 
+          containerType: 'inline-size', 
+          transition: isDraggingAngles ? 'none' : 'all 0.1s ease-out'
+        }}>
+          
+          <style>{`
+            .hide-scroll-angles::-webkit-scrollbar { display: none; }
+            .hide-scroll-angles { -ms-overflow-style: none; scrollbar-width: none; }
+          `}</style>
+
+          {/* Header */}
+          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'clamp(10px, 1.5cqw, 20px) clamp(15px, 2cqw, 30px)', cursor: maximizedWins.angles ? 'default' : (isDraggingAngles ? 'grabbing' : 'grab'), background: 'linear-gradient(90deg, rgba(0, 234, 255, 0.15), transparent)', borderBottom: '1px solid rgba(0, 234, 255, 0.4)', zIndex: 10 }} onMouseDown={(e) => { if(!maximizedWins.angles) handleAnglesMouseDown(e); }}>
+            <div style={{ display: 'flex', alignItems: 'center', color: '#fff', fontFamily: 'Orbitron, sans-serif', fontWeight: 'bold', fontSize: 'clamp(18px, 2.5cqw, 35px)', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
+              <span style={{ marginRight: '10px' }}>📐</span> POINTING ANGLES
+            </div>
+            <div style={{ display: 'flex', gap: 'clamp(8px, 1cqw, 15px)' }}>
+              <button className="modal-close-btn" style={{ width: 'clamp(32px, 3.5cqw, 50px)', height: 'clamp(32px, 3.5cqw, 50px)', fontSize: 'clamp(15px, 1.8cqw, 28px)', borderColor: 'var(--cyan)', color: 'var(--cyan)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('angles')}>{maximizedWins.angles ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: 'clamp(32px, 3.5cqw, 50px)', height: 'clamp(32px, 3.5cqw, 50px)', fontSize: 'clamp(16px, 1.9cqw, 30px)', borderColor: 'var(--red)', color: 'var(--red)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsAnglesOpen(false)}>✕</button>
+            </div>
+          </div>
+
+          {/* Body & Logic */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '15px', overflow: 'hidden' }}>
+            
+            {(() => {
+              if (!targetSatrec || passSchedule.length === 0) return <div style={{ color: 'var(--red)', textAlign: 'center', marginTop: '50px', fontSize: '20px', fontFamily: 'Orbitron', textShadow: '0 0 10px var(--red)' }}>NO PASS SCHEDULE AVAILABLE</div>;
+              
+              let targetPass = passSchedule.find(p => p.losTime > simulatedTimeMs);
+              if (!targetPass) targetPass = passSchedule[passSchedule.length - 1]; 
+
+              const getSunPos = (timestamp) => {
+                  const d = new Date(timestamp);
+                  const tDays = (d.getTime() / 86400000) + 2440587.5 - 2451545.0;
+                  const L = (280.460 + 0.9856474 * tDays) % 360;
+                  const g = (357.528 + 0.9856003 * tDays) % 360;
+                  const lambda = L + 1.915 * Math.sin(g*Math.PI/180) + 0.020 * Math.sin(2*g*Math.PI/180);
+                  const eps = 23.439 - 0.0000004 * tDays;
+                  const alpha = Math.atan2(Math.cos(eps*Math.PI/180)*Math.sin(lambda*Math.PI/180), Math.cos(lambda*Math.PI/180)) * 180/Math.PI;
+                  const delta = Math.asin(Math.sin(eps*Math.PI/180)*Math.sin(lambda*Math.PI/180)) * 180/Math.PI;
+                  
+                  const gmst = (18.697374558 + 24.06570982441908 * tDays) % 24;
+                  const lmst = (gmst * 15 + GROUND_STATION.lng) % 360;
+                  const ha = (lmst - alpha + 360) % 360;
+                  
+                  const latRad = GROUND_STATION.lat * Math.PI/180;
+                  const decRad = delta * Math.PI/180;
+                  const haRad = ha * Math.PI/180;
+                  
+                  const sunElRad = Math.asin(Math.sin(decRad)*Math.sin(latRad) + Math.cos(decRad)*Math.cos(latRad)*Math.cos(haRad));
+                  const sunEl = sunElRad * 180/Math.PI;
+                  const sunAzRad = Math.acos((Math.sin(decRad) - Math.sin(sunElRad)*Math.sin(latRad)) / (Math.cos(sunElRad)*Math.cos(latRad)));
+                  let sunAz = sunAzRad * 180/Math.PI;
+                  if (Math.sin(haRad) > 0) sunAz = 360 - sunAz;
+                  return { el: sunEl, az: sunAz };
+              };
+
+              const stepMs = angleInterval * 1000;
+              const rows = [];
+              for (let t = targetPass.aosTime; t <= targetPass.losTime; t += stepMs) {
+                 const pos = calculateSatData(new Date(t), targetSatrec);
+                 const sun = getSunPos(t);
+                 rows.push({ time: new Date(t), satEl: pos ? Math.max(0, pos.elevationDeg) : 0, satAz: pos ? pos.azimuthDeg : 0, sunEl: sun.el, sunAz: sun.az });
+              }
+
+              const fmt3 = (num) => String(num.toFixed(3)).padStart(7, '0');
+              const dStr = new Date(targetPass.aosTime).toISOString().substring(0, 10).toUpperCase();
+
+              return (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(10px, 1.2cqw, 20px)', marginBottom: '15px', fontFamily: 'Orbitron', fontSize: 'clamp(13px, 1.5cqw, 22px)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(15px, 2cqw, 30px)' }}>
+                      <span style={{ background: 'rgba(0, 234, 255, 0.1)', padding: 'clamp(4px, 0.8cqw, 10px) clamp(15px, 2cqw, 30px)', border: '1px solid var(--cyan)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)', fontSize: 'clamp(14px, 1.6cqw, 24px)' }}>TARGET: <strong style={{ color: '#fff', fontSize: 'clamp(16px, 1.8cqw, 26px)', textShadow: '0 0 8px var(--cyan)' }}>{targetConfig.displayName}</strong></span>
+                      <span style={{ background: 'rgba(255, 204, 0, 0.1)', padding: 'clamp(4px, 0.8cqw, 10px) clamp(15px, 2cqw, 30px)', border: '1px solid var(--gold)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)', fontSize: 'clamp(14px, 1.6cqw, 24px)' }}>ORBIT: <strong style={{ color: 'var(--gold)', fontSize: 'clamp(16px, 1.8cqw, 26px)', textShadow: '0 0 8px var(--gold)' }}>{tles[selectedCatnr]?.line2.substring(63, 68).trim() || 'N/A'}</strong></span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 'clamp(8px, 1cqw, 20px)', fontSize: 'clamp(13px, 1.5cqw, 22px)' }}>
+                      <span style={{ background: 'rgba(255, 255, 255, 0.05)', padding: 'clamp(4px, 0.5cqw, 8px) clamp(12px, 1.5cqw, 24px)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px', color: '#fff' }}>{dStr}</span>
+                      <span style={{ background: 'rgba(0, 255, 102, 0.1)', padding: 'clamp(4px, 0.5cqw, 8px) clamp(12px, 1.5cqw, 24px)', border: '1px solid var(--green)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>AOS: <strong style={{ color: 'var(--green)', fontSize: 'clamp(14px, 1.6cqw, 24px)' }}>{new Date(targetPass.aosTime).toISOString().substring(11, 19)}</strong></span>
+                      <span style={{ background: 'rgba(255, 204, 0, 0.1)', padding: 'clamp(4px, 0.5cqw, 8px) clamp(12px, 1.5cqw, 24px)', border: '1px solid var(--gold)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>PCA: <strong style={{ color: 'var(--gold)', fontSize: 'clamp(14px, 1.6cqw, 24px)' }}>{new Date(targetPass.peakTime).toISOString().substring(11, 19)}</strong></span>
+                      <span style={{ background: 'rgba(255, 51, 51, 0.1)', padding: 'clamp(4px, 0.5cqw, 8px) clamp(12px, 1.5cqw, 24px)', border: '1px solid var(--red)', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>LOS: <strong style={{ color: 'var(--red)', fontSize: 'clamp(14px, 1.6cqw, 24px)' }}>{new Date(targetPass.losTime).toISOString().substring(11, 19)}</strong></span>
+                    </div>
+                  </div>
+
+                  <div style={{ background: 'rgba(0, 0, 0, 0.5)', border: '1px solid rgba(0, 234, 255, 0.3)', padding: 'clamp(12px, 1.5cqw, 24px) clamp(20px, 2.5cqw, 40px)', borderRadius: '6px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: 'clamp(15px, 2cqw, 30px)' }}>
+                    <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(14px, 1.6cqw, 24px)', color: 'var(--cyan)' }}>INTERVAL SETTING:</span>
+                    <input type="range" min="1" max="60" value={angleInterval} onChange={(e) => setAngleInterval(Number(e.target.value))} className="sci-fi-slider" style={{ flex: 1, '--thumb-color': 'var(--cyan)', '--thumb-glow': 'rgba(0,234,255,0.8)' }} />
+                    <span style={{ background: 'rgba(0, 234, 255, 0.1)', padding: 'clamp(4px, 0.5cqw, 10px) clamp(15px, 2cqw, 30px)', border: '1px solid var(--cyan)', borderRadius: '4px', fontFamily: 'Rajdhani', fontSize: 'clamp(18px, 2.2cqw, 32px)', fontWeight: 'bold', color: '#fff', textShadow: '0 0 10px var(--cyan)', minWidth: 'clamp(90px, 10cqw, 140px)', textAlign: 'center' }}>{angleInterval} <span style={{fontSize:'clamp(12px, 1.4cqw, 20px)', color:'rgba(255,255,255,0.6)'}}>SEC</span></span>
+                  </div>
+
+                  <div className="hide-scroll-angles" style={{ flex: 1, overflowY: 'auto', background: '#f8fafc', borderRadius: '6px', border: '2px solid var(--cyan)', boxShadow: '0 0 15px rgba(0, 234, 255, 0.2)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: 'monospace', fontSize: 'clamp(14px, 1.8cqw, 28px)', color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
+                      <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
+                        <tr style={{ background: '#0b1121', color: '#e2e8f0', fontFamily: 'Orbitron', fontSize: 'clamp(12px, 1.4cqw, 24px)', letterSpacing: '1px' }}>
+                          <th style={{ borderBottom: '1px solid var(--cyan)', padding: 'clamp(8px, 1cqw, 16px)', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }} rowSpan={2}>TIME (UTC)</th>
+                          <th style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', padding: 'clamp(8px, 1cqw, 16px)', textAlign: 'center', color: 'var(--cyan)', borderRight: '1px solid rgba(255,255,255,0.1)' }} colSpan={2}>PREDICTED SATELLITE</th>
+                          <th style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', padding: 'clamp(8px, 1cqw, 16px)', textAlign: 'center', color: 'var(--gold)' }} colSpan={2}>SUN POSITION</th>
+                        </tr>
+                        <tr style={{ background: '#0f172a', color: '#94a3b8', fontFamily: 'Orbitron', fontSize: 'clamp(11px, 1.2cqw, 22px)' }}>
+                          <th style={{ borderBottom: '2px solid var(--cyan)', padding: 'clamp(6px, 0.8cqw, 12px)', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>ELEVATION</th>
+                          <th style={{ borderBottom: '2px solid var(--cyan)', padding: 'clamp(6px, 0.8cqw, 12px)', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>AZIMUTH</th>
+                          <th style={{ borderBottom: '2px solid var(--gold)', padding: 'clamp(6px, 0.8cqw, 12px)', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>ELEVATION</th>
+                          <th style={{ borderBottom: '2px solid var(--gold)', padding: 'clamp(6px, 0.8cqw, 12px)', textAlign: 'center' }}>AZIMUTH</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r, i) => (
+                          <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#ffffff' : '#f1f5f9', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e0f2fe'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#ffffff' : '#f1f5f9'}>
+                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: 'clamp(6px, 1cqw, 16px) clamp(8px, 1.2cqw, 20px)', textAlign: 'center', fontWeight: 'bold' }}>{r.time.toISOString().substring(11, 23)}</td>
+                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: 'clamp(6px, 1cqw, 16px) clamp(8px, 1.2cqw, 20px)', textAlign: 'center', color: '#0369a1', fontWeight: 'bold' }}>{fmt3(r.satEl)}</td>
+                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #94a3b8', padding: 'clamp(6px, 1cqw, 16px) clamp(8px, 1.2cqw, 20px)', textAlign: 'center', color: '#0369a1', fontWeight: 'bold' }}>{fmt3(r.satAz)}</td>
+                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: 'clamp(6px, 1cqw, 16px) clamp(8px, 1.2cqw, 20px)', textAlign: 'center', color: '#b45309' }}>{fmt3(r.sunEl)}</td>
+                            <td style={{ borderBottom: '1px solid #e2e8f0', padding: 'clamp(6px, 1cqw, 16px) clamp(8px, 1.2cqw, 20px)', textAlign: 'center', color: '#b45309' }}>{fmt3(r.sunAz)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
