@@ -252,15 +252,15 @@ const injectStyles = () => {
     
     .loading-overlay.fade-out { opacity: 0; visibility: hidden; pointer-events: none; }
     
-    /* 📍 ฟันธง: ขยายดาวเทียมใหญ่ขึ้น (1050px) ให้สมดุลกับตัวหนังสือ และปรับช่องไฟให้สมมาตร 100% */
-    .loading-logo { display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; z-index: 1; text-align: center; }
-    .hero-satellite { width: 1050px; max-width: 85vw; height: auto; animation: float-sat 6s ease-in-out infinite; filter: drop-shadow(0 40px 30px rgba(0,0,0,0.85)); margin-bottom: 40px; }
+    /* 📍 ฟันธง: ดันกลุ่มดาวเทียมและป้ายชื่อขึ้นด้านบน (margin-top: -12vh) เพื่อใช้พื้นที่อวกาศให้คุ้มค่า */
+    .loading-logo { display: flex; flex-direction: column; align-items: center; margin-top: -12vh; margin-bottom: 20px; z-index: 1; text-align: center; }
+    .hero-satellite { width: 1050px; max-width: 85vw; height: auto; animation: float-sat 6s ease-in-out infinite; filter: drop-shadow(0 40px 30px rgba(0,0,0,0.85)); margin-bottom: 50px; }
     @keyframes float-sat { 0% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-25px) rotate(1.5deg); } 100% { transform: translateY(0px) rotate(0deg); } }
 
-    /* 📍 ฟันธง: CSS สำหรับป้ายชื่อดาวเทียมและธงชาติไทย (ย้ายไปอยู่ด้านบนดาวเทียม) */
-    .loading-badge { display: flex; align-items: center; justify-content: center; background: linear-gradient(90deg, rgba(0,234,255,0.05), rgba(0,234,255,0.15), rgba(0,234,255,0.05)); border: 1px solid rgba(0, 234, 255, 0.4); padding: 8px 35px; border-radius: 50px; margin-bottom: 30px; box-shadow: 0 0 20px rgba(0, 234, 255, 0.2), inset 0 0 10px rgba(0, 234, 255, 0.1); backdrop-filter: blur(5px); }
-    .loading-badge img { width: 36px; border-radius: 3px; margin-right: 15px; box-shadow: 0 0 10px rgba(255,255,255,0.3); }
-    .loading-badge span { font-family: 'Orbitron', sans-serif; font-size: 26px; font-weight: 900; color: #fff; letter-spacing: 6px; text-shadow: 0 0 15px var(--cyan); }
+    /* 📍 ฟันธง: ขยายป้ายธงชาติและชื่อ THEOS-2 ให้ใหญ่ระดับ VIP สมเกียรติการนำเสนอ */
+    .loading-badge { display: flex; align-items: center; justify-content: center; background: linear-gradient(90deg, rgba(0,234,255,0.05), rgba(0,234,255,0.15), rgba(0,234,255,0.05)); border: 2px solid rgba(0, 234, 255, 0.5); padding: 12px 50px; border-radius: 50px; margin-bottom: 40px; box-shadow: 0 0 30px rgba(0, 234, 255, 0.3), inset 0 0 15px rgba(0, 234, 255, 0.2); backdrop-filter: blur(5px); }
+    .loading-badge img { width: 60px; border-radius: 6px; margin-right: 20px; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
+    .loading-badge span { font-family: 'Orbitron', sans-serif; font-size: 42px; font-weight: 900; color: #fff; letter-spacing: 8px; text-shadow: 0 0 25px var(--cyan); }
     
     .loading-title { font-family: 'Orbitron', sans-serif; font-size: 80px; font-weight: 900; color: #ffffff; letter-spacing: 18px; text-shadow: 0 0 45px rgba(0,234,255,0.9), 0 0 20px rgba(255,255,255,0.8); text-align: center; line-height: 1; }
     
@@ -2375,10 +2375,9 @@ return (
     {/* 📍 หน้าจอ Loading Screen (Splash Screen) ปิดทับทุกสิ่งจนกว่าจะโหลดเสร็จ */}
     <div className={`loading-overlay ${isAppReady ? 'fade-out' : ''}`}>
     <div className="loading-logo">
-          {/* 📍 ฟันธง: ดาวเทียม THEOS-2 ปลดแอกออกจากกรอบ ลอยเด่นสมจริง (Hero Image) */}
-         {/* 📍 ฟันธง: ย้ายป้ายธงชาติและชื่อ THEOS-2 ไว้บนสุด เพื่อความสง่างามระดับชาติ */}
-         <div className="loading-badge">
-            <img src="https://flagcdn.com/w40/th.png" alt="Thailand Flag" />
+         {/* 📍 ฟันธง: ย้ายป้ายธงชาติและชื่อ THEOS-2 ไว้บนสุด เปลี่ยนธงเป็น w80 ให้คมชัดระดับ 4K */}
+          <div className="loading-badge">
+            <img src="https://flagcdn.com/w80/th.png" alt="Thailand Flag" />
             <span>THEOS-2</span>
           </div>
 
