@@ -4417,9 +4417,9 @@ return (
           100% { transform: translateY(0) rotate(0deg); } 
         }
         @keyframes krasue-glow {
-          0% { opacity: 0.3; filter: drop-shadow(0 0 2px currentColor); }
-          50% { opacity: 1.0; filter: drop-shadow(0 0 15px currentColor) drop-shadow(0 0 5px white) brightness(2.5); }
-          100% { opacity: 0.3; filter: drop-shadow(0 0 2px currentColor); }
+          0% { opacity: 0.6; }
+          50% { opacity: 1.0; }
+          100% { opacity: 0.6; }
         }
         .pkt-tm { fill: var(--cyan); color: var(--cyan); animation: krasue-glow 1.2s ease-in-out infinite; }
         .pkt-tc { fill: var(--gold); color: var(--gold); animation: krasue-glow 1.2s ease-in-out infinite 0.4s; }
@@ -4531,79 +4531,139 @@ return (
                 </svg>
               </g>
 
-              {/* ☄️ DATA PACKETS (ล็อกพิกัดวิ่งบนเส้นสมมาตร) */}
-              {linkActive && (
-                <g>
-                  {/* TM Packets */}
+             {/* ☄️ DATA PACKETS (อัปเกรดขั้นสุด: วาดคลื่น Sine Wave จริง + เอฟเฟกต์หัวใจเต้น + ปรับสปีดช้าลง) */}
+             {linkActive && (
+                <g style={{ fontFamily: 'Orbitron', fontWeight: '900' }}>
+                  
+                  {/* 〰️ TM Packets (Analog Sine Wave สีฟ้า) */}
+                  {/* 1. จากดาวเทียมลงเสา (วิ่งลงแนวตั้ง) */}
                   <g style={{ transform: 'translateX(-11cqmin)' }}>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-tm">
-                      <animate attributeName="cx" from="50%" to="50%" dur="2.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="16%" to="55%" dur="2.5s" repeatCount="indefinite" />
-                    </circle>
+                    <svg overflow="visible" className="pkt-tm">
+                      <g transform="rotate(90)">
+                        {/* สมการวาดคลื่นหัวใจ 6 ลูป (เล็ก->กลาง->ใหญ่->ใหญ่->กลาง->เล็ก) */}
+                        <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="50%" to="50%" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="16%" to="55%" dur="6s" repeatCount="indefinite" />
+                    </svg>
                   </g>
+                  {/* 2. จากเสาเข้ากล่อง UP/DOWN (วิ่งซ้ายแนวนอน) */}
                   <g style={{ transform: 'translateY(-3cqmin)' }}>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-tm">
-                      <animate attributeName="cx" from="calc(50% - 9cqmin)" to="10%" dur="2.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="55%" dur="2.5s" repeatCount="indefinite" />
-                    </circle>
+                    <svg overflow="visible" className="pkt-tm">
+                      <g transform="rotate(180)">
+                        <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="calc(50% - 9cqmin)" to="10%" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="55%" dur="6s" repeatCount="indefinite" />
+                    </svg>
                   </g>
+                  {/* 3. จากกล่อง UP/DOWN ลง TT&C (วิ่งลงแนวตั้ง) */}
                   <g style={{ transform: 'translateX(-3cqmin)' }}>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-tm">
-                      <animate attributeName="cx" from="10%" to="10%" dur="2s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="85%" dur="2s" repeatCount="indefinite" />
-                    </circle>
+                    <svg overflow="visible" className="pkt-tm">
+                      <g transform="rotate(90)">
+                        <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="10%" to="10%" dur="5s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="85%" dur="5s" repeatCount="indefinite" />
+                    </svg>
                   </g>
+                  {/* 4. Digital Data ออกจาก TT&C (วิ่งขวาตัวเลขใหญ่ คมกริบไร้เฟลอร์) */}
                   <g>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-tm">
-                      <animate attributeName="cx" from="10%" to="35%" dur="1s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="85%" to="85%" dur="1s" repeatCount="indefinite" />
-                    </circle>
+                    <text className="pkt-tm" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: 'max(16px, 1.8cqmin)', letterSpacing: '4px' }}>
+                      0 1 1 0 1 0 0 1
+                      <animate attributeName="x" from="10%" to="35%" dur="4s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="85%" to="85%" dur="4s" repeatCount="indefinite" />
+                    </text>
                   </g>
 
-                  {/* TC Packets */}
+                  {/* 〰️ TC Packets (Analog Sine Wave สีทอง) */}
+                  {/* 1. จาก TT&C ขึ้น UP/DOWN (วิ่งขึ้นแนวตั้ง) */}
                   <g style={{ transform: 'translateX(3cqmin)' }}>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-tc">
-                      <animate attributeName="cx" from="10%" to="10%" dur="2s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="85%" to="55%" dur="2s" repeatCount="indefinite" />
-                    </circle>
+                    <svg overflow="visible" className="pkt-tc">
+                      <g transform="rotate(-90)">
+                        <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="10%" to="10%" dur="5s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="85%" to="55%" dur="5s" repeatCount="indefinite" />
+                    </svg>
                   </g>
+                  {/* 2. จาก UP/DOWN เข้าเสา (วิ่งขวาแนวนอน) */}
                   <g style={{ transform: 'translateY(3cqmin)' }}>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-tc">
-                      <animate attributeName="cx" from="10%" to="calc(50% - 9cqmin)" dur="2.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="55%" dur="2.5s" repeatCount="indefinite" />
-                    </circle>
+                    <svg overflow="visible" className="pkt-tc">
+                      <g transform="rotate(0)">
+                        <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="10%" to="calc(50% - 9cqmin)" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="55%" dur="6s" repeatCount="indefinite" />
+                    </svg>
                   </g>
+                  {/* 3. จากเสาขึ้นดาวเทียม (วิ่งขึ้นแนวตั้ง) */}
                   <g style={{ transform: 'translateX(-7cqmin)' }}>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-tc">
-                      <animate attributeName="cx" from="50%" to="50%" dur="2.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="16%" dur="2.5s" repeatCount="indefinite" />
-                    </circle>
+                    <svg overflow="visible" className="pkt-tc">
+                      <g transform="rotate(-90)">
+                        <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="50%" to="50%" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="16%" dur="6s" repeatCount="indefinite" />
+                    </svg>
                   </g>
 
-                  {/* PL Packets */}
+                  {/* 〰️ PL Packets (Analog Sine Wave สีเขียว) */}
+                  {/* 1. จากดาวเทียมลงเสา (วิ่งลงแนวตั้ง) */}
                   <g style={{ transform: 'translateX(9cqmin)' }}>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
-                      <animate attributeName="cx" from="50%" to="50%" dur="2.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="16%" to="55%" dur="2.5s" repeatCount="indefinite" />
-                    </circle>
+                    <svg overflow="visible" className="pkt-pl">
+                      <g transform="rotate(90)">
+                        <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="50%" to="50%" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="16%" to="55%" dur="6s" repeatCount="indefinite" />
+                    </svg>
                   </g>
+                  {/* 2. จากเสาเข้า Downconverter (วิ่งขวาแนวนอน) */}
                   <g>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
-                      <animate attributeName="cx" from="calc(50% + 9cqmin)" to="90%" dur="2.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="55%" dur="2.5s" repeatCount="indefinite" />
-                    </circle>
+                    <svg overflow="visible" className="pkt-pl">
+                      <g transform="rotate(0)">
+                        <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="calc(50% + 9cqmin)" to="90%" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="55%" dur="6s" repeatCount="indefinite" />
+                    </svg>
                   </g>
+                  {/* 3. จาก Downconverter ลง Demod (วิ่งลงแนวตั้ง) */}
                   <g>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
-                      <animate attributeName="cx" from="90%" to="90%" dur="2s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="55%" to="85%" dur="2s" repeatCount="indefinite" />
-                    </circle>
+                    <svg overflow="visible" className="pkt-pl">
+                      <g transform="rotate(90)">
+                        <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="90%" to="90%" dur="5s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="85%" dur="5s" repeatCount="indefinite" />
+                    </svg>
                   </g>
-                  <g>
-                    <circle r="max(4px, 0.4cqmin)" className="pkt-pl">
-                      <animate attributeName="cx" from="90%" to="65%" dur="1.5s" repeatCount="indefinite" />
-                      <animate attributeName="cy" from="85%" to="85%" dur="1.5s" repeatCount="indefinite" />
-                    </circle>
+                 {/* 4. Digital Data ออกจาก Demod (วิ่งซ้ายตัวเลขใหญ่ คมกริบไร้เฟลอร์) */}
+                 <g>
+                    <text className="pkt-pl" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: 'max(16px, 1.8cqmin)', letterSpacing: '4px' }}>
+                      1 0 0 1 1 0 1 0
+                      <animate attributeName="x" from="90%" to="65%" dur="4s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="85%" to="85%" dur="4s" repeatCount="indefinite" />
+                    </text>
                   </g>
                 </g>
               )}
@@ -4617,7 +4677,8 @@ return (
                   {satSpecs.tmFreq}<br/><span style={{fontSize:'0.8em', color:'#fff'}}>S-BAND TM (DOWN)</span>
                 </div>
                 
-                <div className="f-label" style={{ left: 'calc(50% + 9cqmin)', top: '32.5%', borderColor: 'var(--green)', color: 'var(--green)', boxShadow: '0 0 10px rgba(0,255,102,0.4)', transform: 'translate(max(20px, 2cqmin), -50%)' }}>
+               {/* 📍 ฟันธง: ขยับ top มาที่ 35.5% (กึ่งกลางสมมาตรระหว่างดาวเทียม 16% และสถานี 55% พอดีเป๊ะ) */}
+               <div className="f-label" style={{ left: 'calc(50% + 9cqmin)', top: '35.5%', borderColor: 'var(--green)', color: 'var(--green)', boxShadow: '0 0 10px rgba(0,255,102,0.4)', transform: 'translate(max(20px, 2cqmin), -50%)' }}>
                   {satSpecs.xBandFreq}<br/><span style={{fontSize:'0.8em', color:'#fff'}}>PAYLOAD (DOWN)</span>
                 </div>
                 
@@ -4816,62 +4877,61 @@ return (
             </div>
 
           
-              {/* 📍 PANELS (LINK STATUS & SPECIFICATIONS) */}
-              <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', left: 'max(20px, 2.5cqmin)', width: 'clamp(220px, 24cqw, 280px)', border: '2px solid var(--cyan)', boxShadow: '0 0 max(20px, 2cqmin) rgba(0, 234, 255, 0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0, 234, 255, 0.15)' }}>
-              
-              <div style={{ color: 'var(--cyan)', fontSize: 'clamp(14px, 1.6cqw, 18px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(0,234,255,0.3)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)' }}
-              
-              >LINK STATUS</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'max(10px, 1cqmin)', fontSize: 'clamp(12px, 1.4cqw, 15px)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
-                <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px' }}><div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', borderRadius: '50%', background: 'var(--cyan)', marginRight: 'max(10px, 1.2cqmin)', boxShadow: '0 0 8px var(--cyan)' }}></div> S-BAND (TM)</span>
-                <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
+             {/* 📍 PANELS (LINK STATUS & SPECIFICATIONS) - ฉบับสมมาตร 1,000,000% ย่อไม่ทับ ขยายไม่แตก! */}
+             <div className="bot-panel" style={{ position: 'absolute', top: 'max(15px, 2cqmin)', left: 'max(15px, 2cqmin)', width: 'clamp(180px, 22cqw, 350px)', background: 'rgba(0, 20, 30, 0.85)', border: '2px solid var(--cyan)', borderRadius: '8px', padding: 'clamp(12px, 1.5cqw, 30px) clamp(15px, 2cqw, 40px)', boxShadow: '0 0 max(20px, 2cqmin) rgba(0, 234, 255, 0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0, 234, 255, 0.15)', zIndex: 10, backdropFilter: 'blur(5px)' }}>
+                <div style={{ color: 'var(--cyan)', fontSize: 'clamp(14px, 1.8cqw, 28px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(0,234,255,0.3)', paddingBottom: 'max(6px, 0.6cqmin)', marginBottom: 'max(10px, 1cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', textAlign: 'center', whiteSpace: 'nowrap' }}>LINK STATUS</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(8px, 1.2cqw, 18px)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'clamp(10px, 1.3cqw, 22px)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px', color: '#fff', whiteSpace: 'nowrap' }}><div style={{ width: 'max(8px, 1cqmin)', height: 'max(8px, 1cqmin)', borderRadius: '50%', background: linkActive ? 'var(--cyan)' : '#555', marginRight: 'max(8px, 1cqmin)', boxShadow: linkActive ? '0 0 8px var(--cyan)' : 'none' }}></div> S-BAND (TM)</span>
+                    <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'clamp(10px, 1.3cqw, 22px)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px', color: '#fff', whiteSpace: 'nowrap' }}><div style={{ width: 'max(8px, 1cqmin)', height: 'max(8px, 1cqmin)', borderRadius: '50%', background: linkActive ? 'var(--gold)' : '#555', marginRight: 'max(8px, 1cqmin)', boxShadow: linkActive ? '0 0 8px var(--gold)' : 'none' }}></div> TC UPLINK</span>
+                    <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'clamp(10px, 1.3cqw, 22px)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px', color: '#fff', whiteSpace: 'nowrap' }}><div style={{ width: 'max(8px, 1cqmin)', height: 'max(8px, 1cqmin)', borderRadius: '50%', background: linkActive ? 'var(--green)' : '#555', marginRight: 'max(8px, 1cqmin)', boxShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}></div> PAYLOAD</span>
+                    <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
+                  </div>
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'max(10px, 1cqmin)', fontSize: 'clamp(12px, 1.4cqw, 15px)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
-                <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px' }}><div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', borderRadius: '50%', background: 'var(--gold)', marginRight: 'max(10px, 1.2cqmin)', boxShadow: '0 0 8px var(--gold)' }}></div> TC UPLINK</span>
-                <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'clamp(12px, 1.4cqw, 15px)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
-                <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px' }}><div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', borderRadius: '50%', background: 'var(--green)', marginRight: 'max(10px, 1.2cqmin)', boxShadow: '0 0 8px var(--green)' }}></div> PAYLOAD</span>
-                <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
-              </div>
-            </div>
 
-            {/* 📍 ฟันธง: ขยายกรอบ Technical Specs ให้สมดุล ย่อไม่ทับ ขยายตัวหนังสือใหญ่ */}
-            <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', right: 'max(20px, 2.5cqmin)', left: 'auto', width: 'clamp(340px, 32cqw, 700px)', display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)' }}>
-              <div style={{ color: '#FF4500', fontSize: 'clamp(16px, 2cqw, 32px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '1px', textShadow: '0 0 15px #FF4500' }}>
-                TECHNICAL SPECIFICATIONS
+              {/* 📍 Technical Specs สมมาตร ฝั่งขวา */}
+              <div className="bot-panel" style={{ position: 'absolute', top: 'max(15px, 2cqmin)', right: 'max(15px, 2cqmin)', left: 'auto', width: 'clamp(320px, 38cqw, 750px)', display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)', borderRadius: '8px', padding: 'clamp(12px, 1.5cqw, 30px)', zIndex: 10, backdropFilter: 'blur(5px)' }}>
+                <div style={{ color: '#FF4500', fontSize: 'clamp(14px, 1.8cqw, 28px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(6px, 0.6cqmin)', marginBottom: 'max(10px, 1cqmin)', fontWeight: '900', letterSpacing: '1px', textShadow: '0 0 15px #FF4500', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                  TECHNICAL SPECIFICATIONS
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', textAlign: 'center' }}>
+                  <thead>
+                    <tr style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(9px, 1.1cqw, 18px)', borderBottom: '1px dashed rgba(255,255,255,0.3)', letterSpacing: '0.5px' }}>
+                      <th style={{ paddingBottom: 'max(4px, 0.4cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>LINK TYPE</th>
+                      <th style={{ paddingBottom: 'max(4px, 0.4cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>CENTER FREQ</th>
+                      <th style={{ paddingBottom: 'max(4px, 0.4cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>OPERATIONAL RANGE</th>
+                      <th style={{ paddingBottom: 'max(4px, 0.4cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>DATA RATE / BW</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0 max(2px, 0.2cqmin) 0', whiteSpace: 'nowrap' }}>TC (UP)</td>
+                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(11px, 1.4cqw, 22px)', padding: 'max(6px, 0.6cqmin) 0 max(2px, 0.2cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tcFreq}</td>
+                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0 max(2px, 0.2cqmin) 0', whiteSpace: 'nowrap' }}>{satSpecs.tcRange}</td>
+                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0 max(2px, 0.2cqmin) 0', whiteSpace: 'nowrap' }}>{satSpecs.tcRate}</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0', whiteSpace: 'nowrap' }}>TM (DOWN)</td>
+                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(11px, 1.4cqw, 22px)', padding: 'max(6px, 0.6cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tmFreq}</td>
+                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0', whiteSpace: 'nowrap' }}>{satSpecs.tmRange}</td>
+                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0', whiteSpace: 'nowrap' }}>{satSpecs.tmRate}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0 0 0', whiteSpace: 'nowrap' }}>PAYLOAD</td>
+                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(11px, 1.4cqw, 22px)', padding: 'max(6px, 0.6cqmin) 0 0 0', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.xBandFreq}</td>
+                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0 0 0', whiteSpace: 'nowrap' }}>{satSpecs.xBandRange}</td>
+                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0 0 0', whiteSpace: 'nowrap' }}>{satSpecs.xBandRate}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', textAlign: 'center' }}>
-                <thead>
-                  <tr style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(11px, 1.3cqw, 20px)', borderBottom: '1px dashed rgba(255,255,255,0.3)', letterSpacing: '0.5px' }}>
-                    <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>LINK TYPE</th>
-                    <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>CENTER FREQ</th>
-                    <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>OPERATIONAL RANGE</th>
-                    <th style={{ paddingBottom: 'max(6px, 0.6cqmin)', fontWeight: 'bold' }}>DATA RATE / BW</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.5cqw, 22px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>TC (UP)</td>
-                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(13px, 1.6cqw, 24px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.tcFreq}</td>
-                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>{satSpecs.tcRange}</td>
-                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(8px, 0.8cqmin) 0 max(4px, 0.4cqmin) 0' }}>{satSpecs.tcRate}</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.5cqw, 22px)', padding: 'max(6px, 0.6cqmin) 0' }}>TM (DOWN)</td>
-                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(13px, 1.6cqw, 24px)', padding: 'max(6px, 0.6cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.tmFreq}</td>
-                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0' }}>{satSpecs.tmRange}</td>
-                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0' }}>{satSpecs.tmRate}</td>
-                  </tr>
-                  <tr>
-                    <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.5cqw, 22px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>PAYLOAD</td>
-                    <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(13px, 1.6cqw, 24px)', padding: 'max(6px, 0.6cqmin) 0 0 0', textShadow: '0 0 5px rgba(255,255,255,0.5)' }}>{satSpecs.xBandFreq}</td>
-                    <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>{satSpecs.xBandRange}</td>
-                    <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0 0 0' }}>{satSpecs.xBandRate}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
 
           </>
         );
