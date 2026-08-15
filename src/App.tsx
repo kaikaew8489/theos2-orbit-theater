@@ -2429,110 +2429,120 @@ return (
         </div>
     </div>
 
-    <Globe
-        ref={globeRef} width={size.width} height={size.height}
-        backgroundColor="#000000"
-        
-        /* 📍 ฟันธง: ปลดล็อก 3D Globe ให้ดึงรูปจากระบบ Theme ตามที่ Commander สั่ง! */
-        globeImageUrl={mapThemes[mapThemeIdx].url}
-        
-        /* 📍 รักษาระบบภูมิประเทศภูเขา (Bump Map) ให้สมจริงเหมือนเดิม */
-        bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-        backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
-        
-        /* 📍 รักษาออร่าชั้นบรรยากาศสีฟ้าให้คงอยู่เหมือนเดิม */
-        showAtmosphere={true}
-        atmosphereColor="#00b3ff"
-        atmosphereAltitude={0.15}
-        objectsData={[...allSatObjects]}
-        objectLat="lat" objectLng="lng" objectAltitude="altitude"
-        objectThreeObject={(d) => createSatelliteModel(d.isTarget)}
-        
-        objectLabel={(d) => {
-          if (d.type !== 'satellite') return '';
-          const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
-          const flagHtml = satInfo?.flag ? `<img src="https://flagcdn.com/w20/${satInfo.flag}.png" width="20" style="vertical-align: middle; border-radius: 2px; margin-right: 6px;" />` : '🛰️ ';
-          return `
-            <div style="background: rgba(0, 10, 20, 0.9); border: 1px solid #00eaff; border-radius: 4px; padding: 10px 15px; font-family: 'Rajdhani', sans-serif; box-shadow: 0 5px 20px rgba(0,234,255,0.6);">
-              <strong style="color: #fff; font-size: 15px; display: flex; align-items: center; text-shadow: 0 0 10px #00eaff;">${flagHtml}${satInfo?.displayName || d.name}</strong>
-              <div style="margin-top: 6px; font-weight: bold;">
-                <span style="color: #00eaff; font-size: 13px;">NORAD: ${d.catnr}</span><br/>
-                <span style="color: #ffcc00; font-size: 13px;">Alt: ${Math.round(d.altKm)} km</span>
-              </div>
-            </div>
-          `;
-        }}
-        onObjectClick={(d) => {
-          if (d.type === 'satellite') {
-            setSelectedCatnr(d.catnr);
-            if (!selectedCatnrs.includes(d.catnr)) setSelectedCatnrs([...selectedCatnrs, d.catnr]);
-            isTrackingRef.current = true;
-            setCameraMode('TRACKING');
-            if (globeRef.current) {
-              // ฟันธง: ซูมกล้องถอยหลังให้พ้นระยะความสูงของดาวเทียม (GEO สูงมาก กล้องต้องถอยไกล)
-              const camAlt = Math.max(0.4, (d.altKm / EARTH_RADIUS_KM) + 0.5);
-              globeRef.current.pointOfView({ lat: d.lat, lng: d.lng, altitude: camAlt }, 1000);
-            }
-          }
-        }}
+    {/* 📍 ฟันธง: ยุทธการหุ้มเกราะ (React Memo) ป้องกันโลก 3D รีเฟรชตัวเองตอนลากหน้าต่าง ลดภาระ INP 1,000,000% */}
+    {useMemo(() => {
+      // 📍 สร้าง Array ข้อมูลไว้ด้านนอก JSX เพื่อความถูกต้องของกฎ React Hooks (แก้ปัญหาจอดำ)
+      const memoizedHtmlElements = [
+        { type: 'station', lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, name: GROUND_STATION.name, altitude: 0 },
+        ...allSatObjects.filter(sat => sat.isTarget)
+      ];
+      const memoizedRings = [{ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng }];
 
-        htmlElementsData={[
-          { type: 'station', lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, name: GROUND_STATION.name, altitude: 0 },
-          ...allSatObjects.filter(sat => sat.isTarget)
-        ]}
-        htmlLat="lat" htmlLng="lng" htmlAltitude="altitude"
-        htmlElement={d => {
-          const el = document.createElement('div');
-          
-         /* 📍 ถ้าเป็นสถานีภาคพื้นดิน (ระบบเลือกโหมดแสดงผล Dynamic) */
-         if (d.type === 'station') {
-          if (stationDisplayMode === 'none') {
-            el.innerHTML = ``; // ไม่แสดงอะไรเลย (ล่องหน)
-          } else {
-            const showIcon = stationDisplayMode === 'both' || stationDisplayMode === 'icon';
-            const showName = stationDisplayMode === 'both' || stationDisplayMode === 'name';
+      return (
+        <Globe
+            ref={globeRef} width={size.width} height={size.height}
+            backgroundColor="#000000"
             
-            el.innerHTML = `
-              <div style="position: relative; display: flex; align-items: center; justify-content: center; pointer-events: none;">
-                ${showIcon ? `<span style="font-size: 38px; line-height: 1; filter: drop-shadow(0 0 15px #00eaff);">📡</span>` : `<span style="width: 38px; height: 38px; display: inline-block;"></span>`}
-                ${showName ? `<span style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); color: #00eaff; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 14px; text-shadow: 0 0 8px #000, 0 0 15px #00eaff; margin-top: 4px; letter-spacing: 1.5px; white-space: nowrap;">${d.name}</span>` : ''}
-              </div>
-            `;
-          }
-        }
-          /* 📍 ถ้าเป็นดาวเทียมเป้าหมาย */
-          else {
-            const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
-            const flagUrl = satInfo?.flag ? `https://flagcdn.com/w20/${satInfo.flag}.png` : '';
-            el.innerHTML = `
-              <div style="display: flex; align-items: center; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-shadow: 0 0 5px #000, 0 0 15px #00eaff; transform: translate(15px, -15px); pointer-events: none; white-space: nowrap;">
-                ${flagUrl ? `<img src="${flagUrl}" style="width:20px; margin-right:8px; border-radius:2px; box-shadow: 0 0 8px rgba(0,234,255,0.8);" />` : ''}
-                ${d.name}
-              </div>`;
-          }
-          return el;
-        }}
+            /* 📍 ฟันธง: ปลดล็อก 3D Globe ให้ดึงรูปจากระบบ Theme ตามที่ Commander สั่ง! */
+            globeImageUrl={mapThemes[mapThemeIdx].url}
+            
+            /* 📍 รักษาระบบภูมิประเทศภูเขา (Bump Map) ให้สมจริงเหมือนเดิม */
+            bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
+            backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+            
+            /* 📍 รักษาออร่าชั้นบรรยากาศสีฟ้าให้คงอยู่เหมือนเดิม */
+            showAtmosphere={true}
+            atmosphereColor="#00b3ff"
+            atmosphereAltitude={0.15}
+            
+            /* 📍 จุดตาย: ถอดวงเล็บ [...] ออก เพื่อไม่ให้เกิดการสร้างข้อมูลอาร์เรย์ใหม่ซ้ำซ้อนจนเครื่องคอขวด */
+            objectsData={allSatObjects}
+            
+            objectLat="lat" objectLng="lng" objectAltitude="altitude"
+            objectThreeObject={(d) => createSatelliteModel(d.isTarget)}
+            
+            objectLabel={(d) => {
+              if (d.type !== 'satellite') return '';
+              const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
+              const flagHtml = satInfo?.flag ? `<img src="https://flagcdn.com/w20/${satInfo.flag}.png" width="20" style="vertical-align: middle; border-radius: 2px; margin-right: 6px;" />` : '🛰️ ';
+              return `
+                <div style="background: rgba(0, 10, 20, 0.9); border: 1px solid #00eaff; border-radius: 4px; padding: 10px 15px; font-family: 'Rajdhani', sans-serif; box-shadow: 0 5px 20px rgba(0,234,255,0.6);">
+                  <strong style="color: #fff; font-size: 15px; display: flex; align-items: center; text-shadow: 0 0 10px #00eaff;">${flagHtml}${satInfo?.displayName || d.name}</strong>
+                  <div style="margin-top: 6px; font-weight: bold;">
+                    <span style="color: #00eaff; font-size: 13px;">NORAD: ${d.catnr}</span><br/>
+                    <span style="color: #ffcc00; font-size: 13px;">Alt: ${Math.round(d.altKm)} km</span>
+                  </div>
+                </div>
+              `;
+            }}
+            onObjectClick={(d) => {
+              if (d.type === 'satellite') {
+                setSelectedCatnr(d.catnr);
+                if (!selectedCatnrs.includes(d.catnr)) setSelectedCatnrs([...selectedCatnrs, d.catnr]);
+                isTrackingRef.current = true;
+                setCameraMode('TRACKING');
+                if (globeRef.current) {
+                  // ฟันธง: ซูมกล้องถอยหลังให้พ้นระยะความสูงของดาวเทียม (GEO สูงมาก กล้องต้องถอยไกล)
+                  const camAlt = Math.max(0.4, (d.altKm / EARTH_RADIUS_KM) + 0.5);
+                  globeRef.current.pointOfView({ lat: d.lat, lng: d.lng, altitude: camAlt }, 1000);
+                }
+              }
+            }}
 
-    
+            htmlElementsData={memoizedHtmlElements}
+            htmlLat="lat" htmlLng="lng" htmlAltitude="altitude"
+            htmlElement={d => {
+              const el = document.createElement('div');
+              
+             /* 📍 ถ้าเป็นสถานีภาคพื้นดิน (ระบบเลือกโหมดแสดงผล Dynamic) */
+             if (d.type === 'station') {
+              if (stationDisplayMode === 'none') {
+                el.innerHTML = ``; // ไม่แสดงอะไรเลย (ล่องหน)
+              } else {
+                const showIcon = stationDisplayMode === 'both' || stationDisplayMode === 'icon';
+                const showName = stationDisplayMode === 'both' || stationDisplayMode === 'name';
+                
+                el.innerHTML = `
+                  <div style="position: relative; display: flex; align-items: center; justify-content: center; pointer-events: none;">
+                    ${showIcon ? `<span style="font-size: 38px; line-height: 1; filter: drop-shadow(0 0 15px #00eaff);">📡</span>` : `<span style="width: 38px; height: 38px; display: inline-block;"></span>`}
+                    ${showName ? `<span style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); color: #00eaff; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 14px; text-shadow: 0 0 8px #000, 0 0 15px #00eaff; margin-top: 4px; letter-spacing: 1.5px; white-space: nowrap;">${d.name}</span>` : ''}
+                  </div>
+                `;
+              }
+            }
+              /* 📍 ถ้าเป็นดาวเทียมเป้าหมาย */
+              else {
+                const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
+                const flagUrl = satInfo?.flag ? `https://flagcdn.com/w20/${satInfo.flag}.png` : '';
+                el.innerHTML = `
+                  <div style="display: flex; align-items: center; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-shadow: 0 0 5px #000, 0 0 15px #00eaff; transform: translate(15px, -15px); pointer-events: none; white-space: nowrap;">
+                    ${flagUrl ? `<img src="${flagUrl}" style="width:20px; margin-right:8px; border-radius:2px; box-shadow: 0 0 8px rgba(0,234,255,0.8);" />` : ''}
+                    ${d.name}
+                  </div>`;
+              }
+              return el;
+            }}
 
-        pathsData={pathsToDraw3D}
-        pathPoints="points"
-        pathPointLat="lat" pathPointLng="lng" pathPointAlt="alt"
-        pathColor="color" pathStroke="stroke"
-        pathResolution={4}
-        pathTransitionDuration={0}
+            pathsData={pathsToDraw3D}
+            pathPoints="points"
+            pathPointLat="lat" pathPointLng="lng" pathPointAlt="alt"
+            pathColor="color" pathStroke="stroke"
+            pathResolution={4}
+            pathTransitionDuration={0}
 
-        /* 📍 ฟันธง 4: สั่งให้เฉพาะเส้นที่ฝังแท็ก isSignal วิ่งเป็นช็อตๆ ลงมาที่สถานี */
-        pathDashLength={d => d.isSignal ? 0.05 : 0}
-        pathDashGap={d => d.isSignal ? 0.05 : 0}
-        pathDashAnimateTime={d => d.isSignal ? 1500 : 0}
-        
-        ringsData={[{ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng }]}
-        ringColor={() => linkActive ? t => `rgba(255, 170, 0, ${1-t})` : t => `rgba(255, 51, 51, ${1-t})`}
-        ringMaxRadius={linkActive ? 8 : 4}
-        ringPropagationSpeed={1.5}
-        ringRepeatPeriod={800}
-      />
+            /* 📍 ฟันธง 4: สั่งให้เฉพาะเส้นที่ฝังแท็ก isSignal วิ่งเป็นช็อตๆ ลงมาที่สถานี */
+            pathDashLength={d => d.isSignal ? 0.05 : 0}
+            pathDashGap={d => d.isSignal ? 0.05 : 0}
+            pathDashAnimateTime={d => d.isSignal ? 1500 : 0}
+            
+            ringsData={memoizedRings}
+            ringColor={() => linkActive ? t => `rgba(255, 170, 0, ${1-t})` : t => `rgba(255, 51, 51, ${1-t})`}
+            ringMaxRadius={linkActive ? 8 : 4}
+            ringPropagationSpeed={1.5}
+            ringRepeatPeriod={800}
+        />
+      );
+    }, [size.width, size.height, mapThemeIdx, allSatObjects, selectedCatnr, selectedCatnrs, stationDisplayMode, pathsToDraw3D, linkActive])}
 
 {isFlatMap && (
         <div className={`flat-map-wrap ${!isRightPanelOpen ? 'panel-closed' : ''} ${!isLeftPanelOpen ? 'left-panel-closed' : ''}`}>
