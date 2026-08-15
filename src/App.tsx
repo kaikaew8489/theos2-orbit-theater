@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useState, useEffect, useRef, useMemo, startTransition } from 'react';
 import Globe from 'react-globe.gl';
 import * as THREE from 'three';
 import * as satelliteJs from 'satellite.js';
@@ -2588,129 +2588,134 @@ return (
              {/* 📍 ดึงภาพ Cache แสงเงามาโชว์ (ภาพสวยเหมือนเดิม แต่เบาเครื่อง ลื่นปรึ๊ด 100%) */}
              {dayNightOverlay2D}
 
-              <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="map-svg">
-                {orbitVisualPath.map((pathObj, i) => {
-                  const segments = [];
-                  let currentPoints = [];
-                  pathObj.points.forEach((p, idx) => {
-                    if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
-                      segments.push(currentPoints);
-                      currentPoints = [];
-                    }
-                    currentPoints.push(`${(p.lng + 180) / 360 * 100},${(90 - p.lat) / 180 * 100}`);
-                  });
-                  if (currentPoints.length > 0) segments.push(currentPoints);
-                  return segments.map((seg, j) => (
-                    <polyline key={`orb-${i}-${j}`} points={seg.join(' ')} fill="none" stroke="rgba(255, 204, 0, 0.5)" strokeWidth="0.2" strokeDasharray="0.5 0.5" />
-                  ));
-                })}
+             {/* 📍 ฟันธง: ยุทธการหุ้มเกราะแผนที่ 2D ป้องกันการวาดดาวเทียมใหม่นับพันดวงตอนลากหน้าต่าง (เคลียร์ INP 256ms หายขาด!) */}
+             {useMemo(() => (
+                <>
+                  <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="map-svg">
+                    {orbitVisualPath.map((pathObj, i) => {
+                      const segments = [];
+                      let currentPoints = [];
+                      pathObj.points.forEach((p, idx) => {
+                        if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
+                          segments.push(currentPoints);
+                          currentPoints = [];
+                        }
+                        currentPoints.push(`${(p.lng + 180) / 360 * 100},${(90 - p.lat) / 180 * 100}`);
+                      });
+                      if (currentPoints.length > 0) segments.push(currentPoints);
+                      return segments.map((seg, j) => (
+                        <polyline key={`orb-${i}-${j}`} points={seg.join(' ')} fill="none" stroke="rgba(255, 204, 0, 0.5)" strokeWidth="0.2" strokeDasharray="0.5 0.5" />
+                      ));
+                    })}
 
-                {showGroundTrack && groundTrackPath.map((pathObj, i) => {
-                  const segments = [];
-                  let currentPoints = [];
-                  pathObj.points.forEach((p, idx) => {
-                    if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
-                      segments.push(currentPoints);
-                      currentPoints = [];
-                    }
-                    currentPoints.push(`${(p.lng + 180) / 360 * 100},${(90 - p.lat) / 180 * 100}`);
-                  });
-                  if (currentPoints.length > 0) segments.push(currentPoints);
-                  return segments.map((seg, j) => (
-                    <polyline key={`gt-${i}-${j}`} points={seg.join(' ')} fill="none" stroke={pathObj.color} strokeWidth="0.15" />
-                  ));
-                })}
-                
-                {linkActive && targetData && !isNaN(targetData.lat) && !isNaN(targetData.lng) && (
-                  <line
-                    x1={`${(GROUND_STATION.lng + 180) / 360 * 100}`} y1={`${(90 - GROUND_STATION.lat) / 180 * 100}`}
-                    x2={`${(targetData.lng + 180) / 360 * 100}`} y2={`${(90 - targetData.lat) / 180 * 100}`}
-                    stroke="rgba(0, 234, 255, 0.8)" strokeWidth="0.3"
-                  />
-                )}
+                    {showGroundTrack && groundTrackPath.map((pathObj, i) => {
+                      const segments = [];
+                      let currentPoints = [];
+                      pathObj.points.forEach((p, idx) => {
+                        if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
+                          segments.push(currentPoints);
+                          currentPoints = [];
+                        }
+                        currentPoints.push(`${(p.lng + 180) / 360 * 100},${(90 - p.lat) / 180 * 100}`);
+                      });
+                      if (currentPoints.length > 0) segments.push(currentPoints);
+                      return segments.map((seg, j) => (
+                        <polyline key={`gt-${i}-${j}`} points={seg.join(' ')} fill="none" stroke={pathObj.color} strokeWidth="0.15" />
+                      ));
+                    })}
+                    
+                    {linkActive && targetData && !isNaN(targetData.lat) && !isNaN(targetData.lng) && (
+                      <line
+                        x1={`${(GROUND_STATION.lng + 180) / 360 * 100}`} y1={`${(90 - GROUND_STATION.lat) / 180 * 100}`}
+                        x2={`${(targetData.lng + 180) / 360 * 100}`} y2={`${(90 - targetData.lat) / 180 * 100}`}
+                        stroke="rgba(0, 234, 255, 0.8)" strokeWidth="0.3"
+                      />
+                    )}
 
-                  {allSatObjects.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
-                  const isPrimary = sat.catnr === selectedCatnr;
-                  const radiusDeg = getFootprintRadiusDeg(sat.altKm, stationMask);
-                  if (isNaN(radiusDeg)) return null;
-                  
-                  const latRad = (sat.lat * Math.PI) / 180;
-                  const cosLat = Math.max(Math.abs(Math.cos(latRad)), 0.05); 
-                  const rxDeg = Math.min(radiusDeg / cosLat, 180); 
-                  
-                  const cx = (sat.lng + 180) / 360 * 100;
-                  const cy = (90 - sat.lat) / 180 * 100;
-                  const rx = rxDeg / 360 * 100;
-                  const ry = radiusDeg / 180 * 100;
-                  
-                  return [-100, 0, 100].map(offset => (
-                    <ellipse 
-                      key={`fp-${sat.catnr}-${offset}`}
-                      cx={`${cx + offset}`} 
-                      cy={`${cy}`} 
-                      rx={`${rx}`}
-                      ry={`${ry}`}
-                      fill={isPrimary ? "rgba(255, 51, 51, 0.15)" : "rgba(0, 234, 255, 0.1)"}
-                      stroke={isPrimary ? "rgba(255, 51, 51, 1)" : "rgba(0, 234, 255, 0.8)"}
-                      strokeWidth="0.2"
-                    />
-                  ));
-                })}
-              </svg>
+                    {allSatObjects.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
+                      const isPrimary = sat.catnr === selectedCatnr;
+                      const radiusDeg = getFootprintRadiusDeg(sat.altKm, stationMask);
+                      if (isNaN(radiusDeg)) return null;
+                      
+                      const latRad = (sat.lat * Math.PI) / 180;
+                      const cosLat = Math.max(Math.abs(Math.cos(latRad)), 0.05); 
+                      const rxDeg = Math.min(radiusDeg / cosLat, 180); 
+                      
+                      const cx = (sat.lng + 180) / 360 * 100;
+                      const cy = (90 - sat.lat) / 180 * 100;
+                      const rx = rxDeg / 360 * 100;
+                      const ry = radiusDeg / 180 * 100;
+                      
+                      return [-100, 0, 100].map(offset => (
+                        <ellipse 
+                          key={`fp-${sat.catnr}-${offset}`}
+                          cx={`${cx + offset}`} 
+                          cy={`${cy}`} 
+                          rx={`${rx}`}
+                          ry={`${ry}`}
+                          fill={isPrimary ? "rgba(255, 51, 51, 0.15)" : "rgba(0, 234, 255, 0.1)"}
+                          stroke={isPrimary ? "rgba(255, 51, 51, 1)" : "rgba(0, 234, 255, 0.8)"}
+                          strokeWidth="0.2"
+                        />
+                      ));
+                    })}
+                  </svg>
 
-              <div className="map-marker" style={{ left: `${(GROUND_STATION.lng + 180) / 360 * 100}%`, top: `${(90 - GROUND_STATION.lat) / 180 * 100}%`, color: '#00eaff', zIndex: 5 }}>
-                <span style={{ fontSize: '24px', textShadow: '0 0 20px #00eaff', marginBottom: '4px' }}>📡</span>
-                <span className="label" style={{ fontSize: '12px', fontWeight: '900', textShadow: '0 0 10px #00eaff', color: '#00eaff' }}>GISTDA</span>
-              </div>
-
-              {allSatObjects.map(sat => {
-                const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === sat.catnr);
-                const isSecondary = selectedCatnrs.includes(sat.catnr) && !sat.isTarget;
-
-                return (
-                <div
-                  key={sat.catnr}
-                  className="map-marker"
-                  style={{
-                    left: `${(sat.lng + 180) / 360 * 100}%`,
-                    top: `${(90 - sat.lat) / 180 * 100}%`,
-                    color: sat.isTarget ? '#ff3333' : isSecondary ? '#ffcc00' : '#00ff66',
-                    zIndex: sat.isTarget ? 10 : isSecondary ? 8 : 2
-                  }}
-                  onClick={() => {
-                    setSelectedCatnr(sat.catnr);
-                    if (!selectedCatnrs.includes(sat.catnr)) setSelectedCatnrs([...selectedCatnrs, sat.catnr]);
-                    isTrackingRef.current = true; 
-                    setCameraMode('TRACKING');
-                    setIsFlatMap(false); 
-                  }}
-                  >
-                  <span 
-                    className={sat.isTarget ? 'target-dot' : 'dot'} 
-                    style={{ 
-                      boxShadow: sat.isTarget ? '0 0 20px #ff3333' : isSecondary ? '0 0 15px #ffcc00' : '0 0 10px #00ff66' 
-                    }}>
-                  </span>
-                  <span className="label" style={{ 
-                    color: sat.isTarget ? '#ffffff' : isSecondary ? '#ffcc00' : '#00ff66', 
-                    fontSize: sat.isTarget ? '13px' : isSecondary ? '12px' : '10px', 
-                    opacity: 1, 
-                    fontWeight: '900',
-                    textShadow: sat.isTarget ? '0 0 10px #ff3333, 0 0 20px #ff3333' : isSecondary ? '0 0 8px #ffcc00, 0 0 15px #000' : '0 0 8px #00ff66, 0 0 15px #000' 
-                  }}>
-                    {sat.name}
-                  </span>
-                  
-                  <div className="map-tooltip">
-                    <strong style={{ display: 'flex', alignItems: 'center' }}>
-                      {satInfo?.flag ? <img src={`https://flagcdn.com/w20/${satInfo.flag}.png`} alt="flag" /> : '🛰️ '}
-                      {satInfo?.displayName || sat.name}
-                    </strong>
-                    <span className="norad">NORAD: {sat.catnr}</span>
-                    <span className="alt">Alt: {Math.round(sat.altKm)} km</span>
+                  <div className="map-marker" style={{ left: `${(GROUND_STATION.lng + 180) / 360 * 100}%`, top: `${(90 - GROUND_STATION.lat) / 180 * 100}%`, color: '#00eaff', zIndex: 5 }}>
+                    <span style={{ fontSize: '24px', textShadow: '0 0 20px #00eaff', marginBottom: '4px' }}>📡</span>
+                    <span className="label" style={{ fontSize: '12px', fontWeight: '900', textShadow: '0 0 10px #00eaff', color: '#00eaff' }}>GISTDA</span>
                   </div>
-                </div>
-              )})}
+
+                  {allSatObjects.map(sat => {
+                    const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === sat.catnr);
+                    const isSecondary = selectedCatnrs.includes(sat.catnr) && !sat.isTarget;
+
+                    return (
+                    <div
+                      key={sat.catnr}
+                      className="map-marker"
+                      style={{
+                        left: `${(sat.lng + 180) / 360 * 100}%`,
+                        top: `${(90 - sat.lat) / 180 * 100}%`,
+                        color: sat.isTarget ? '#ff3333' : isSecondary ? '#ffcc00' : '#00ff66',
+                        zIndex: sat.isTarget ? 10 : isSecondary ? 8 : 2
+                      }}
+                      onClick={() => {
+                        setSelectedCatnr(sat.catnr);
+                        if (!selectedCatnrs.includes(sat.catnr)) setSelectedCatnrs([...selectedCatnrs, sat.catnr]);
+                        isTrackingRef.current = true; 
+                        setCameraMode('TRACKING');
+                        setIsFlatMap(false); 
+                      }}
+                      >
+                      <span 
+                        className={sat.isTarget ? 'target-dot' : 'dot'} 
+                        style={{ 
+                          boxShadow: sat.isTarget ? '0 0 20px #ff3333' : isSecondary ? '0 0 15px #ffcc00' : '0 0 10px #00ff66' 
+                        }}>
+                      </span>
+                      <span className="label" style={{ 
+                        color: sat.isTarget ? '#ffffff' : isSecondary ? '#ffcc00' : '#00ff66', 
+                        fontSize: sat.isTarget ? '13px' : isSecondary ? '12px' : '10px', 
+                        opacity: 1, 
+                        fontWeight: '900',
+                        textShadow: sat.isTarget ? '0 0 10px #ff3333, 0 0 20px #ff3333' : isSecondary ? '0 0 8px #ffcc00, 0 0 15px #000' : '0 0 8px #00ff66, 0 0 15px #000' 
+                      }}>
+                        {sat.name}
+                      </span>
+                      
+                      <div className="map-tooltip">
+                        <strong style={{ display: 'flex', alignItems: 'center' }}>
+                          {satInfo?.flag ? <img src={`https://flagcdn.com/w20/${satInfo.flag}.png`} alt="flag" /> : '🛰️ '}
+                          {satInfo?.displayName || sat.name}
+                        </strong>
+                        <span className="norad">NORAD: {sat.catnr}</span>
+                        <span className="alt">Alt: {Math.round(sat.altKm)} km</span>
+                      </div>
+                    </div>
+                  )})}
+                </>
+              ), [orbitVisualPath, showGroundTrack, groundTrackPath, linkActive, targetData, allSatObjects, selectedCatnrs, stationMask, selectedCatnr])}
               
             </div> {/* 📍 ปิดแท็กกล่อง Inner Wrapper */}
           </div>
@@ -3710,11 +3715,11 @@ return (
                 <button onClick={() => setIsMuted(!isMuted)} style={{ background: isMuted ? 'rgba(255, 51, 51, 0.15)' : 'rgba(0, 255, 102, 0.15)', border: `1px solid ${isMuted ? 'var(--red)' : 'var(--green)'}`, color: isMuted ? 'var(--red)' : 'var(--green)', padding: 'clamp(6px, 1cqw, 12px) clamp(10px, 1.5cqw, 20px)', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Rajdhani', fontWeight: 'bold', fontSize: 'clamp(14px, 1.8cqw, 24px)', transition: 'all 0.2s' }}>
                   {isMuted ? '🔇 MUTE' : '🔊 AUDIO'}
                 </button>
-                <button className="modal-close-btn" style={{ width: 'clamp(32px, 4cqw, 55px)', height: 'clamp(32px, 4cqw, 55px)', fontSize: 'clamp(15px, 2cqw, 30px)', padding: 0, borderColor: 'var(--green)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('radar')}>{maximizedWins.radar ? '🗗' : '🗖'}</button>
+                <button className="modal-close-btn" style={{ width: 'clamp(32px, 4cqw, 55px)', height: 'clamp(32px, 4cqw, 55px)', fontSize: 'clamp(15px, 2cqw, 30px)', padding: 0, borderColor: 'var(--green)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => startTransition(() => toggleMaximize('radar'))}>{maximizedWins.radar ? '🗗' : '🗖'}</button>
                 <button className="modal-close-btn" style={{ width: 'clamp(32px, 4cqw, 55px)', height: 'clamp(32px, 4cqw, 55px)', fontSize: 'clamp(16px, 2.2cqw, 32px)', padding: 0, borderColor: 'var(--green)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsRadarOpen(false)}>✕</button>
               </div>
           </div>
-          <svg width="100%" height="100%" style={{ display: 'block', position: 'relative', zIndex: 10 }}>
+          <svg width="100%" height="100%" style={{ display: 'block', position: 'relative', zIndex: 10 }}>onClick={() => startTransition(() => setIsRadarOpen(false))}
             {/* ข้อมูลมุม EL */}
             <text x="15" y={75 * radarLayout.uiScale} fill="var(--cyan)" fontSize={12 * radarLayout.uiScale} fontWeight="900" fontFamily="Orbitron" textAnchor="start">EL: {radarCurrentPos && radarCurrentPos.el ? Math.max(0, radarCurrentPos.el).toFixed(1) : '0.0'}°</text>
             <text x={radarDim.w - 15} y={75 * radarLayout.uiScale} fill="var(--cyan)" fontSize={12 * radarLayout.uiScale} fontWeight="900" fontFamily="Orbitron" textAnchor="end">MAX EL: {radarData.maxEl !== 'N/A' ? `${radarData.maxEl}°` : 'N/A'}</text>
@@ -4159,8 +4164,8 @@ return (
               <span style={{ marginRight: '10px' }}>📻</span> BASEBAND DEMODULATOR & RF SPECTRUM ANALYZER
             </div>
             <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: 'clamp(8px, 1cqw, 15px)' }}>
-              <button className="modal-close-btn" style={{ width: 'clamp(35px, 4cqw, 65px)', height: 'clamp(35px, 4cqw, 65px)', fontSize: 'clamp(18px, 2.2cqw, 35px)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('analyzer')}>{maximizedWins.analyzer ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: 'clamp(35px, 4cqw, 65px)', height: 'clamp(35px, 4cqw, 65px)', fontSize: 'clamp(20px, 2.5cqw, 38px)', borderColor: 'var(--red)', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsAnalyzerOpen(false)}>✕</button>
+              <button className="modal-close-btn" style={{ width: 'clamp(35px, 4cqw, 65px)', height: 'clamp(35px, 4cqw, 65px)', fontSize: 'clamp(18px, 2.2cqw, 35px)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => startTransition(() => toggleMaximize('analyzer'))}>{maximizedWins.analyzer ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: 'clamp(35px, 4cqw, 65px)', height: 'clamp(35px, 4cqw, 65px)', fontSize: 'clamp(20px, 2.5cqw, 38px)', borderColor: 'var(--red)', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => startTransition(() => setIsAnalyzerOpen(false))}>✕</button>
             </div>
           </div>
 
@@ -4405,9 +4410,10 @@ return (
             {linkActive ? 'ACTIVE: DATA DOWNLINK' : 'SYSTEM STANDBY'}
           </span>
       </div>
+      {/* 📍 ฟันธง: ใช้ startTransition หุ้มปุ่มปิด/ขยายหน้าต่าง เพื่อผลักการคำนวณหนักๆ ไปทำเบื้องหลัง ลบ INP Issue 1,000,000% */}
       <div style={{ display: 'flex', gap: 'max(8px, 1cqmin)' }}>
-        <button className="modal-close-btn" style={{ width: 'max(30px, 3.5cqmin)', height: 'max(30px, 3.5cqmin)', background: 'transparent', border: '1px solid var(--cyan)', color: 'var(--cyan)', cursor: 'pointer', borderRadius: 'max(4px, 0.5cqmin)', fontSize: 'max(15px, 1.6cqmin)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('diagram')}>{maximizedWins?.diagram ? '🗗' : '🗖'}</button>
-        <button className="modal-close-btn" style={{ width: 'max(30px, 3.5cqmin)', height: 'max(30px, 3.5cqmin)', background: 'rgba(255,51,51,0.1)', border: '1px solid var(--red)', color: 'var(--red)', cursor: 'pointer', borderRadius: 'max(4px, 0.5cqmin)', fontSize: 'max(15px, 1.6cqmin)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsDiagramOpen(false)}>✕</button>
+        <button className="modal-close-btn" style={{ width: 'max(30px, 3.5cqmin)', height: 'max(30px, 3.5cqmin)', background: 'transparent', border: '1px solid var(--cyan)', color: 'var(--cyan)', cursor: 'pointer', borderRadius: 'max(4px, 0.5cqmin)', fontSize: 'max(15px, 1.6cqmin)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => startTransition(() => toggleMaximize('diagram'))}>{maximizedWins?.diagram ? '🗗' : '🗖'}</button>
+        <button className="modal-close-btn" style={{ width: 'max(30px, 3.5cqmin)', height: 'max(30px, 3.5cqmin)', background: 'rgba(255,51,51,0.1)', border: '1px solid var(--red)', color: 'var(--red)', cursor: 'pointer', borderRadius: 'max(4px, 0.5cqmin)', fontSize: 'max(15px, 1.6cqmin)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => startTransition(() => setIsDiagramOpen(false))}>✕</button>
       </div>
     </div>
 
