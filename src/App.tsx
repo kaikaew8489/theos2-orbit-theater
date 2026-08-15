@@ -239,7 +239,8 @@ const injectStyles = () => {
   style.innerHTML = `
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@500;600;700&display=swap');
     :root { --cyan: #00eaff; --gold: #ffcc00; --bg: #010408; --red: #ff3333; --dark-cyan: #005f73; --green: #00ff66; }
-    body { margin: 0; overflow: hidden; background: var(--bg); color: #fff; font-family: 'Rajdhani', sans-serif; }
+    /* 📍 ฟันธง 1: ปิดระบบไฮไลท์ข้อความ (Text Selection) ทำให้ไม่มีแถบสีฟ้ามากวนใจเวลาลากหน้าต่าง */
+    body { margin: 0; overflow: hidden; background: var(--bg); color: #fff; font-family: 'Rajdhani', sans-serif; user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; }
     
     .scanlines { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1)); background-size: 100% 4px; z-index: 100; opacity: 0.6; }
     
@@ -2368,6 +2369,18 @@ useEffect(() => {
 
 // 📍 ฟันธง: สมองกล Auto-Scale ปรับขนาด UI ให้พอดีกับทุกหน้าจออัตโนมัติ
 const uiScale = Math.min(1, size.width / 1920, size.height / 1080);
+
+// 📍 ฟันธง 2: สมองกลป้องกันหน้าต่างทะลุขอบจอ (Anti-OutOfBounds System)
+// หากผู้ใช้ลากหัวหน้าต่างหลุดขึ้นไปขอบบน (y < 0) ระบบจะดีดกลับมาที่ขอบบนสุดอัตโนมัติ!
+useEffect(() => {
+  if (typeof radarPos !== 'undefined' && radarPos.y < 0) setRadarPos(p => ({ ...p, y: 0 }));
+  if (typeof gsPos !== 'undefined' && gsPos.y < 0) setGsPos(p => ({ ...p, y: 0 }));
+  if (typeof anglesPos !== 'undefined' && anglesPos.y < 0) setAnglesPos(p => ({ ...p, y: 0 }));
+  if (typeof dbPos !== 'undefined' && dbPos.y < 0) setDbPos(p => ({ ...p, y: 0 }));
+  if (typeof passPos !== 'undefined' && passPos.y < 0) setPassPos(p => ({ ...p, y: 0 }));
+  if (typeof diagramPos !== 'undefined' && diagramPos.y < 0) setDiagramPos(p => ({ ...p, y: 0 }));
+  if (typeof analyzerPos !== 'undefined' && analyzerPos.y < 0) setAnalyzerPos(p => ({ ...p, y: 0 }));
+});
 
 return (
   <>
