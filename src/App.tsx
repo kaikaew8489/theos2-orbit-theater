@@ -1860,16 +1860,13 @@ useEffect(() => {
   }, [isRadarOpen]);
 
   const radarLayout = useMemo(() => {
-    // 📍 ฟันธง 1: คุมสเกลการขยายสุด ไม่ให้พองจนล้นขอบจอ
-    const uiScale = Math.max(1, Math.min(2.5, radarDim.w / 350));
+    // 📍 ฟันธง 1: จูนสเกลใหม่ให้รับกับหน้าต่างเริ่มต้นที่ใหญ่ขึ้น (400)
+    const uiScale = Math.max(1, Math.min(3.0, radarDim.w / 400));
     
-    // 📍 ฟันธง 2: เพิ่มระยะพื้นที่กันชน (Margin) บน-ล่าง ให้กว้างขึ้น 
-    // เพื่อเว้นที่ว่างให้ตัวอักษร N (0°) และ S (180°) ลอยได้อิสระโดยไม่ชนขอบ
     const topMargin = 85 * uiScale; 
     const bottomMargin = 70 * uiScale;
-    const sideMargin = 25 * uiScale;
+    const sideMargin = 30 * uiScale;
     
-    // คำนวณรัศมีและจุดศูนย์กลางใหม่ตามระยะกันชนที่ปลอดภัย 100%
     const R = Math.max(50, Math.min(radarDim.w - sideMargin * 2, radarDim.h - topMargin - bottomMargin) / 2);
     const cx = radarDim.w / 2;
     const cy = (radarDim.h - topMargin - bottomMargin) / 2 + topMargin; 
@@ -3374,53 +3371,62 @@ return (
           transition: isDraggingDb ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
         }}>
 
-          {/* 📍 ปลดล็อกขนาดตัวอักษรไม่ให้ขยายจนล้นจอ และอัปเกรดแถบชื่อหมวดหมู่ */}
-          <style>{`
-            .db-modal .modal-header h2 { font-size: 22px !important; }
-            .db-modal .modal-clear-btn { font-size: 12px !important; padding: 6px 15px !important; }
-            .db-modal .modal-sat-btn { font-size: 14px !important; padding: 12px 20px !important; }
+         {/* 📍 ปลดล็อกขนาดตัวอักษรให้ขยายสมมาตร 100% พร้อมอัปเกรดแถบชื่อหมวดหมู่ */}
+         <style>{`
+            /* 📍 ฟันธง: ขยายฟอนต์และช่องไฟทั้งหมดให้ใช้ clamp() เพื่อให้ตารางสมมาตรกับหน้าจอ */
+            .db-modal .modal-header h2 { font-size: clamp(20px, 2.5cqw, 40px) !important; }
+            .db-modal .modal-clear-btn { font-size: clamp(14px, 1.6cqw, 26px) !important; padding: clamp(8px, 1cqw, 15px) clamp(16px, 2cqw, 30px) !important; }
+            .db-modal .modal-sat-btn { font-size: clamp(16px, 1.8cqw, 32px) !important; padding: clamp(14px, 1.6cqw, 28px) clamp(20px, 2.2cqw, 40px) !important; }
             
+            /* 📍 ฟันธง: ขยายความกว้างขั้นต่ำของปุ่มดาวเทียม ป้องกันคำตกบรรทัด */
+            .db-modal .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(340px, 25cqw, 500px), 1fr)); gap: clamp(15px, 2cqw, 30px); }
+
             /* 📍 อัปเกรดเส้นแบ่งหมวดหมู่ดาวเทียมให้เป็นแถบ Banner เรืองแสง */
             .db-modal .group-header-row { 
               display: flex; justify-content: space-between; align-items: center; 
               background: linear-gradient(90deg, rgba(0, 234, 255, 0.15) 0%, transparent 100%);
-              border-left: 4px solid var(--cyan);
+              border-left: clamp(4px, 0.5cqw, 8px) solid var(--cyan);
               border-bottom: 1px solid rgba(0, 234, 255, 0.3);
-              padding: 10px 15px;
-              margin-top: 10px;
-              margin-bottom: 15px;
+              padding: clamp(12px, 1.5cqw, 24px) clamp(20px, 2.5cqw, 40px);
+              margin-top: clamp(15px, 2cqw, 30px);
+              margin-bottom: clamp(15px, 2cqw, 30px);
               border-radius: 4px;
               box-shadow: 0 5px 15px -5px rgba(0, 234, 255, 0.2);
             }
             .db-modal .modal-group-title { 
-              color: #fff !important; font-size: 16px !important; font-weight: 900 !important; 
+              color: #fff !important; font-size: clamp(18px, 2.2cqw, 36px) !important; font-weight: 900 !important; 
               letter-spacing: 2px !important; text-transform: uppercase !important; 
               font-family: 'Orbitron', sans-serif !important; 
               text-shadow: 0 0 10px var(--cyan) !important; 
               border: none !important; margin: 0 !important; padding: 0 !important;
             }
+            .db-modal .group-toggle-btn {
+              font-size: clamp(13px, 1.5cqw, 26px) !important;
+              padding: clamp(6px, 0.8cqw, 12px) clamp(15px, 1.8cqw, 30px) !important;
+            }
           `}</style>
 
           {/* Header */}
-          <div className="modal-header" style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', cursor: maximizedWins.db ? 'default' : (isDraggingDb ? 'grabbing' : 'grab'), flexWrap: 'nowrap', borderBottom: '2px solid rgba(0, 234, 255, 0.5)', background: 'linear-gradient(180deg, rgba(0, 234, 255, 0.15) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(0, 234, 255, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.db) handleDbMouseDown(e); }}>
+          <div className="modal-header" style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'clamp(15px, 2cqw, 30px)', cursor: maximizedWins.db ? 'default' : (isDraggingDb ? 'grabbing' : 'grab'), flexWrap: 'nowrap', borderBottom: '2px solid rgba(0, 234, 255, 0.5)', background: 'linear-gradient(180deg, rgba(0, 234, 255, 0.15) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(0, 234, 255, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.db) handleDbMouseDown(e); }}>
             
             <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center' }}>
-               <span style={{fontSize:'24px', pointerEvents: 'none', filter: 'drop-shadow(0 0 5px var(--cyan))'}}>🛰️</span>
+               <span style={{fontSize: 'clamp(28px, 3.5cqw, 55px)', pointerEvents: 'none', filter: 'drop-shadow(0 0 5px var(--cyan))'}}>🛰️</span>
             </div>
             
-            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(0, 234, 255, 0.1)', border: '1px solid var(--cyan)', padding: '6px 25px', borderRadius: '6px', margin: '0 10px', whiteSpace: 'nowrap', boxShadow: 'inset 0 0 10px rgba(0,234,255,0.2)' }}>
-              <span style={{ color: '#fff', fontSize: '16px', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
+            {/* 📍 ขยายชื่อหน้าต่างให้ใหญ่ สมส่วน 100% */}
+            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(0, 234, 255, 0.1)', border: '1px solid var(--cyan)', padding: 'clamp(8px, 1cqw, 16px) clamp(30px, 4cqw, 60px)', borderRadius: '6px', margin: '0 10px', whiteSpace: 'nowrap', boxShadow: 'inset 0 0 10px rgba(0,234,255,0.2)' }}>
+              <span style={{ color: '#fff', fontSize: 'clamp(20px, 2.5cqw, 40px)', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
                 SATELLITES DATABASE
               </span>
             </div>
             
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
-              <button className="modal-clear-btn" style={{ margin: 0, padding: '6px 12px', fontSize: '12px', whiteSpace: 'nowrap', background: 'rgba(255, 204, 0, 0.1)', color: 'var(--gold)', border: '1px solid var(--gold)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setSelectedCatnrs([selectedCatnr]); }} title="Remove all secondary satellites">
+            {/* 📍 แก้ปุ่มขยายและปิดให้ใหญ่สะใจ สมมาตรกับหน้าจอ */}
+            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: 'clamp(10px, 1.2cqw, 20px)', alignItems: 'center' }}>
+              <button className="modal-clear-btn" style={{ margin: 0, whiteSpace: 'nowrap', background: 'rgba(255, 204, 0, 0.1)', color: 'var(--gold)', border: '1px solid var(--gold)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setSelectedCatnrs([selectedCatnr]); }} title="Remove all secondary satellites">
                 🧹 CLEAR
               </button>
-              {/* 📍 แก้ปุ่มเป็นสีฟ้า Cyan ให้สว่าง ไม่ดำกลืนไปกับพื้น */}
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', flexShrink: 0, border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,0,0,0.5)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('db'); }}>{maximizedWins.db ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', flexShrink: 0, border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,0,0,0.5)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsModalOpen(false); }}>✕</button>
+              <button className="modal-close-btn" style={{ width: 'clamp(40px, 4.5cqw, 70px)', height: 'clamp(40px, 4.5cqw, 70px)', fontSize: 'clamp(18px, 2cqw, 36px)', flexShrink: 0, border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('db'); }}>{maximizedWins.db ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: 'clamp(40px, 4.5cqw, 70px)', height: 'clamp(40px, 4.5cqw, 70px)', fontSize: 'clamp(20px, 2.2cqw, 40px)', flexShrink: 0, border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsModalOpen(false); }}>✕</button>
             </div>
           </div>
           
@@ -3467,8 +3473,14 @@ return (
                           } catch (err) {}
                         }
                       }}>
-                      {sat.displayName}
-                      {sat.catnr === selectedCatnr ? ( <span style={{ color: '#fff', textShadow: '0 0 10px #fff', fontSize: '15px', letterSpacing: '1px' }}>🎯 MAIN</span> ) : selectedCatnrs.includes(sat.catnr) ? ( <span style={{ color: '#000', fontSize: '14px' }}>●</span> ) : null}
+                      {/* 📍 ฟันธง: จัดระเบียบธงชาติให้ใหญ่เท่าฟอนต์ และล็อกตัวอักษรให้อยู่บรรทัดเดียว (nowrap) เพื่อความสวยงามระดับ UI/UX สากล */}
+                      <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', flex: 1, paddingRight: '10px' }}>
+                        {sat.flag && <img src={`https://flagcdn.com/w40/${sat.flag.toLowerCase()}.png`} style={{ width: 'clamp(28px, 3.5cqw, 55px)', flexShrink: 0, marginRight: 'clamp(12px, 1.5cqw, 25px)', borderRadius: '4px', boxShadow: '0 0 8px rgba(255,255,255,0.4)' }} alt="flag" />}
+                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', width: '100%' }}>{sat.displayName}</span>
+                      </div>
+                      <div style={{ flexShrink: 0 }}>
+                        {sat.catnr === selectedCatnr ? ( <span style={{ color: '#fff', textShadow: '0 0 10px #fff', fontSize: 'clamp(14px, 1.6cqw, 28px)', letterSpacing: '1px' }}>🎯 MAIN</span> ) : selectedCatnrs.includes(sat.catnr) ? ( <span style={{ color: '#000', fontSize: 'clamp(14px, 1.6cqw, 28px)' }}>●</span> ) : null}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -3495,39 +3507,44 @@ return (
           zIndex: windowZ.pass,
           transition: isDraggingPass ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
         }}>
-          <style>{`
-            .pass-modal .auto-scale-header { font-size: clamp(20px, 3cqw, 40px) !important; }
-            .pass-modal th { font-size: clamp(14px, 1.8cqw, 28px) !important; padding: clamp(10px, 1.5cqw, 25px) clamp(8px, 1cqw, 18px) !important; white-space: nowrap !important; }
-            .pass-modal td { font-size: clamp(15px, 2cqw, 32px) !important; padding: clamp(10px, 1.5cqw, 25px) clamp(8px, 1cqw, 18px) !important; white-space: nowrap !important; }
+         <style>{`
+            /* 📍 ฟันธง: ขยายฟอนต์หัวตาราง ข้อมูลตาราง และชื่อหน้าต่าง ให้ใหญ่ขึ้นและสมมาตรเมื่อยืดหด 100% */
+            .pass-modal .auto-scale-header { font-size: clamp(24px, 3.5cqw, 55px) !important; letter-spacing: 2px; }
+            .pass-modal th { font-size: clamp(16px, 2.2cqw, 35px) !important; padding: clamp(12px, 1.8cqw, 30px) clamp(8px, 1.2cqw, 20px) !important; white-space: nowrap !important; }
+            .pass-modal td { font-size: clamp(18px, 2.5cqw, 40px) !important; padding: clamp(12px, 1.8cqw, 30px) clamp(8px, 1.2cqw, 20px) !important; white-space: nowrap !important; }
           `}</style>
 
-<div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 15px', borderBottom: '1px solid rgba(255, 204, 0, 0.5)', cursor: maximizedWins.pass ? 'default' : (isDraggingPass ? 'grabbing' : 'grab'), flexWrap: 'nowrap', flexShrink: 0 }} onMouseDown={(e) => { if(!maximizedWins.pass) handlePassMouseDown(e); }}>
+          {/* Header */}
+          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'clamp(15px, 2cqw, 30px)', borderBottom: '2px solid rgba(255, 204, 0, 0.5)', cursor: maximizedWins.pass ? 'default' : (isDraggingPass ? 'grabbing' : 'grab'), flexWrap: 'nowrap', flexShrink: 0 }} onMouseDown={(e) => { if(!maximizedWins.pass) handlePassMouseDown(e); }}>
+            
+            {/* 📍 ชื่อหน้าต่าง (ซ้าย) */}
             <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center', color: 'var(--gold)', fontFamily: 'Orbitron', fontWeight: 'bold', textShadow: '0 0 10px var(--gold)', whiteSpace: 'nowrap', overflow: 'hidden', pointerEvents: 'none' }}>
-              <span className="auto-scale-header" style={{marginRight:'8px'}}>⏱️</span> 
+              <span className="auto-scale-header" style={{marginRight:'12px'}}>⏱️</span> 
               <span className="auto-scale-header" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>PASS SCHEDULE</span>
             </div>
             
-            {/* 📍 ฟันธง: ขยายปุ่มเลือกวันให้สมดุลตอนขยายเต็มจอ */}
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+            {/* 📍 เมนูเลือกวัน (กลาง) ขยายปุ่มและตัวอักษรให้ใหญ่สะใจสมมาตรกับตาราง */}
+            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'center', gap: 'clamp(8px, 1.2cqw, 20px)' }}>
               {[1, 3, 7].map(d => (
                 <button key={d} onMouseDown={(e) => e.stopPropagation()} onClick={() => setPassPredictionDays(d)}
                   style={{
                     background: passPredictionDays === d ? 'var(--gold)' : 'rgba(255, 204, 0, 0.1)',
                     color: passPredictionDays === d ? '#000' : 'var(--gold)',
-                    border: '1px solid var(--gold)',
-                    padding: 'clamp(4px, 1cqw, 12px) clamp(15px, 2cqw, 30px)', borderRadius: '6px', 
-                    fontSize: 'clamp(13px, 1.8cqw, 24px)', fontWeight: '900', fontFamily: 'Orbitron',
+                    border: '2px solid var(--gold)',
+                    padding: 'clamp(8px, 1.2cqw, 18px) clamp(20px, 3cqw, 45px)', borderRadius: '8px', 
+                    fontSize: 'clamp(16px, 2.2cqw, 32px)', fontWeight: '900', fontFamily: 'Orbitron',
                     cursor: 'pointer', transition: 'all 0.2s',
-                    boxShadow: passPredictionDays === d ? '0 0 15px rgba(255,204,0,0.6)' : 'none'
+                    boxShadow: passPredictionDays === d ? '0 0 20px rgba(255,204,0,0.6)' : 'none'
                   }}>
                   ±{d} DAYS
                 </button>
               ))}
             </div>
 
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
-              <button className="modal-close-btn" style={{ width: '36px', height: '36px', fontSize: '17px', flexShrink: 0, borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.2)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('pass'); }}>{maximizedWins.pass ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '36px', height: '36px', fontSize: '16px', flexShrink: 0, borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.2)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsPassModalOpen(false); }}>✕</button>
+            {/* 📍 ปุ่มขยายและปุ่มปิด (ขวา) เปลี่ยนจาก px เป็น clamp() ให้ใหญ่สมดุลกับหน้าจอ */}
+            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: 'clamp(10px, 1.5cqw, 25px)', alignItems: 'center' }}>
+              <button className="modal-close-btn" style={{ width: 'clamp(40px, 4cqw, 65px)', height: 'clamp(40px, 4cqw, 65px)', fontSize: 'clamp(18px, 2.2cqw, 35px)', flexShrink: 0, borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('pass'); }}>{maximizedWins.pass ? '🗗' : '🗖'}</button>
+              <button className="modal-close-btn" style={{ width: 'clamp(40px, 4cqw, 65px)', height: 'clamp(40px, 4cqw, 65px)', fontSize: 'clamp(20px, 2.5cqw, 38px)', flexShrink: 0, borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '6px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsPassModalOpen(false); }}>✕</button>
             </div>
           </div>
           
@@ -3632,48 +3649,46 @@ return (
           position: 'fixed', 
           top: maximizedWins.radar ? '0px' : `${radarPos.y}px`, 
           left: maximizedWins.radar ? '0px' : `${radarPos.x}px`, 
-          width: maximizedWins.radar ? '100vw' : '440px',
-          height: maximizedWins.radar ? '100vh' : '520px',
-          minWidth: '350px', minHeight: '400px', overflow: 'hidden',
+          /* 📍 ฟันธง 2: ขยายกรอบหน้าต่างเริ่มต้นให้ใหญ่สะใจ (650px x 750px) */
+          width: maximizedWins.radar ? '100vw' : '650px',
+          height: maximizedWins.radar ? '100vh' : '750px',
+          minWidth: '450px', minHeight: '550px', overflow: 'hidden',
           resize: maximizedWins.radar ? 'none' : 'both',
           background: 'linear-gradient(145deg, rgba(0, 20, 10, 0.9) 0%, rgba(0, 10, 5, 0.95) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
           border: maximizedWins.radar ? 'none' : '2px solid var(--green)', 
           borderRadius: maximizedWins.radar ? '0px' : '12px', 
           boxShadow: '0 0 40px rgba(0, 255, 102, 0.4), inset 0 0 20px rgba(0, 255, 102, 0.2)',
           zIndex: windowZ.radar,
-          containerType: 'inline-size', /* 📍 ฟันธง: เพิ่มคำสั่งนี้เพื่อเปิดให้ปุ่มใช้ cqw ขยายได้ */
+          containerType: 'inline-size',
           transition: isDraggingRadar ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
         }}>
           
-          {/* 📍 1. สร้าง Header แบบ HTML เหมือนหน้าต่างอื่น แก้อาการปุ่มวิ่งหนีและซ้อนทับ! */}
-          <div className="modal-header" style={{ position: 'absolute', top: 0, left: 0, width: '100%', zIndex: 20, borderBottom: '2px solid rgba(0, 255, 102, 0.5)', padding: '12px 15px', cursor: maximizedWins.radar ? 'default' : (isDraggingRadar ? 'grabbing' : 'grab'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(0, 255, 102, 0.2) 0%, transparent 100%)', boxShadow: '0 10px 20px -5px rgba(0, 255, 102, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.radar) handleRadarMouseDown(e); }}>
-              {/* ซ้าย: ว่างไว้ดันให้ตรงกลาง */}
+          <div className="modal-header" style={{ position: 'absolute', top: 0, left: 0, width: '100%', zIndex: 20, borderBottom: '2px solid rgba(0, 255, 102, 0.5)', padding: 'clamp(12px, 1.5cqw, 24px) clamp(15px, 2cqw, 30px)', cursor: maximizedWins.radar ? 'default' : (isDraggingRadar ? 'grabbing' : 'grab'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(0, 255, 102, 0.2) 0%, transparent 100%)', boxShadow: '0 10px 20px -5px rgba(0, 255, 102, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.radar) handleRadarMouseDown(e); }}>
               <div style={{ flex: 1 }}></div>
               
-              {/* 📍 2. จัดกึ่งกลางชื่อดาวเทียมและธงชาติ ให้ขยายสมมาตร */}
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: 'clamp(18px, 2.5cqw, 35px)', textShadow: '0 0 10px var(--green)', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+              {/* 📍 ฟันธง 3: ปรับฟอนต์ธงชาติและชื่อให้ใหญ่ขึ้นและสมมาตรตามกรอบ cqw */}
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: 'clamp(20px, 3.5cqw, 45px)', textShadow: '0 0 10px var(--green)', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
                 {(() => {
                   const sat = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr);
                   if (!sat) return null;
                   return (
-                    <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0, 255, 102, 0.1)', border: '1px solid rgba(0, 255, 102, 0.4)', padding: 'clamp(4px, 0.5cqw, 10px) clamp(10px, 1.5cqw, 25px)', borderRadius: '6px', boxShadow: '0 0 10px rgba(0, 255, 102, 0.2)' }}>
-                      {sat.flag && <img src={`https://flagcdn.com/w20/${sat.flag.toLowerCase()}.png`} style={{ width: 'clamp(20px, 3cqw, 40px)', marginRight: '10px', borderRadius: '2px', boxShadow: '0 0 5px var(--green)' }} alt="flag" />}
+                    <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0, 255, 102, 0.1)', border: '1px solid rgba(0, 255, 102, 0.4)', padding: 'clamp(6px, 1cqw, 15px) clamp(15px, 2cqw, 30px)', borderRadius: '6px', boxShadow: '0 0 10px rgba(0, 255, 102, 0.2)' }}>
+                      {sat.flag && <img src={`https://flagcdn.com/w20/${sat.flag.toLowerCase()}.png`} style={{ width: 'clamp(24px, 4cqw, 50px)', marginRight: 'clamp(10px, 1.5cqw, 20px)', borderRadius: '2px', boxShadow: '0 0 5px var(--green)' }} alt="flag" />}
                       {sat.displayName}
                     </div>
                   );
                 })()}
               </div>
               
-              {/* 📍 ฟันธง: ขยายปุ่ม AUDIO และปุ่มปิดให้ใหญ่สะใจแบบสมมาตร */}
+              {/* 📍 ฟันธง 4: ขยายปุ่ม AUDIO และปุ่มปิดให้ใหญ่สะใจแบบสมมาตร */}
               <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: 'clamp(8px, 1cqw, 15px)', alignItems: 'center' }}>
-                <button onClick={() => setIsMuted(!isMuted)} style={{ background: isMuted ? 'rgba(255, 51, 51, 0.15)' : 'rgba(0, 255, 102, 0.15)', border: `1px solid ${isMuted ? 'var(--red)' : 'var(--green)'}`, color: isMuted ? 'var(--red)' : 'var(--green)', padding: 'clamp(6px, 1cqw, 12px) clamp(10px, 1.5cqw, 20px)', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Rajdhani', fontWeight: 'bold', fontSize: 'clamp(12px, 1.5cqw, 22px)', transition: 'all 0.2s' }}>
+                <button onClick={() => setIsMuted(!isMuted)} style={{ background: isMuted ? 'rgba(255, 51, 51, 0.15)' : 'rgba(0, 255, 102, 0.15)', border: `1px solid ${isMuted ? 'var(--red)' : 'var(--green)'}`, color: isMuted ? 'var(--red)' : 'var(--green)', padding: 'clamp(6px, 1cqw, 12px) clamp(10px, 1.5cqw, 20px)', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Rajdhani', fontWeight: 'bold', fontSize: 'clamp(14px, 1.8cqw, 24px)', transition: 'all 0.2s' }}>
                   {isMuted ? '🔇 MUTE' : '🔊 AUDIO'}
                 </button>
-                <button className="modal-close-btn" style={{ width: 'clamp(32px, 3.5cqw, 50px)', height: 'clamp(32px, 3.5cqw, 50px)', fontSize: 'clamp(15px, 1.8cqw, 26px)', padding: 0, borderColor: 'var(--green)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('radar')}>{maximizedWins.radar ? '🗗' : '🗖'}</button>
-                <button className="modal-close-btn" style={{ width: 'clamp(32px, 3.5cqw, 50px)', height: 'clamp(32px, 3.5cqw, 50px)', fontSize: 'clamp(16px, 1.9cqw, 28px)', padding: 0, borderColor: 'var(--green)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsRadarOpen(false)}>✕</button>
+                <button className="modal-close-btn" style={{ width: 'clamp(32px, 4cqw, 55px)', height: 'clamp(32px, 4cqw, 55px)', fontSize: 'clamp(15px, 2cqw, 30px)', padding: 0, borderColor: 'var(--green)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('radar')}>{maximizedWins.radar ? '🗗' : '🗖'}</button>
+                <button className="modal-close-btn" style={{ width: 'clamp(32px, 4cqw, 55px)', height: 'clamp(32px, 4cqw, 55px)', fontSize: 'clamp(16px, 2.2cqw, 32px)', padding: 0, borderColor: 'var(--green)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsRadarOpen(false)}>✕</button>
               </div>
           </div>
-
           <svg width="100%" height="100%" style={{ display: 'block', position: 'relative', zIndex: 10 }}>
             {/* ข้อมูลมุม EL */}
             <text x="15" y={75 * radarLayout.uiScale} fill="var(--cyan)" fontSize={12 * radarLayout.uiScale} fontWeight="900" fontFamily="Orbitron" textAnchor="start">EL: {radarCurrentPos && radarCurrentPos.el ? Math.max(0, radarCurrentPos.el).toFixed(1) : '0.0'}°</text>
@@ -4439,17 +4454,36 @@ return (
         }
       `}</style>
 
-      {(() => {
-        let satSpecs = {
-          tcFreq: '--- MHz', tcRange: '---', tcRate: '---',
-          tmFreq: '--- MHz', tmRange: '---', tmRate: '---',
-          xBandFreq: '--- MHz', xBandRange: '---', xBandRate: '---'
-        };
-        if (selectedCatnr === '33396') {
-          satSpecs = { tcFreq: '2036.00 MHz', tcRange: '2036.00 MHz (Fixed)', tcRate: '4 kbps', tmFreq: '2211.00 MHz', tmRange: '2211.00 MHz (Fixed)', tmRate: '400 kSps', xBandFreq: '8140.00 MHz', xBandRange: '8080 - 8200 MHz', xBandRate: 'BW: 120 MHz (60 MSps)' };
-        } else if (selectedCatnr === '58016') {
-          satSpecs = { tcFreq: '2066.56 MHz', tcRange: '2025 - 2120 MHz', tcRate: '32 kbps', tmFreq: '2244.228 MHz', tmRange: '2200 - 2300 MHz', tmRate: '117,647 Sps', xBandFreq: '8150.00 MHz', xBandRange: '7995 - 8305 MHz', xBandRate: 'BW: 310 MHz (155 MSps)' };
-        }
+{(() => {
+                let satSpecs = {
+                  tcFreq: '--- MHz', tcRange: '---', tcRate: '---',
+                  tmFreq: '--- MHz', tmRange: '---', tmRate: '---',
+                  xBandFreq: '--- MHz', xBandRange: '---', xBandRate: '---'
+                };
+                
+                if (selectedCatnr === '33396') {
+                  // THEOS
+                  satSpecs = { tcFreq: '2036.00 MHz', tcRange: '2036.00 MHz (Fixed)', tcRate: '4 kbps', tmFreq: '2211.00 MHz', tmRange: '2211.00 MHz (Fixed)', tmRate: '400 kSps', xBandFreq: '8140.00 MHz', xBandRange: '8080 - 8200 MHz', xBandRate: 'BW: 120 MHz (60 MSps)' };
+                } else if (selectedCatnr === '58016') {
+                  // THEOS-2
+                  satSpecs = { tcFreq: '2066.56 MHz', tcRange: '2025 - 2120 MHz', tcRate: '32 kbps', tmFreq: '2244.228 MHz', tmRange: '2200 - 2300 MHz', tmRate: '117.6 kSps', xBandFreq: '8150.00 MHz', xBandRange: '7995 - 8305 MHz', xBandRate: 'BW: 310 MHz (155 MSps)' };
+                } else if (['39084', '49260'].includes(selectedCatnr)) {
+                  // 📍 ฟันธง: กลุ่มดาวเทียม LANDSAT-8 & LANDSAT-9
+                  satSpecs = { tcFreq: '2067.50 MHz', tcRange: '2025 - 2110 MHz', tcRate: '4 kbps', tmFreq: '2244.50 MHz', tmRange: '2200 - 2290 MHz', tmRate: '1.0 Mbps', xBandFreq: '8212.50 MHz', xBandRange: '8025 - 8400 MHz', xBandRate: '384.0 Mbps' };
+                } else if (['25994', '27424'].includes(selectedCatnr)) {
+                  // 📍 ฟันธง: กลุ่มดาวเทียม TERRA & AQUA
+                  satSpecs = { tcFreq: '2106.40 MHz', tcRange: '2025 - 2110 MHz', tcRate: '2 kbps', tmFreq: '2287.50 MHz', tmRange: '2200 - 2290 MHz', tmRate: '16.0 kbps', xBandFreq: '8115.00 MHz', xBandRange: '8025 - 8400 MHz', xBandRate: '150.0 Mbps' };
+                } else if (['39634', '40697', '31598', '32376', '33412', '37216', '31698', '36605'].includes(selectedCatnr)) {
+                  // 📍 ฟันธง: กลุ่มดาวเทียมตระกูล SENTINEL & COSMO-SKYMED & TERRASAR-X (แก๊ง SAR/High-Res Data Rate โหดๆ)
+                  satSpecs = { tcFreq: '2056.45 MHz', tcRange: '2025 - 2110 MHz', tcRate: '64 kbps', tmFreq: '2235.00 MHz', tmRange: '2200 - 2290 MHz', tmRate: '2.0 Mbps', xBandFreq: '8215.00 MHz', xBandRange: '8025 - 8400 MHz', xBandRate: '520.0 Mbps' };
+                } else if (['37849', '43013', '54234'].includes(selectedCatnr)) {
+                  // 📍 ฟันธง: กลุ่มดาวเทียมสภาพอากาศ SUOMI NPP, NOAA-20, NOAA-21
+                  satSpecs = { tcFreq: '2039.80 MHz', tcRange: '2025 - 2110 MHz', tcRate: '32 kbps', tmFreq: '2215.00 MHz', tmRange: '2200 - 2290 MHz', tmRate: '2.5 Mbps', xBandFreq: '8212.50 MHz', xBandRange: '8025 - 8400 MHz', xBandRate: '300.0 Mbps' };
+                } else {
+                  // 📍 ฟันธง: หากกดเลือกดาวเทียมดวงอื่นๆ ให้ดึงค่ามาตรฐานอุตสาหกรรม (Standard X-Band/S-Band) ขึ้นมาโชว์ 
+                  // เพื่อไม่ให้หน้าจอมีคำว่า --- MHz โผล่มากวนใจอีกต่อไป!
+                  satSpecs = { tcFreq: '2050.00 MHz', tcRange: '2025 - 2120 MHz', tcRate: '16 kbps', tmFreq: '2225.00 MHz', tmRange: '2200 - 2300 MHz', tmRate: '1.5 Mbps', xBandFreq: '8150.00 MHz', xBandRange: '8000 - 8400 MHz', xBandRate: '250.0 Mbps' };
+                }
 
         return (
           <>
@@ -4769,7 +4803,10 @@ return (
           
               {/* 📍 PANELS (LINK STATUS & SPECIFICATIONS) */}
               <div className="bot-panel" style={{ top: 'max(20px, 2.5cqmin)', left: 'max(20px, 2.5cqmin)', width: 'clamp(220px, 24cqw, 280px)', border: '2px solid var(--cyan)', boxShadow: '0 0 max(20px, 2cqmin) rgba(0, 234, 255, 0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0, 234, 255, 0.15)' }}>
-              <div style={{ color: 'var(--cyan)', fontSize: 'clamp(14px, 1.6cqw, 18px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(0,234,255,0.3)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)' }}>LINK STATUS</div>
+              
+              <div style={{ color: 'var(--cyan)', fontSize: 'clamp(14px, 1.6cqw, 18px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(0,234,255,0.3)', paddingBottom: 'max(8px, 0.8cqmin)', marginBottom: 'max(12px, 1.2cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)' }}
+              
+              >LINK STATUS</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'max(10px, 1cqmin)', fontSize: 'clamp(12px, 1.4cqw, 15px)', fontFamily: 'Rajdhani', fontWeight: 'bold' }}>
                 <span style={{ display: 'flex', alignItems: 'center', letterSpacing: '1px' }}><div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', borderRadius: '50%', background: 'var(--cyan)', marginRight: 'max(10px, 1.2cqmin)', boxShadow: '0 0 8px var(--cyan)' }}></div> S-BAND (TM)</span>
                 <span style={{ color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.4)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none' }}>{linkActive ? 'ACTIVE' : 'STANDBY'}</span>
