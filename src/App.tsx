@@ -2329,7 +2329,7 @@ useEffect(() => {
   return () => { if (autoPilotTimer.current) clearInterval(autoPilotTimer.current); };
 }, [isAutoPilot, simulatedTimeMs, nextPassTimestamp]);
 
-// 📍 ฟันธง: สมองกลดักจับการเข้าสู่วงโคจร (AOS Interceptor) อัตโนมัติ (บังคับกลับโหมด LIVE)
+// 📍 ฟันธง: สมองกลดักจับการเข้าสู่วงโคจร (AOS Interceptor) อัตโนมัติ 
 const autoSnapRef = useRef({});
 
 useEffect(() => {
@@ -2338,7 +2338,7 @@ useEffect(() => {
   const now = Date.now();
   const activeRealPass = passSchedule.find(p => now >= p.aosTime && now <= p.losTime);
 
-  // 🚀 กรณีที่ 1: ดาวเทียมของจริงเข้าเขตรับสัญญาณ (Real-Time AOS)
+  // 🚀 กรณีที่ 1: ดาวเทียมของจริงเข้าเขตรับสัญญาณ ณ เวลาปัจจุบัน (Real-Time AOS) อันนี้ยังคงไว้เผื่อฉุกเฉิน
   if (activeRealPass) {
     const passId = `SNAP-REAL-${activeRealPass.aosTime}`;
     if (!autoSnapRef.current[passId]) {
@@ -2349,7 +2349,8 @@ useEffect(() => {
       console.log("[SYSTEM] 🚨 REAL-TIME AOS DETECTED! Auto-snapping to LIVE mode.");
     }
   } 
-  // 🚀 กรณีที่ 2: กำลังกรอเวลาจำลอง (SIM) ด้วยความเร็วสูง (แตะขอบ AOS ปุ๊บเบรกทันที)
+  // 🚀 กรณีที่ 2: ปิดการทำงานเบรกอัตโนมัติ! (SIM ก็คือ SIM ให้วิ่งทะลุ 500x 1000x ยาวๆ ไปเลยไม่ต้องเบรก)
+  /*
   else {
     const activeSimPass = passSchedule.find(p => simulatedTimeMs >= p.aosTime && simulatedTimeMs <= p.losTime);
     if (activeSimPass && speedMult > 1) {
@@ -2362,6 +2363,7 @@ useEffect(() => {
       }
     }
   }
+  */
 }, [simulatedTimeMs, passSchedule, speedMult, isPlaying]);
 
 // 📍 ฟันธง: สมองกล Auto-Scale ปรับขนาด UI ให้พอดีกับทุกหน้าจออัตโนมัติ
