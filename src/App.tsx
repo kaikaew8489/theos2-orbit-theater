@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, startTransition } from 'react';
 import Globe from 'react-globe.gl';
 import * as THREE from 'three';
 import * as satelliteJs from 'satellite.js';
@@ -987,19 +987,22 @@ useEffect(() => {
   const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996, img: 10000, analyzer: 10001, angles: 10002, diagram: 10003 });
   const [maximizedWins, setMaximizedWins] = useState({ radar: false, pass: false, db: false, img: false, gs: false, analyzer: false, angles: false });
 
- const toggleMaximize = (winName) => {
-   setMaximizedWins(prev => ({ ...prev, [winName]: !prev[winName] }));
-   bringToFront(winName);
- };
-
-  
- const bringToFront = (winName) => {
-   setWindowZ(prev => {
-     const maxZ = Math.max(...Object.values(prev));
-     if (prev[winName] === maxZ) return prev; 
-     return { ...prev, [winName]: maxZ + 1 }; 
-   });
- };
+  const toggleMaximize = (winName) => {
+    startTransition(() => {
+      setMaximizedWins(prev => ({ ...prev, [winName]: !prev[winName] }));
+      bringToFront(winName);
+    });
+  };
+ 
+  const bringToFront = (winName) => {
+    startTransition(() => {
+      setWindowZ(prev => {
+        const maxZ = Math.max(...Object.values(prev));
+        if (prev[winName] === maxZ) return prev; 
+        return { ...prev, [winName]: maxZ + 1 }; 
+      });
+    });
+  };
 
  // 📍 ฟันธง: สมองกลควบคุมหน้าต่าง TRACKING ANGLES
  const [isAnglesOpen, setIsAnglesOpen] = useState(false);
@@ -1425,14 +1428,19 @@ useEffect(() => {
 
 }, [realtimeSun, currentSunPos]);
 
-  const currentDate = new Date(simulatedTimeMs);
-  const targetSatrec = selectedCatnr ? satrecs[selectedCatnr] : null;
-  const targetData = targetSatrec ? calculateSatData(currentDate, targetSatrec) : null;
-  const targetConfig = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr) || SATELLITE_OPTIONS[0];
-  // 📍 ฟันธง: อัปเดต linkActive ให้ทำงานตาม stationMask แบบ Real-time
-  const linkActive = targetData && targetData.elevationDeg >= stationMask;
+const currentDate = new Date(simulatedTimeMs);
+const targetSatrec = selectedCatnr ? satrecs[selectedCatnr] : null;
 
-  // 📍 ฟันธง: สมองกลตัวนับถอยหลัง ดึงข้อมูลอ้างอิงจากตาราง PASS SCHEDULE โดยตรง! (ข้อมูลจะตรงกัน 1,000,000%)
+// 📍 ฟันธง: หุ้มเกราะ targetData ป้องกันการวาดเส้น 3D ใหม่มั่วซั่วทุกพิกเซลตอนลากหน้าต่าง!
+const targetData = useMemo(() => {
+  return targetSatrec ? calculateSatData(new Date(simulatedTimeMs), targetSatrec) : null;
+}, [simulatedTimeMs, targetSatrec]);
+
+const targetConfig = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr) || SATELLITE_OPTIONS[0];
+// 📍 ฟันธง: อัปเดต linkActive ให้ทำงานตาม stationMask แบบ Real-time
+const linkActive = targetData && targetData.elevationDeg >= stationMask;
+
+// 📍 ฟันธง: เปลี่ยน currentDate เป็น simulatedTimeMs ป้องกัน Cache แตกกระจาย!
   const nextPassTimestamp = useMemo(() => {
     if (linkActive || passSchedule.length === 0) return null;
     
@@ -1521,21 +1529,22 @@ useEffect(() => {
     }
   });
 }, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying]);
-  const allSatObjects = useMemo(() => {
-    return SATELLITE_OPTIONS.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
-      if (!satrecs[sat.catnr]) return null;
-      const data = calculateSatData(currentDate, satrecs[sat.catnr]);
-      if (!data) return null;
-      return {
-        ...data, 
-        type: 'satellite', 
-        name: sat.displayName,
-        catnr: sat.catnr,
-        isTarget: sat.catnr === selectedCatnr,
-        altitude: Math.max(0.05, data.altKm / EARTH_RADIUS_KM)
-      };
-    }).filter(Boolean);
-  }, [currentDate, satrecs, selectedCatnr, selectedCatnrs]); 
+const allSatObjects = useMemo(() => {
+  const currentD = new Date(simulatedTimeMs);
+  return SATELLITE_OPTIONS.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
+    if (!satrecs[sat.catnr]) return null;
+    const data = calculateSatData(currentD, satrecs[sat.catnr]);
+    if (!data) return null;
+    return {
+      ...data, 
+      type: 'satellite', 
+      name: sat.displayName,
+      catnr: sat.catnr,
+      isTarget: sat.catnr === selectedCatnr,
+      altitude: Math.max(0.05, data.altKm / EARTH_RADIUS_KM)
+    };
+  }).filter(Boolean);
+}, [simulatedTimeMs, satrecs, selectedCatnr, selectedCatnrs]);
 
  // 📍 ฟันธง: อัปเกรดสมองกลวาดเส้นวงโคจร (Orbit Path) สร้าง The GEO Belt สำหรับดาวเทียมค้างฟ้า
  const orbitVisualPath = useMemo(() => {
@@ -2542,7 +2551,8 @@ return (
             ringRepeatPeriod={800}
         />
       );
-    }, [size.width, size.height, mapThemeIdx, allSatObjects, selectedCatnr, selectedCatnrs, stationDisplayMode, pathsToDraw3D, linkActive])}
+   // 📍 ฟันธง: ยัด activeStation.id เข้าสมองกล บังคับโลก 3D ให้อัปเดตตำแหน่งเสารับสัญญาณทันที!
+  }, [size.width, size.height, mapThemeIdx, allSatObjects, selectedCatnr, selectedCatnrs, stationDisplayMode, pathsToDraw3D, linkActive, activeStation.id])}
 
 {isFlatMap && (
         <div className={`flat-map-wrap ${!isRightPanelOpen ? 'panel-closed' : ''} ${!isLeftPanelOpen ? 'left-panel-closed' : ''}`}>
@@ -3670,7 +3680,7 @@ return (
 
      {/* --- RADAR SKYPLOT --- */}
      {isRadarOpen && (
-        <div ref={radarContainerRef} className="radar-perfect-scale" onMouseDownCapture={() => bringToFront('radar')} style={{
+        <div ref={radarContainerRef} className="radar-perfect-scale" onMouseDownCapture={() => startTransition(() => bringToFront('radar'))} style={{
           position: 'fixed', 
           top: maximizedWins.radar ? '0px' : `${radarPos.y}px`, 
           left: maximizedWins.radar ? '0px' : `${radarPos.x}px`, 
@@ -4136,7 +4146,7 @@ return (
 
   {/* --- SIGNAL ANALYZER (IQ & DUAL SPECTRUM Analyzer) --- */}
   {isAnalyzerOpen && (
-        <div className="modal-box analyzer-modal" onMouseDownCapture={() => bringToFront('analyzer')} style={{
+        <div className="modal-box analyzer-modal" onMouseDownCapture={() => startTransition(() => bringToFront('analyzer'))}style={{
           position: 'fixed', top: maximizedWins.analyzer ? '0px' : `${analyzerPos.y}px`, left: maximizedWins.analyzer ? '0px' : `${analyzerPos.x}px`,
           width: maximizedWins.analyzer ? '100vw' : '1000px', height: maximizedWins.analyzer ? '100vh' : '650px',
           minWidth: '850px', minHeight: '550px', resize: maximizedWins.analyzer ? 'none' : 'both', overflow: 'hidden',
@@ -4372,7 +4382,7 @@ return (
 
 {/* 📍 WOW Feature 1: SIGNAL FLOW DIAGRAM */}
 {isDiagramOpen && (
-  <div className="modal-box diagram-modal" onMouseDownCapture={() => bringToFront('diagram')} style={{
+  <div className="modal-box diagram-modal" onMouseDownCapture={() => startTransition(() => bringToFront('diagram'))}style={{
     position: 'fixed', 
     top: maximizedWins?.diagram ? '0px' : `${diagramPos.y}px`, 
     left: maximizedWins?.diagram ? '0px' : `${diagramPos.x}px`,
@@ -4395,7 +4405,7 @@ return (
   }}>
     
     {/* HEADER */}
-    <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(12px, 1.5cqmin) max(20px, 2.5cqmin)', borderBottom: `2px solid ${linkActive ? 'var(--green)' : 'rgba(0, 234, 255, 0.4)'}`, background: 'rgba(0, 234, 255, 0.05)', cursor: maximizedWins?.diagram ? 'default' : (isDraggingDiagram ? 'grabbing' : 'grab') }} onMouseDown={(e) => { if(!maximizedWins?.diagram) handleDiagramMouseDown(e); }}>
+    <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(12px, 1.5cqmin) max(20px, 2.5cqmin)', borderBottom: `2px solid ${linkActive ? 'var(--green)' : 'rgba(0, 234, 255, 0.4)'}`, background: 'rgba(0, 234, 255, 0.05)', cursor: maximizedWins?.diagram ? 'default' : (isDraggingDiagram ? 'grabbing' : 'grab') }} onMouseDown={(e) => { if(!maximizedWins?.diagram) startTransition(() => handleDiagramMouseDown(e)); }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 'max(10px, 1cqmin)', color: '#fff', fontFamily: 'Orbitron', fontWeight: '900', fontSize: 'max(16px, 1.8cqmin)', letterSpacing: 'max(2px, 0.2cqmin)', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
         <span style={{ fontSize: 'max(20px, 2.2cqmin)' }}>⚙️</span> SIGNAL FLOW
       </div>
