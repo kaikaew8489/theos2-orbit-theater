@@ -3805,13 +3805,14 @@ return (
                     const losX = radarLayout.cx + radarLayout.R * Math.sin((radarData.losAz * Math.PI) / 180); 
                     const losY = radarLayout.cy - radarLayout.R * Math.cos((radarData.losAz * Math.PI) / 180);
                     
-                    // 📍 ฟันธง: ดัน AOS/LOS ออกไปให้พ้นระยะตัวอักษรทิศ
-                    const getPad = (az) => {
-                     if (az > 150 && az < 210) return 45 * s; 
-                     if (az > 330 || az < 30) return 38 * s;  
-                     if ((az > 60 && az < 120) || (az > 240 && az < 300)) return 40 * s; 
-                     return 30 * s; 
-                   };
+                   // 📍 ฟันธง: ดัน AOS/LOS ออกไปให้พ้นระยะตัวอักษรทิศ (แก้อาการตัวเลขซ้อนทับ 100%)
+                   const getPad = (az) => {
+                    // ขยายระยะหลบ (Padding) ให้ไกลขึ้น เพื่อกระโดดข้ามตัวอักษร N, S, E, W ที่ระยะ 28*s
+                    if (az > 150 && az < 210) return 55 * s; // หลบทิศใต้ (S) ดันลงมาให้พ้น
+                    if (az > 330 || az < 30) return 55 * s;  // หลบทิศเหนือ (N) ดันขึ้นไปให้พ้น
+                    if ((az > 60 && az < 120) || (az > 240 && az < 300)) return 48 * s; // หลบทิศ E, W
+                    return 35 * s; // มุมทแยงทั่วไป
+                  };
                    
                    const padAos = getPad(radarData.aosAz);
                    const padLos = getPad(radarData.losAz);
