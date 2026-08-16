@@ -4540,28 +4540,28 @@ return (
 
         return (
           <>
-           {/* 📍 1. SVG เส้นสัญญาณทั้งหมด (สมการแกนตั้ง 90 องศา สมมาตร 100%) */}
+           {/* 📍 1. SVG เส้นสัญญาณทั้งหมด (สมการเส้นทะแยง พุ่งตรงเข้าบอดี้ดาวเทียม สมมาตร 100%) */}
            <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
               {/* TM (สีฟ้า) */}
-              <line x1="50%" y1="16%" x2="50%" y2="55%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateX(-11cqmin)' }} />
+              <line x1="calc(50% - 2.5cqmin)" y1="16%" x2="calc(50% - 9cqmin)" y2="55%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} />
               <line x1="10%" y1="55%" x2="calc(50% - 9cqmin)" y2="55%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateY(-3cqmin)' }} />
               <line x1="10%" y1="55%" x2="10%" y2="85%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateX(-3cqmin)' }} />
               
               {/* TC (สีทอง) */}
               <line x1="10%" y1="85%" x2="10%" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateX(3cqmin)' }} />
               <line x1="10%" y1="55%" x2="calc(50% - 9cqmin)" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateY(3cqmin)' }} />
-              <line x1="50%" y1="55%" x2="50%" y2="16%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateX(-7cqmin)' }} />
+              <line x1="calc(50% - 9cqmin)" y1="55%" x2="calc(50% - 2.5cqmin)" y2="16%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} />
 
               {/* Payload (สีเขียว) */}
-              <line x1="50%" y1="16%" x2="50%" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} style={{ transform: 'translateX(9cqmin)' }} />
+              <line x1="calc(50% + 2.5cqmin)" y1="16%" x2="calc(50% + 9cqmin)" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
               <line x1="calc(50% + 9cqmin)" y1="55%" x2="90%" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
               <line x1="90%" y1="55%" x2="90%" y2="85%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
               
-              {/* 📍 เส้นเชื่อมไปหน้าจอ Analyzer ขนาดย่อ (ข้อ 3: ขยับแกน X ให้ยาวขึ้น) */}
+              {/* 📍 เส้นเชื่อมไปหน้าจอ Analyzer ขนาดย่อ */}
               <line x1="10%" y1="85%" x2="35%" y2="85%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} />
               <line x1="90%" y1="85%" x2="65%" y2="85%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
               
-              {/* 📍 ฟันธงข้อ 2: ขยายสามเหลี่ยม HPA ให้ใหญ่ขึ้น 1.5 เท่า และดันตัวหนังสือลงมาให้สมมาตร ไม่เบียดขอบ */}
+              {/* 📍 สามเหลี่ยม HPA */}
               <g style={{ transform: 'translateY(3cqmin)' }}>
                 <svg x="21%" y="55%" style={{ overflow: 'visible' }}>
                   <polygon points="-45,-30 -45,30 38,0" fill="#020617" stroke="var(--gold)" strokeWidth="4" style={{ filter: linkActive ? 'drop-shadow(0 0 15px var(--gold))' : 'none' }} />
@@ -4569,25 +4569,22 @@ return (
                 </svg>
               </g>
 
-             {/* ☄️ DATA PACKETS (อัปเกรดขั้นสุด: วาดคลื่น Sine Wave จริง + เอฟเฟกต์หัวใจเต้น + ปรับสปีดช้าลง) */}
+             {/* ☄️ DATA PACKETS (อัปเกรดคลื่นทะแยง พุ่งเข้ากึ่งกลางดาวเทียมเป๊ะ!) */}
              {linkActive && (
                 <g style={{ fontFamily: 'Orbitron', fontWeight: '900' }}>
                   
                   {/* 〰️ TM Packets (Analog Sine Wave สีฟ้า) */}
-                  {/* 1. จากดาวเทียมลงเสา (วิ่งลงแนวตั้ง) */}
-                  <g style={{ transform: 'translateX(-11cqmin)' }}>
+                  <g>
                     <svg overflow="visible" className="pkt-tm">
                       <g transform="rotate(90)">
-                        {/* สมการวาดคลื่นหัวใจ 6 ลูป (เล็ก->กลาง->ใหญ่->ใหญ่->กลาง->เล็ก) */}
                         <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
                           <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
                         </path>
                       </g>
-                      <animate attributeName="x" from="50%" to="50%" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="x" from="calc(50% - 2.5cqmin)" to="calc(50% - 9cqmin)" dur="6s" repeatCount="indefinite" />
                       <animate attributeName="y" from="16%" to="55%" dur="6s" repeatCount="indefinite" />
                     </svg>
                   </g>
-                  {/* 2. จากเสาเข้ากล่อง UP/DOWN (วิ่งซ้ายแนวนอน) */}
                   <g style={{ transform: 'translateY(-3cqmin)' }}>
                     <svg overflow="visible" className="pkt-tm">
                       <g transform="rotate(180)">
@@ -4599,7 +4596,6 @@ return (
                       <animate attributeName="y" from="55%" to="55%" dur="6s" repeatCount="indefinite" />
                     </svg>
                   </g>
-                  {/* 3. จากกล่อง UP/DOWN ลง TT&C (วิ่งลงแนวตั้ง) */}
                   <g style={{ transform: 'translateX(-3cqmin)' }}>
                     <svg overflow="visible" className="pkt-tm">
                       <g transform="rotate(90)">
@@ -4611,7 +4607,6 @@ return (
                       <animate attributeName="y" from="55%" to="85%" dur="5s" repeatCount="indefinite" />
                     </svg>
                   </g>
-                  {/* 4. Digital Data ออกจาก TT&C (วิ่งขวาตัวเลขใหญ่ คมกริบไร้เฟลอร์) */}
                   <g>
                     <text className="pkt-tm" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: 'max(16px, 1.8cqmin)', letterSpacing: '4px' }}>
                       0 1 1 0 1 0 0 1
@@ -4621,7 +4616,6 @@ return (
                   </g>
 
                   {/* 〰️ TC Packets (Analog Sine Wave สีทอง) */}
-                  {/* 1. จาก TT&C ขึ้น UP/DOWN (วิ่งขึ้นแนวตั้ง) */}
                   <g style={{ transform: 'translateX(3cqmin)' }}>
                     <svg overflow="visible" className="pkt-tc">
                       <g transform="rotate(-90)">
@@ -4633,7 +4627,6 @@ return (
                       <animate attributeName="y" from="85%" to="55%" dur="5s" repeatCount="indefinite" />
                     </svg>
                   </g>
-                  {/* 2. จาก UP/DOWN เข้าเสา (วิ่งขวาแนวนอน) */}
                   <g style={{ transform: 'translateY(3cqmin)' }}>
                     <svg overflow="visible" className="pkt-tc">
                       <g transform="rotate(0)">
@@ -4645,33 +4638,30 @@ return (
                       <animate attributeName="y" from="55%" to="55%" dur="6s" repeatCount="indefinite" />
                     </svg>
                   </g>
-                  {/* 3. จากเสาขึ้นดาวเทียม (วิ่งขึ้นแนวตั้ง) */}
-                  <g style={{ transform: 'translateX(-7cqmin)' }}>
+                  <g>
                     <svg overflow="visible" className="pkt-tc">
                       <g transform="rotate(-90)">
                         <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
                           <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
                         </path>
                       </g>
-                      <animate attributeName="x" from="50%" to="50%" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="x" from="calc(50% - 9cqmin)" to="calc(50% - 2.5cqmin)" dur="6s" repeatCount="indefinite" />
                       <animate attributeName="y" from="55%" to="16%" dur="6s" repeatCount="indefinite" />
                     </svg>
                   </g>
 
                   {/* 〰️ PL Packets (Analog Sine Wave สีเขียว) */}
-                  {/* 1. จากดาวเทียมลงเสา (วิ่งลงแนวตั้ง) */}
-                  <g style={{ transform: 'translateX(9cqmin)' }}>
+                  <g>
                     <svg overflow="visible" className="pkt-pl">
                       <g transform="rotate(90)">
                         <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
                           <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
                         </path>
                       </g>
-                      <animate attributeName="x" from="50%" to="50%" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="x" from="calc(50% + 2.5cqmin)" to="calc(50% + 9cqmin)" dur="6s" repeatCount="indefinite" />
                       <animate attributeName="y" from="16%" to="55%" dur="6s" repeatCount="indefinite" />
                     </svg>
                   </g>
-                  {/* 2. จากเสาเข้า Downconverter (วิ่งขวาแนวนอน) */}
                   <g>
                     <svg overflow="visible" className="pkt-pl">
                       <g transform="rotate(0)">
@@ -4683,7 +4673,6 @@ return (
                       <animate attributeName="y" from="55%" to="55%" dur="6s" repeatCount="indefinite" />
                     </svg>
                   </g>
-                  {/* 3. จาก Downconverter ลง Demod (วิ่งลงแนวตั้ง) */}
                   <g>
                     <svg overflow="visible" className="pkt-pl">
                       <g transform="rotate(90)">
@@ -4695,7 +4684,6 @@ return (
                       <animate attributeName="y" from="55%" to="85%" dur="5s" repeatCount="indefinite" />
                     </svg>
                   </g>
-                 {/* 4. Digital Data ออกจาก Demod (วิ่งซ้ายตัวเลขใหญ่ คมกริบไร้เฟลอร์) */}
                  <g>
                     <text className="pkt-pl" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: 'max(16px, 1.8cqmin)', letterSpacing: '4px' }}>
                       1 0 0 1 1 0 1 0
@@ -4733,32 +4721,44 @@ return (
                 <div className="f-label" style={{ left: 'calc(10% - 3cqmin)', top: '70%', borderColor: '#ffffff', color: '#ffffff', boxShadow: '0 0 15px rgba(255,255,255,0.4)', transform: 'translate(calc(-100% - max(12px, 1.2cqmin)), -50%)' }}>IF 70MHz</div>
               </>
             )}
-
-            {/* 📍 3. SATELLITE NODE (ข้อ 1: ขยับลงมาที่ top: '16%' เลี่ยงขอบบน) */}
-            <div className="flow-node" style={{ left: '50%', top: '16%', zIndex: 20, width: '32cqmin', minWidth: '320px', aspectRatio: '4/2.5', borderColor: linkActive ? 'var(--cyan)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,234,255,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,234,255,0.3)' : '' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'max(8px, 1cqmin)', marginBottom: 'max(8px, 1cqmin)' }}>
-                {targetConfig.flag && <img src={`https://flagcdn.com/w40/${targetConfig.flag.toLowerCase()}.png`} style={{ width: 'max(24px, 3cqmin)', borderRadius: '2px' }} alt="flag" />}
-                <img src="https://api.iconify.design/mdi:satellite-variant.svg?color=%2300eaff" className={`n-icon ${linkActive ? 'anim-wobble' : ''}`} alt="Sat" style={{ marginBottom: 0 }} />
+{/* 📍 3. SATELLITE NODE (แก้ไขให้ไม่มีกรอบ ลอยอิสระ และใช้ป้ายชื่อวงรีแบบหน้า Loading) */}
+            {/* 📍 ฟันธง: ปลดล็อกข้อจำกัดของกล่อง ปล่อยให้ดาวเทียมสามารถขยายร่างได้อย่างอิสระ */}
+            <div style={{ position: 'absolute', left: '50%', top: '16%', zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transform: 'translate(-50%, -50%)' }}>
+              
+              {/* ป้ายชื่อดาวเทียมแบบวงรี (Hologram Badge) */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(90deg, rgba(0,234,255,0.05), rgba(0,234,255,0.15), rgba(0,234,255,0.05))', border: '1px solid rgba(0, 234, 255, 0.5)', padding: '6px 25px', borderRadius: '50px', marginBottom: '15px', boxShadow: '0 0 15px rgba(0, 234, 255, 0.2), inset 0 0 10px rgba(0, 234, 255, 0.1)', backdropFilter: 'blur(5px)' }}>
+                {targetConfig.flag && <img src={`https://flagcdn.com/w40/${targetConfig.flag.toLowerCase()}.png`} style={{ width: '24px', borderRadius: '3px', marginRight: '12px', boxShadow: '0 0 8px rgba(255,255,255,0.4)' }} alt="flag" />}
+                <span style={{ fontFamily: 'Orbitron', fontSize: '18px', fontWeight: '900', color: '#fff', letterSpacing: '4px', textShadow: '0 0 10px var(--cyan)' }}>{targetConfig.displayName}</span>
               </div>
-              <div className="n-title" style={{ color: linkActive ? 'var(--cyan)' : '#fff' }}>{targetConfig.displayName}</div>
-              <div className="n-sub">SPACE SEGMENT</div>
-              {linkActive && (<>
-                {/* จุดเชื่อมต่อบนดาวเทียม คำนวณแกนให้ตรงกับเส้นด้านล่าง 100% */}
-                <div className="conn-dot" style={{ top: '100%', left: 'calc(50% - 11cqmin)', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-                <div className="conn-dot" style={{ top: '100%', left: 'calc(50% - 7cqmin)', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
-                <div className="conn-dot" style={{ top: '100%', left: 'calc(50% + 9cqmin)', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
-              </>)}
+
+              {/* รูปร่างดาวเทียมลอยอิสระ */}
+              {selectedCatnr === '58016' ? (
+                <img 
+                  src="/textures/THEOS-2.webp" 
+                  className={linkActive ? 'anim-wobble' : ''} 
+                  alt="THEOS-2" 
+                  /* 📍 ฟันธง: ขยายร่างดาวเทียมระดับมโหฬาร (40cqmin) ให้ใหญ่ โดดเด่น และสมมาตรที่สุดกลางอวกาศ! */
+                  style={{ width: 'max(380px, 40cqmin)', height: 'auto', objectFit: 'contain', zIndex: 2, transform: 'translateY(-10px)' }} 
+                />
+              ) : (
+                <img 
+                  src="https://api.iconify.design/mdi:satellite-variant.svg?color=%2300eaff" 
+                  className={linkActive ? 'anim-wobble' : ''} 
+                  alt="Sat" 
+                  style={{ width: 'max(120px, 15cqmin)', height: 'max(120px, 15cqmin)', filter: linkActive ? 'drop-shadow(0 0 10px var(--cyan))' : 'none', zIndex: 2, transform: 'translateY(-10px)' }} 
+                />
+              )}
+
+              {/* 📍 ฟันธง: ลบจุดเชื่อมต่อ (conn-dot) ใต้ดาวเทียมออก ปล่อยให้คลื่นสัญญาณวิ่งเข้าหาบอดี้ดาวเทียมโดยตรง */}
             </div>
 
             {/* 📍 4. SRC S-BAND ANTENNA SYSTEM */}
             <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: 'calc(50% - 9cqmin)', top: '55%', zIndex: 20, width: '15cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--cyan)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,234,255,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,234,255,0.3)' : '' }}>
               <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300eaff" className="n-icon" alt="Antenna" />
-              <div className="n-title">{GROUND_STATION.id}</div>
-              <div className="n-sub">S-BAND ANTENNA</div>
+              {/* 📍 ฟันธง: บังคับขนาดฟอนต์ให้ใหญ่คมชัดเท่ากัน 100% ป้องกัน Flexbox บีบสเกล */}
+              <div className="n-title" style={{ fontSize: 'max(22px, 2.5cqmin)', letterSpacing: '2px' }}>{GROUND_STATION.id}</div>
+              <div className="n-sub" style={{ fontSize: 'max(14px, 1.6cqmin)' }}>S-BAND ANTENNA</div>
               {linkActive && (<>
-                <div className="conn-dot" style={{ top: '0%', left: 'calc(50% - 2cqmin)', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-                <div className="conn-dot" style={{ top: '0%', left: 'calc(50% + 2cqmin)', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
-                
                 <div className="conn-dot" style={{ top: 'calc(50% - 3cqmin)', left: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
                 <div className="conn-dot" style={{ top: 'calc(50% + 3cqmin)', left: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
               </>)}
@@ -4767,10 +4767,10 @@ return (
             {/* 📍 5. SRC X-BAND ANTENNA SYSTEM */}
             <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: 'calc(50% + 9cqmin)', top: '55%', zIndex: 20, width: '15cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--green)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,255,102,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,255,102,0.3)' : '' }}>
               <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300ff66" className="n-icon" alt="Antenna" />
-              <div className="n-title">{GROUND_STATION.id}</div>
-              <div className="n-sub">X-BAND ANTENNA</div>
+              {/* 📍 ฟันธง: บังคับขนาดฟอนต์ให้ใหญ่คมชัดเท่ากัน 100% ป้องกัน Flexbox บีบสเกล */}
+              <div className="n-title" style={{ fontSize: 'max(22px, 2.5cqmin)', letterSpacing: '2px' }}>{GROUND_STATION.id}</div>
+              <div className="n-sub" style={{ fontSize: 'max(14px, 1.6cqmin)' }}>X-BAND ANTENNA</div>
               {linkActive && (<>
-                <div className="conn-dot" style={{ top: '0%', left: '50%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
                 <div className="conn-dot" style={{ top: '50%', left: '100%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
               </>)}
             </div>
