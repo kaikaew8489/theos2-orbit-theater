@@ -2951,7 +2951,8 @@ return (
                     </div>
 
                     <div className="speed-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginTop: '16px' }}>
-                      {[1, 20, 50, 100, 500, 1000].map(s => (
+                      {/* 📍 ฟันธง: อัปเดตสเกลความเร็วใหม่ตามคำสั่ง Commander (1, 50, 100, 300, 500, 800) */}
+                      {[1, 50, 100, 300, 500, 800].map(s => (
                         <button key={s} disabled={isRealtimePassLock} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, fontSize: '18px', padding: '16px 4px', opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer'}} onClick={() => setSpeedMult(s)}>{s}X</button>
                       ))}
                     </div>
@@ -3646,15 +3647,16 @@ return (
 
                       return (
                         <tr key={idx} 
-                          onClick={() => { 
-                            // 📍 ฟันธง: แจ้งเตือนด้วย Popup Sci-Fi หากพยายามข้ามเวลาตอน Live
-                            const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
-                            if (isRealtimePassLock) {
-                              setCustomAlert({ show: true, message: "🔒 REAL-TIME LOCK: ปฏิเสธคำสั่ง! ระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE)", type: 'error' });
-                              return;
-                            }
-                            setSimulatedTimeMs(pass.aosTime - 60000); setSpeedMult(20); setIsPlaying(true); bringToFront('radar'); 
-                          }}
+                        onClick={() => { 
+                          // 📍 ฟันธง: แจ้งเตือนด้วย Popup Sci-Fi หากพยายามข้ามเวลาตอน Live
+                          const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
+                          if (isRealtimePassLock) {
+                            setCustomAlert({ show: true, message: "🔒 REAL-TIME LOCK: ปฏิเสธคำสั่ง! ระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE)", type: 'error' });
+                            return;
+                          }
+                          // 📍 ฟันธง: ลดความเร็วตอนกระโดดข้ามเวลาลงเหลือ 10X (เดิม 20X) เพื่อให้มีจังหวะพรีเซนต์ก่อนดาวเทียมเข้า
+                          setSimulatedTimeMs(pass.aosTime - 60000); setSpeedMult(10); setIsPlaying(true); bringToFront('radar'); 
+                        }}
                           style={rowStyle}
                           onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.15)'; e.currentTarget.style.transform = 'scale(1.01)'; }}
                           onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.transform = 'scale(1)'; }}
@@ -4699,7 +4701,7 @@ return (
                 
                {/* 📍 ฟันธง: ขยับ top มาที่ 35.5% (กึ่งกลางสมมาตรระหว่างดาวเทียม 16% และสถานี 55% พอดีเป๊ะ) */}
                <div className="f-label" style={{ left: 'calc(50% + 9cqmin)', top: '35.5%', borderColor: 'var(--green)', color: 'var(--green)', boxShadow: '0 0 10px rgba(0,255,102,0.4)', transform: 'translate(max(20px, 2cqmin), -50%)' }}>
-                  {satSpecs.xBandFreq}<br/><span style={{fontSize:'0.8em', color:'#fff'}}>PAYLOAD (DOWN)</span>
+                  {satSpecs.xBandFreq}<br/><span style={{fontSize:'0.8em', color:'#fff'}}>DOWNLINK</span>
                 </div>
                 
                 {/* 📍 ข้อ 2: ขยับป้ายความถี่ TM/TC มาที่ 31% */}
@@ -4709,7 +4711,7 @@ return (
                 
                 <div className="f-label" style={{ left: '72%', top: '55%', borderColor: 'var(--green)', color: 'var(--green)', transform: 'translate(-50%, calc(-100% - max(12px, 1.2cqmin)))' }}>RF SIGNAL</div>
                 
-                <div className="f-label" style={{ left: '90%', top: '70%', borderColor: '#00aaff', color: '#00aaff', transform: 'translate(max(20px, 2cqmin), -50%)', boxShadow: '0 0 10px rgba(0,170,255,0.4)' }}>720 MHz IF</div>
+                <div className="f-label" style={{ left: '90%', top: '70%', borderColor: '#00aaff', color: '#00aaff', transform: 'translate(max(20px, 2cqmin), -50%)', boxShadow: '0 0 10px rgba(0,170,255,0.4)' }}>IF 720 MHz</div>
                 
                 {/* 📍 แก้ไขป้าย IF 70MHz: ผูกสมการให้เกาะติดหลังเส้นสีฟ้า (10% - 3cqmin) จะได้ไม่ทับเส้นเด็ดขาด */}
                 <div className="f-label" style={{ left: 'calc(10% - 3cqmin)', top: '70%', borderColor: '#ffffff', color: '#ffffff', boxShadow: '0 0 15px rgba(255,255,255,0.4)', transform: 'translate(calc(-100% - max(12px, 1.2cqmin)), -50%)' }}>IF 70MHz</div>
