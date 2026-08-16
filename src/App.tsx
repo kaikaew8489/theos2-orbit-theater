@@ -723,6 +723,10 @@ export default function App() {
 const seekRef = useRef({ isHolding: false, interval: null, timeout: null });
 
 const handleSeekDown = (amount) => {
+  // 📍 ฟันธง: ล้างวงจรเก่าทิ้งก่อนเสมอ ป้องกันบั๊กกดรัวๆ แล้วเวลาวิ่งทะลุพิกัด (Memory Leak)
+  clearTimeout(seekRef.current.timeout);
+  if (seekRef.current.interval) clearInterval(seekRef.current.interval);
+
   seekRef.current.isHolding = false;
   // รอ 300ms (0.3 วิ) ถ้ายังกดอยู่ถึงจะเริ่มเข้าโหมดไถลเวลาแบบสมูท (Smooth Scrubbing)
   seekRef.current.timeout = setTimeout(() => {
@@ -1038,6 +1042,13 @@ useEffect(() => {
 const handlePdfUpload = async (event) => {
   const file = event.target.files[0];
   if (!file) return;
+  
+  // 📍 ฟันธง: ดักจับกรณีหน้างานเน็ตสะดุด โหลดไลบรารี PDF ไม่ขึ้น ป้องกันแอปพัง 100%
+  if (typeof window.pdfjsLib === 'undefined') {
+    setCustomAlert({ show: true, message: "⚠️ SYSTEM ERROR: ไม่พบไลบรารีถอดรหัส PDF โปรดตรวจสอบอินเทอร์เน็ต", type: 'error' });
+    return;
+  }
+
   try {
     const text = await extractPdfText(file);
     const parsedData = parsePlanText(text);
@@ -1683,9 +1694,10 @@ useEffect(() => {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       audioCtxRef.current = new AudioContext();
     }
-    if (audioCtxRef.current.state === 'suspended') {
-      audioCtxRef.current.resume();
-    }
+   // 📍 ฟันธง: ดักจับ Error จาก Browser Policy ป้องกันแอปพังหากผู้ใช้ยังไม่ได้คลิกหน้าจอ
+   if (audioCtxRef.current.state === 'suspended') {
+    audioCtxRef.current.resume().catch(err => console.warn("รอผู้บัญชาการคลิกหน้าจอก่อนเริ่มระบบเสียง (Browser Policy)"));
+  }
 
     const playSonarPing = () => {
       if (!audioCtxRef.current) return;
@@ -2378,19 +2390,19 @@ useEffect(() => {
 
 // 📍 ฟันธง: สมองกล Auto-Scale ปรับขนาด UI ให้พอดีกับทุกหน้าจออัตโนมัติ
 const uiScale = Math.min(1, size.width / 1920, size.height / 1080);
-
 // 📍 ฟันธง 2: สมองกลป้องกันหน้าต่างทะลุขอบจอ (Anti-OutOfBounds System)
 // หากผู้ใช้ลากหัวหน้าต่างหลุดขึ้นไปขอบบน (y < 0) ระบบจะดีดกลับมาที่ขอบบนสุดอัตโนมัติ!
 useEffect(() => {
-  if (typeof radarPos !== 'undefined' && radarPos.y < 0) setRadarPos(p => ({ ...p, y: 0 }));
-  if (typeof gsPos !== 'undefined' && gsPos.y < 0) setGsPos(p => ({ ...p, y: 0 }));
-  if (typeof anglesPos !== 'undefined' && anglesPos.y < 0) setAnglesPos(p => ({ ...p, y: 0 }));
-  if (typeof dbPos !== 'undefined' && dbPos.y < 0) setDbPos(p => ({ ...p, y: 0 }));
-  if (typeof passPos !== 'undefined' && passPos.y < 0) setPassPos(p => ({ ...p, y: 0 }));
-  if (typeof diagramPos !== 'undefined' && diagramPos.y < 0) setDiagramPos(p => ({ ...p, y: 0 }));
-  if (typeof analyzerPos !== 'undefined' && analyzerPos.y < 0) setAnalyzerPos(p => ({ ...p, y: 0 }));
-});
-
+  // 📍 ฟันธง: ใช้เงื่อนไข < 0 แบบเป๊ะๆ และแยกคำสั่งออกจากกัน ป้องกัน React สร้าง Loop นรก (Micro-Loop)
+  if (radarPos?.y < 0) setRadarPos(p => ({ ...p, y: 0 }));
+  if (gsPos?.y < 0) setGsPos(p => ({ ...p, y: 0 }));
+  if (anglesPos?.y < 0) setAnglesPos(p => ({ ...p, y: 0 }));
+  if (dbPos?.y < 0) setDbPos(p => ({ ...p, y: 0 }));
+  if (passPos?.y < 0) setPassPos(p => ({ ...p, y: 0 }));
+  if (diagramPos?.y < 0) setDiagramPos(p => ({ ...p, y: 0 }));
+  if (analyzerPos?.y < 0) setAnalyzerPos(p => ({ ...p, y: 0 }));
+  if (imgPos?.y < 0) setImgPos(p => ({ ...p, y: 0 })); // <-- 📍 ฟันธง: เติมหน้าต่าง imgPos ที่หายไปด้วย!
+}, [radarPos.y, gsPos.y, anglesPos.y, dbPos.y, passPos.y, diagramPos.y, analyzerPos.y, imgPos.y]);
 return (
   <>
     {/* 📍 หน้าจอ Loading Screen (Splash Screen) ปิดทับทุกสิ่งจนกว่าจะโหลดเสร็จ */}
@@ -2438,8 +2450,8 @@ return (
         </div>
     </div>
 
-    {/* 📍 ฟันธง: ยุทธการหุ้มเกราะ (React Memo) ป้องกันโลก 3D รีเฟรชตัวเองตอนลากหน้าต่าง ลดภาระ INP 1,000,000% */}
-    {useMemo(() => {
+   {/* 📍 ฟันธง: ปลดล็อกเกราะ useMemo! ปล่อยให้ React อัปเดตโลกแบบ Real-time แก้ปัญหา 3D กระตุกตอนรับสัญญาณ */}
+   {(() => {
       // 📍 สร้าง Array ข้อมูลไว้ด้านนอก JSX เพื่อความถูกต้องของกฎ React Hooks (แก้ปัญหาจอดำ)
       const memoizedHtmlElements = [
         { type: 'station', lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, name: GROUND_STATION.name, altitude: 0 },
@@ -2551,8 +2563,7 @@ return (
             ringRepeatPeriod={800}
         />
       );
-   // 📍 ฟันธง: ยัด activeStation.id เข้าสมองกล บังคับโลก 3D ให้อัปเดตตำแหน่งเสารับสัญญาณทันที!
-  }, [size.width, size.height, mapThemeIdx, allSatObjects, selectedCatnr, selectedCatnrs, stationDisplayMode, pathsToDraw3D, linkActive, activeStation.id])}
+    })()}
 
 {isFlatMap && (
         <div className={`flat-map-wrap ${!isRightPanelOpen ? 'panel-closed' : ''} ${!isLeftPanelOpen ? 'left-panel-closed' : ''}`}>
