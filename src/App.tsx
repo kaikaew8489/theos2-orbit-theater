@@ -365,7 +365,8 @@ const injectStyles = () => {
     /* 📍 อัปเกรด: บังคับธงชาติและชื่อดาวเทียมให้ใหญ่กระแทกตาระดับรัฐมนตรีมองเห็น */
     .target-header { display: flex; flex-direction: row !important; align-items: center; justify-content: center; gap: 25px; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px dashed rgba(0,234,255,0.4); }
     .target-header img { width: 64px; border-radius: 8px; border: 2px solid var(--cyan); box-shadow: 0 0 25px var(--cyan); }
-    .target-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: 42px; font-weight: 900; color: #fff; letter-spacing: 5px; text-shadow: 0 0 30px var(--cyan), 0 0 15px #000; line-height: 1; }
+    /* 📍 ฟันธงแก้ข้อ 1: บังคับชื่อดาวเทียมให้ย่อขนาด (clamp) ลดช่องไฟ และตัดขึ้นบรรทัดใหม่ได้สูงสุด 2 บรรทัด ป้องกันการทะลุกรอบ 100% */
+    .target-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: clamp(20px, 2.5vw, 42px); font-weight: 900; color: #fff; letter-spacing: 2px; text-shadow: 0 0 30px var(--cyan), 0 0 15px #000; line-height: 1.1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-align: center; }
     
     .status-banner { text-align: center; font-family: 'Orbitron', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 2px; padding: 25px 15px; margin-bottom: 25px; border-radius: 12px; transition: all 0.3s; min-height: 160px; justify-content: center; }
     .status-banner.standby { background: linear-gradient(180deg, rgba(255, 51, 51, 0.2), rgba(0,0,0,0.6)); border: 2px solid var(--red); color: var(--red); box-shadow: 0 0 30px rgba(255, 51, 51, 0.6), inset 0 0 20px rgba(255, 51, 51, 0.4); text-shadow: 0 0 10px var(--red); }
@@ -3782,7 +3783,8 @@ return (
                       let label = az + '°';
                       if (az === 0) label = "N (0°)"; if (az === 90) label = "E (90°)"; if (az === 180) label = "S (180°)"; if (az === 270) label = "W (270°)";
                       let anchor = "middle"; if (az > 0 && az < 180) anchor = "start"; if (az > 180 && az < 360) anchor = "end";
-                      let dy = "0.3em"; if (az === 0) dy = "0em"; if (az === 180) dy = "0.8em";
+                      // 📍 ฟันธงแก้ข้อ 2.1: ดัน N (0°) ลงมาข้างล่าง (0.8em) และดัน S (180°) ขึ้นข้างบน (-0.3em) ป้องกันติดขอบจอ
+                      let dy = "0.3em"; if (az === 0) dy = "0.8em"; if (az === 180) dy = "-0.3em";
 
                       return (
                         <text key={`az-label-${az}`} x={lx} y={ly} dy={dy} fill={isMain ? "#00eaff" : "#ffcc00"} fontSize={isMain ? 15 * uiScale : 12 * uiScale} fontWeight="900" textAnchor={anchor} style={{ textShadow: '0 0 8px #000' }} >
@@ -3805,22 +3807,24 @@ return (
                     const losX = radarLayout.cx + radarLayout.R * Math.sin((radarData.losAz * Math.PI) / 180); 
                     const losY = radarLayout.cy - radarLayout.R * Math.cos((radarData.losAz * Math.PI) / 180);
                     
-                   // 📍 ฟันธง: ดัน AOS/LOS ออกไปให้พ้นระยะตัวอักษรทิศ (แก้อาการตัวเลขซ้อนทับ 100%)
-                   const getPad = (az) => {
-                    // ขยายระยะหลบ (Padding) ให้ไกลขึ้น เพื่อกระโดดข้ามตัวอักษร N, S, E, W ที่ระยะ 28*s
-                    if (az > 150 && az < 210) return 55 * s; // หลบทิศใต้ (S) ดันลงมาให้พ้น
-                    if (az > 330 || az < 30) return 55 * s;  // หลบทิศเหนือ (N) ดันขึ้นไปให้พ้น
-                    if ((az > 60 && az < 120) || (az > 240 && az < 300)) return 48 * s; // หลบทิศ E, W
-                    return 35 * s; // มุมทแยงทั่วไป
-                  };
-                   
-                   const padAos = getPad(radarData.aosAz);
-                   const padLos = getPad(radarData.losAz);
+                    // 📍 ฟันธงแก้ข้อ 2.2: ระบบ Smart Offset ดันตัวหนังสือแกน X ให้ออกด้านข้างพ้นเส้นเรดาร์สีเขียว 100% 
+                    const getLabelConfig = (az) => {
+                      const isRight = az >= 0 && az <= 180;
+                      let dx = isRight ? 16 * s : -16 * s; // ดันออกขวาหรือซ้ายให้พ้นเส้นวงกลมเรดาร์
+                      let dy = 0;
 
-                   const textAosX = radarLayout.cx + (radarLayout.R + padAos) * Math.sin((radarData.aosAz * Math.PI) / 180);
-                   const textAosY = radarLayout.cy - (radarLayout.R + padAos) * Math.cos((radarData.aosAz * Math.PI) / 180);
-                   const textLosX = radarLayout.cx + (radarLayout.R + padLos) * Math.sin((radarData.losAz * Math.PI) / 180);
-                   const textLosY = radarLayout.cy - (radarLayout.R + padLos) * Math.cos((radarData.losAz * Math.PI) / 180);
+                      // หลบทิศ N (ดึงข้อความลงมา)
+                      if (az < 25 || az > 335) dy = 16 * s;
+                      // หลบทิศ S (ดึงข้อความขึ้นไป)
+                      else if (az > 155 && az < 205) dy = -16 * s;
+                      // หลบทิศ E, W (ดึงข้อความขึ้นหนีแกน X)
+                      else if ((az >= 65 && az <= 115) || (az >= 245 && az <= 295)) dy = -16 * s;
+
+                      return { dx, dy, anchor: isRight ? "start" : "end" };
+                    };
+
+                    const aosCfg = getLabelConfig(radarData.aosAz);
+                    const losCfg = getLabelConfig(radarData.losAz);
 
                    return (
                        <>
@@ -3830,8 +3834,8 @@ return (
                          <circle cx={aosX} cy={aosY} r={4 * s} fill="var(--gold)" style={{ filter: 'drop-shadow(0 0 8px var(--gold))' }} />
                          <circle cx={losX} cy={losY} r={4 * s} fill="var(--red)" style={{ filter: 'drop-shadow(0 0 8px var(--red))' }} />
 
-                         <text x={textAosX} y={textAosY} fill="var(--gold)" fontSize={12 * s} fontWeight="900" fontFamily="Orbitron" textAnchor="middle" alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--gold)' }}>AOS {radarData.aosAz.toFixed(1)}°</text>
-                         <text x={textLosX} y={textLosY} fill="var(--red)" fontSize={12 * s} fontWeight="900" fontFamily="Orbitron" textAnchor="middle" alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--red)' }}>LOS {radarData.losAz.toFixed(1)}°</text>
+                         <text x={aosX + aosCfg.dx} y={aosY + aosCfg.dy} fill="var(--gold)" fontSize={12 * s} fontWeight="900" fontFamily="Orbitron" textAnchor={aosCfg.anchor} alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--gold)' }}>AOS {radarData.aosAz.toFixed(1)}°</text>
+                         <text x={losX + losCfg.dx} y={losY + losCfg.dy} fill="var(--red)" fontSize={12 * s} fontWeight="900" fontFamily="Orbitron" textAnchor={losCfg.anchor} alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--red)' }}>LOS {radarData.losAz.toFixed(1)}°</text>
                        </>
                      );
                   })()}
