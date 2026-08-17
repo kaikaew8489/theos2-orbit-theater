@@ -546,6 +546,9 @@ const injectStyles = () => {
     }
     .matrix-column { display: flex; flex-direction: column; font-family: monospace; font-size: 10px; color: rgba(0, 234, 255, 0.7); line-height: 1; animation: matrix-fall linear infinite; }
 
+    /* 📍 ฟันธง: สังหารเงาดำของ Tooltip พื้นฐานจากไลบรารีทิ้งอย่างถาวร 100% */
+    .scene-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; }
+
   `;
   
   document.head.appendChild(style);
@@ -2506,9 +2509,9 @@ return (
               const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
               const flagHtml = satInfo?.flag ? `<img src="https://flagcdn.com/w20/${satInfo.flag}.png" width="20" style="vertical-align: middle; border-radius: 2px; margin-right: 6px; box-shadow: 0 0 5px rgba(255,255,255,0.4);" />` : '🛰️ ';
               
-              /* 📍 ฟันธงรอบสุดท้าย: เปลี่ยนพิกัดหลบเมาส์เป็น (110px, -90px) ให้กระโดดหนีไปทางขวาบนให้ไกลขึ้น และถอด backdrop-filter ทิ้งเพื่อแก้บั๊กเงาดำ */
+              /* 📍 ฟันธง: ดึงระยะหลบเมาส์กลับมาที่ (45px, -55px) เป็นระยะที่พ้นไอคอนมือและสวยงามที่สุด และถอดแท็ก Style เดิมออกเพราะย้ายไปฝัง CSS หลักแล้ว */
               return `
-                <div style="background: rgba(0, 10, 25, 0.95); border: 1px solid var(--cyan); border-radius: 6px; padding: 12px 18px; font-family: 'Rajdhani', sans-serif; box-shadow: 0 5px 25px rgba(0,234,255,0.3); transform: translate(110px, -90px); pointer-events: none;">
+                <div style="background: rgba(0, 10, 25, 0.95); border: 1px solid var(--cyan); border-radius: 6px; padding: 12px 18px; font-family: 'Rajdhani', sans-serif; box-shadow: 0 5px 25px rgba(0,234,255,0.3); transform: translate(45px, -55px); pointer-events: none;">
                   <strong style="color: #fff; font-size: 16px; display: flex; align-items: center; border-bottom: 1px dashed rgba(0,234,255,0.4); padding-bottom: 6px; margin-bottom: 6px; text-shadow: 0 0 10px var(--cyan); letter-spacing: 1px;">
                     ${flagHtml}${satInfo?.displayName || d.name}
                   </strong>
@@ -2521,7 +2524,6 @@ return (
                 </div>
               `;
             }}
-            
             onObjectClick={(d) => {
               if (d.type === 'satellite') {
                 setSelectedCatnr(d.catnr);
