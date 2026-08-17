@@ -4755,10 +4755,11 @@ return (
             {/* 📍 ฟันธง: ปลดล็อกข้อจำกัดของกล่อง ปล่อยให้ดาวเทียมสามารถขยายร่างได้อย่างอิสระ */}
             <div style={{ position: 'absolute', left: '50%', top: '16%', zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transform: 'translate(-50%, -50%)' }}>
               
-              {/* ป้ายชื่อดาวเทียมแบบวงรี (Hologram Badge) */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(90deg, rgba(0,234,255,0.05), rgba(0,234,255,0.15), rgba(0,234,255,0.05))', border: '1px solid rgba(0, 234, 255, 0.5)', padding: '6px 25px', borderRadius: '50px', marginBottom: '15px', boxShadow: '0 0 15px rgba(0, 234, 255, 0.2), inset 0 0 10px rgba(0, 234, 255, 0.1)', backdropFilter: 'blur(5px)' }}>
-                {targetConfig.flag && <img src={`https://flagcdn.com/w40/${targetConfig.flag.toLowerCase()}.png`} style={{ width: '24px', borderRadius: '3px', marginRight: '12px', boxShadow: '0 0 8px rgba(255,255,255,0.4)' }} alt="flag" />}
-                <span style={{ fontFamily: 'Orbitron', fontSize: '18px', fontWeight: '900', color: '#fff', letterSpacing: '4px', textShadow: '0 0 10px var(--cyan)' }}>{targetConfig.displayName}</span>
+             {/* ป้ายชื่อดาวเทียมแบบวงรี (Hologram Badge) */}
+              {/* 📍 ฟันธง: ขยายป้ายชื่อให้ใหญ่ระดับ Commander พร้อมเปลี่ยนธีมสีเป็น Neon Green แสดงสถานะ ACTIVE ขั้นสุด */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(90deg, rgba(0,255,102,0.05), rgba(0,255,102,0.25), rgba(0,255,102,0.05))', border: '2px solid var(--green)', padding: '15px 50px', borderRadius: '15px', marginBottom: '30px', boxShadow: '0 0 35px rgba(0,255,102,0.5), inset 0 0 25px rgba(0,255,102,0.3)', backdropFilter: 'blur(10px)' }}>
+                {targetConfig.flag && <img src={`https://flagcdn.com/w80/${targetConfig.flag.toLowerCase()}.png`} style={{ width: '48px', borderRadius: '6px', marginRight: '20px', boxShadow: '0 0 15px rgba(255,255,255,0.6)' }} alt="flag" />}
+                <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(28px, 4cqmin, 55px)', fontWeight: '900', color: '#ffffff', letterSpacing: '8px', textShadow: '0 0 20px var(--green), 0 0 40px var(--green)' }}>{targetConfig.displayName}</span>
               </div>
 
               {/* รูปร่างดาวเทียมลอยอิสระ */}
@@ -4981,22 +4982,24 @@ return (
                   </thead>
                   <tbody>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.6cqmin, 22px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>TC (UP)</td>
-                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(14px, 1.8cqmin, 26px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tcFreq}</td>
-                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tcRange}</td>
-                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tcRate}</td>
+                      {/* 📍 ฟันธง: เพิ่ม textAlign: 'left' เพื่อจัดข้อมูลชิดซ้ายทุกคอลัมน์ตามบัญชา */}
+                      <td style={{ textAlign: 'left', color: 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.6cqmin, 22px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>TC (UP)</td>
+                      <td style={{ textAlign: 'left', color: '#fff', fontWeight: '900', fontSize: 'clamp(14px, 1.8cqmin, 26px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tcFreq}</td>
+                      <td style={{ textAlign: 'left', color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tcRange}</td>
+                      <td style={{ textAlign: 'left', color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tcRate}</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.6cqmin, 22px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>TM (DOWN)</td>
-                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(14px, 1.8cqmin, 26px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tmFreq}</td>
-                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tmRange}</td>
-                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tmRate}</td>
+                      <td style={{ textAlign: 'left', color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.6cqmin, 22px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>TM (DOWN)</td>
+                      <td style={{ textAlign: 'left', color: '#fff', fontWeight: '900', fontSize: 'clamp(14px, 1.8cqmin, 26px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tmFreq}</td>
+                      <td style={{ textAlign: 'left', color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tmRange}</td>
+                      <td style={{ textAlign: 'left', color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tmRate}</td>
                     </tr>
                     <tr>
-                      <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.6cqmin, 22px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin) 0 0', whiteSpace: 'nowrap' }}>PAYLOAD</td>
-                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(14px, 1.8cqmin, 26px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin) 0 0', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.xBandFreq}</td>
-                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin) 0 0', whiteSpace: 'nowrap' }}>{satSpecs.xBandRange}</td>
-                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin) 0 0', whiteSpace: 'nowrap' }}>{satSpecs.xBandRate}</td>
+                      {/* 📍 ฟันธง: เปลี่ยนคำว่า PAYLOAD เป็น DOWNLINK และจัดชิดซ้ายให้สวยงาม */}
+                      <td style={{ textAlign: 'left', color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.6cqmin, 22px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>DOWNLINK</td>
+                      <td style={{ textAlign: 'left', color: '#fff', fontWeight: '900', fontSize: 'clamp(14px, 1.8cqmin, 26px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.xBandFreq}</td>
+                      <td style={{ textAlign: 'left', color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.xBandRange}</td>
+                      <td style={{ textAlign: 'left', color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.xBandRate}</td>
                     </tr>
                   </tbody>
                 </table>
