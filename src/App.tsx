@@ -2352,7 +2352,7 @@ useEffect(() => {
   return () => { if (autoPilotTimer.current) clearInterval(autoPilotTimer.current); };
 }, [isAutoPilot, simulatedTimeMs, nextPassTimestamp]);
 
-// 📍 ฟันธง: สมองกลดักจับการเข้าสู่วงโคจร (AOS Interceptor) อัตโนมัติ 
+// 📍 ฟันธง: สมองกล "MISSION AUTO-SEQUENCER" (ระบบวนลูปตารางรับสัญญาณอัตโนมัติ)
 const autoSnapRef = useRef({});
 
 useEffect(() => {
@@ -2361,7 +2361,7 @@ useEffect(() => {
   const now = Date.now();
   const activeRealPass = passSchedule.find(p => now >= p.aosTime && now <= p.losTime);
 
-  // 🚀 กรณีที่ 1: ดาวเทียมของจริงเข้าเขตรับสัญญาณ ณ เวลาปัจจุบัน (Real-Time AOS) อันนี้ยังคงไว้เผื่อฉุกเฉิน
+  // 🚀 1. Real-Time AOS Interceptor (ระบบความปลอดภัย กรณีมีดาวเทียมเข้าจริงในปัจจุบัน)
   if (activeRealPass) {
     const passId = `SNAP-REAL-${activeRealPass.aosTime}`;
     if (!autoSnapRef.current[passId]) {
@@ -2369,24 +2369,42 @@ useEffect(() => {
       setSimulatedTimeMs(now);
       setSpeedMult(1);
       setIsPlaying(true);
-      console.log("[SYSTEM] 🚨 REAL-TIME AOS DETECTED! Auto-snapping to LIVE mode.");
     }
   } 
-  // 🚀 กรณีที่ 2: ปิดการทำงานเบรกอัตโนมัติ! (SIM ก็คือ SIM ให้วิ่งทะลุ 500x 1000x ยาวๆ ไปเลยไม่ต้องเบรก)
-  /*
-  else {
-    const activeSimPass = passSchedule.find(p => simulatedTimeMs >= p.aosTime && simulatedTimeMs <= p.losTime);
-    if (activeSimPass && speedMult > 1) {
-      const passIdSim = `SNAP-SIM-${activeSimPass.aosTime}`;
-      if (!autoSnapRef.current[passIdSim]) {
-        autoSnapRef.current[passIdSim] = true;
-        setSpeedMult(1);
-        setIsPlaying(true);
-        console.log("[SYSTEM] ⏱️ SIMULATED AOS REACHED! Auto-dropping to 1X speed.");
+  
+  // 🚀 2. SIMULATION SEQUENCER (ระบบโดดข้าม Pass อัตโนมัติเมื่ออยู่ในโหมด SIM ที่ความเร็ว 1X)
+  const isSimulating = Math.abs(simulatedTimeMs - now) > 60000 && speedMult === 1 && isPlaying;
+  
+  if (isSimulating) {
+    // 📍 ค้นหาว่าเพิ่งผ่าน LOS ของ Pass ปัจจุบันมา 10 ถึง 12 วินาทีหรือไม่ (หน่วง 10 วิเพื่อให้ผู้ชมเห็นจังหวะสัญญาณหลุด)
+    const justFinishedPass = passSchedule.find(p => 
+      simulatedTimeMs > p.losTime + 10000 && simulatedTimeMs < p.losTime + 12000
+    );
+
+    if (justFinishedPass) {
+      // ค้นหา Pass คิวถัดไป
+      const nextPass = passSchedule.find(p => p.aosTime > justFinishedPass.losTime);
+      
+      if (nextPass) {
+        const jumpId = `AUTO-JUMP-${nextPass.aosTime}`;
+        if (!autoSnapRef.current[jumpId]) {
+          autoSnapRef.current[jumpId] = true;
+          
+          // 📍 เด้ง Popup Sci-Fi แจ้งเตือนผู้ชมบนจอใหญ่
+          setCustomAlert({ 
+            show: true, 
+            message: `🛰️ MISSION SEQUENCER: จบการรับสัญญาณ... ระบบกำลังคำนวณวงโคจรและวาร์ปไปยัง PASS ถัดไปอัตโนมัติ!`, 
+            type: 'success' 
+          });
+          
+         // 📍 รออีก 4 วินาทีให้ผู้ชมอ่านข้อความจบ แล้วกระโดดเวลา (Time Jump) ไปรอที่ AOS - 10 วินาทีของ Pass ถัดไปทันที! (จังหวะเคาต์ดาวน์เป๊ะๆ)
+         setTimeout(() => {
+          setSimulatedTimeMs(nextPass.aosTime - 10000);
+        }, 4000);
       }
     }
+    }
   }
-  */
 }, [simulatedTimeMs, passSchedule, speedMult, isPlaying]);
 
 // 📍 ฟันธง: สมองกล Auto-Scale ปรับขนาด UI ให้พอดีกับทุกหน้าจออัตโนมัติ
@@ -2486,17 +2504,24 @@ return (
             objectLabel={(d) => {
               if (d.type !== 'satellite') return '';
               const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
-              const flagHtml = satInfo?.flag ? `<img src="https://flagcdn.com/w20/${satInfo.flag}.png" width="20" style="vertical-align: middle; border-radius: 2px; margin-right: 6px;" />` : '🛰️ ';
+              const flagHtml = satInfo?.flag ? `<img src="https://flagcdn.com/w20/${satInfo.flag}.png" width="20" style="vertical-align: middle; border-radius: 2px; margin-right: 6px; box-shadow: 0 0 5px rgba(255,255,255,0.4);" />` : '🛰️ ';
+              
+              /* 📍 ฟันธงรอบสุดท้าย: เปลี่ยนพิกัดหลบเมาส์เป็น (110px, -90px) ให้กระโดดหนีไปทางขวาบนให้ไกลขึ้น และถอด backdrop-filter ทิ้งเพื่อแก้บั๊กเงาดำ */
               return `
-                <div style="background: rgba(0, 10, 20, 0.9); border: 1px solid #00eaff; border-radius: 4px; padding: 10px 15px; font-family: 'Rajdhani', sans-serif; box-shadow: 0 5px 20px rgba(0,234,255,0.6);">
-                  <strong style="color: #fff; font-size: 15px; display: flex; align-items: center; text-shadow: 0 0 10px #00eaff;">${flagHtml}${satInfo?.displayName || d.name}</strong>
-                  <div style="margin-top: 6px; font-weight: bold;">
-                    <span style="color: #00eaff; font-size: 13px;">NORAD: ${d.catnr}</span><br/>
-                    <span style="color: #ffcc00; font-size: 13px;">Alt: ${Math.round(d.altKm)} km</span>
+                <div style="background: rgba(0, 10, 25, 0.95); border: 1px solid var(--cyan); border-radius: 6px; padding: 12px 18px; font-family: 'Rajdhani', sans-serif; box-shadow: 0 5px 25px rgba(0,234,255,0.3); transform: translate(110px, -90px); pointer-events: none;">
+                  <strong style="color: #fff; font-size: 16px; display: flex; align-items: center; border-bottom: 1px dashed rgba(0,234,255,0.4); padding-bottom: 6px; margin-bottom: 6px; text-shadow: 0 0 10px var(--cyan); letter-spacing: 1px;">
+                    ${flagHtml}${satInfo?.displayName || d.name}
+                  </strong>
+                  <div style="font-weight: bold; line-height: 1.5; font-size: 13px; letter-spacing: 0.5px;">
+                    <span style="color: var(--cyan); display: inline-block; width: 55px;">NORAD:</span> <span style="color: #fff;">${d.catnr}</span><br/>
+                    <span style="color: var(--gold); display: inline-block; width: 55px;">ALT:</span> <span style="color: #fff;">${Math.round(d.altKm).toLocaleString()} km</span><br/>
+                    <span style="color: var(--red); display: inline-block; width: 55px;">SPD:</span> <span style="color: #fff;">${d.speedKmS ? d.speedKmS.toFixed(2) : '--'} km/s</span><br/>
+                    <span style="color: var(--green); display: inline-block; width: 55px;">POS:</span> <span style="color: #fff;">${Math.abs(d.lat).toFixed(2)}°${d.lat >= 0 ? 'N' : 'S'}, ${Math.abs(d.lng).toFixed(2)}°${d.lng >= 0 ? 'E' : 'W'}</span>
                   </div>
                 </div>
               `;
             }}
+            
             onObjectClick={(d) => {
               if (d.type === 'satellite') {
                 setSelectedCatnr(d.catnr);
@@ -3081,8 +3106,8 @@ return (
                   GROUND TRACK
                 </button>
 
-                {/* TARGET LOCK -> Red (เป้าหมาย/ระบบสำคัญ) */}
-                <button 
+               {/* TARGET LOCK -> Red (เป้าหมาย/ระบบสำคัญ) */}
+               <button 
                   className={`btn btn-red ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
                   style={{ marginBottom: 0, fontSize: '15px', padding: '14px 5px', letterSpacing: '0.5px', gridColumn: 'span 2' }}
                   onClick={() => {
@@ -3101,6 +3126,9 @@ return (
                             }
                         }
                       } catch (err) {}
+                    } else if (newMode === 'FREE LOOK' && globeRef.current) {
+                      // 📍 ฟันธงข้อ 2: "Return to Base" เมื่อปลดล็อคเป้าหมาย ให้กล้องบินกลับมาโฟกัสที่สถานีรับสัญญาณ (GS) ทันที!
+                      globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
                     }
                   }}
                 >
@@ -3666,8 +3694,8 @@ return (
                             setCustomAlert({ show: true, message: "🔒 REAL-TIME LOCK: ปฏิเสธคำสั่ง! ระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE)", type: 'error' });
                             return;
                           }
-                          // 📍 ฟันธง: ลดความเร็วตอนกระโดดข้ามเวลาลงเหลือ 10X (เดิม 20X) เพื่อให้มีจังหวะพรีเซนต์ก่อนดาวเทียมเข้า
-                          setSimulatedTimeMs(pass.aosTime - 60000); setSpeedMult(10); setIsPlaying(true); bringToFront('radar'); 
+                          // 📍 ฟันธง: หั่นเวลาเหลือแค่ 10 วินาที (10000ms) ก่อน AOS เพื่อสร้างจังหวะ Count Down หน้าเวทีแบบกระชับ ฉับไว ไม่น่าเบื่อ!
+                          setSimulatedTimeMs(pass.aosTime - 10000); setSpeedMult(1); setIsPlaying(true); bringToFront('radar'); 
                         }}
                           style={rowStyle}
                           onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.15)'; e.currentTarget.style.transform = 'scale(1.01)'; }}
@@ -4934,38 +4962,39 @@ return (
                 </div>
               </div>
 
-              {/* 📍 Technical Specs สมมาตร ฝั่งขวา */}
-              <div className="bot-panel" style={{ position: 'absolute', top: 'max(15px, 2cqmin)', right: 'max(15px, 2cqmin)', left: 'auto', width: 'clamp(320px, 38cqw, 750px)', display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)', borderRadius: '8px', padding: 'clamp(12px, 1.5cqw, 30px)', zIndex: 10, backdropFilter: 'blur(5px)' }}>
-                <div style={{ color: '#FF4500', fontSize: 'clamp(14px, 1.8cqw, 28px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(6px, 0.6cqmin)', marginBottom: 'max(10px, 1cqmin)', fontWeight: '900', letterSpacing: '1px', textShadow: '0 0 15px #FF4500', textAlign: 'center', whiteSpace: 'nowrap' }}>
+             {/* 📍 Technical Specs สมมาตร ฝั่งขวา */}
+              {/* 📍 ฟันธง: เปลี่ยน width เป็น 'max-content' เพื่อบังคับกรอบยืดครอบคลุมเนื้อหา 100% เสมอ หมดปัญหาตัวหนังสือล้นกรอบเด็ดขาด! */}
+              <div className="bot-panel" style={{ position: 'absolute', top: 'max(15px, 2cqmin)', right: 'max(15px, 2cqmin)', left: 'auto', width: 'max-content', display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)', borderRadius: '8px', padding: 'clamp(12px, 1.5cqmin, 30px) clamp(20px, 2.5cqmin, 45px)', zIndex: 10, backdropFilter: 'blur(5px)' }}>
+                <div style={{ color: '#FF4500', fontSize: 'clamp(16px, 2.2cqmin, 32px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(6px, 0.6cqmin)', marginBottom: 'max(10px, 1cqmin)', fontWeight: '900', letterSpacing: '1px', textShadow: '0 0 15px #FF4500', textAlign: 'center', whiteSpace: 'nowrap' }}>
                   TECHNICAL SPECIFICATIONS
                 </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', textAlign: 'center' }}>
                   <thead>
-                    <tr style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(9px, 1.1cqw, 18px)', borderBottom: '1px dashed rgba(255,255,255,0.3)', letterSpacing: '0.5px' }}>
-                      <th style={{ paddingBottom: 'max(4px, 0.4cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>LINK TYPE</th>
-                      <th style={{ paddingBottom: 'max(4px, 0.4cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>CENTER FREQ</th>
-                      <th style={{ paddingBottom: 'max(4px, 0.4cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>OPERATIONAL RANGE</th>
-                      <th style={{ paddingBottom: 'max(4px, 0.4cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>DATA RATE / BW</th>
+                    <tr style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(11px, 1.4cqmin, 20px)', borderBottom: '1px dashed rgba(255,255,255,0.3)', letterSpacing: '0.5px' }}>
+                      <th style={{ padding: 'max(4px, 0.4cqmin) max(10px, 1.2cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>LINK TYPE</th>
+                      <th style={{ padding: 'max(4px, 0.4cqmin) max(10px, 1.2cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>CENTER FREQ</th>
+                      <th style={{ padding: 'max(4px, 0.4cqmin) max(10px, 1.2cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>OPERATIONAL RANGE</th>
+                      <th style={{ padding: 'max(4px, 0.4cqmin) max(10px, 1.2cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>DATA RATE / BW</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0 max(2px, 0.2cqmin) 0', whiteSpace: 'nowrap' }}>TC (UP)</td>
-                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(11px, 1.4cqw, 22px)', padding: 'max(6px, 0.6cqmin) 0 max(2px, 0.2cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tcFreq}</td>
-                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0 max(2px, 0.2cqmin) 0', whiteSpace: 'nowrap' }}>{satSpecs.tcRange}</td>
-                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0 max(2px, 0.2cqmin) 0', whiteSpace: 'nowrap' }}>{satSpecs.tcRate}</td>
+                      <td style={{ color: 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.6cqmin, 22px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>TC (UP)</td>
+                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(14px, 1.8cqmin, 26px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tcFreq}</td>
+                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tcRange}</td>
+                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tcRate}</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0', whiteSpace: 'nowrap' }}>TM (DOWN)</td>
-                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(11px, 1.4cqw, 22px)', padding: 'max(6px, 0.6cqmin) 0', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tmFreq}</td>
-                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0', whiteSpace: 'nowrap' }}>{satSpecs.tmRange}</td>
-                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0', whiteSpace: 'nowrap' }}>{satSpecs.tmRate}</td>
+                      <td style={{ color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.6cqmin, 22px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>TM (DOWN)</td>
+                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(14px, 1.8cqmin, 26px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tmFreq}</td>
+                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tmRange}</td>
+                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tmRate}</td>
                     </tr>
                     <tr>
-                      <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(10px, 1.3cqw, 20px)', padding: 'max(6px, 0.6cqmin) 0 0 0', whiteSpace: 'nowrap' }}>PAYLOAD</td>
-                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(11px, 1.4cqw, 22px)', padding: 'max(6px, 0.6cqmin) 0 0 0', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.xBandFreq}</td>
-                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0 0 0', whiteSpace: 'nowrap' }}>{satSpecs.xBandRange}</td>
-                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(9px, 1.1cqw, 18px)', padding: 'max(6px, 0.6cqmin) 0 0 0', whiteSpace: 'nowrap' }}>{satSpecs.xBandRate}</td>
+                      <td style={{ color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(12px, 1.6cqmin, 22px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin) 0 0', whiteSpace: 'nowrap' }}>PAYLOAD</td>
+                      <td style={{ color: '#fff', fontWeight: '900', fontSize: 'clamp(14px, 1.8cqmin, 26px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin) 0 0', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.xBandFreq}</td>
+                      <td style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin) 0 0', whiteSpace: 'nowrap' }}>{satSpecs.xBandRange}</td>
+                      <td style={{ color: '#fff', fontWeight: 'bold', fontSize: 'clamp(11px, 1.4cqmin, 20px)', padding: 'max(6px, 0.6cqmin) max(12px, 1.5cqmin) 0 0', whiteSpace: 'nowrap' }}>{satSpecs.xBandRate}</td>
                     </tr>
                   </tbody>
                 </table>
