@@ -765,6 +765,24 @@ const handleSeekUp = (amount) => {
 
 
 // 📍 สมองกลควบคุม Theme แผนที่ 2D & 3D
+// 📍 ฟันธง: สมองกลควบคุม Theme สี Sci-Fi ทั่วทั้งแอป (UI Colors)
+const [uiThemeIdx, setUiThemeIdx] = useState(0);
+const uiThemes = [
+  { name: 'DEEP SPACE', colors: { '--cyan': '#00eaff', '--gold': '#ffcc00', '--green': '#00ff66', '--red': '#ff3333' } },
+  { name: 'TACTICAL AMBER', colors: { '--cyan': '#ffb703', '--gold': '#fb8500', '--green': '#ffcc00', '--red': '#d00000' } },
+  { name: 'MATRIX PROTOCOL', colors: { '--cyan': '#00ff41', '--gold': '#008f11', '--green': '#33ff77', '--red': '#ff0033' } },
+  { name: 'CYBERPUNK NEON', colors: { '--cyan': '#f72585', '--gold': '#4cc9f0', '--green': '#b5179e', '--red': '#ffcc00' } }
+];
+
+useEffect(() => {
+  const root = document.documentElement;
+  const theme = uiThemes[uiThemeIdx].colors;
+  Object.keys(theme).forEach(key => {
+    root.style.setProperty(key, theme[key]); // สับสวิตช์สีทุกตัวในแอปทันที
+  });
+}, [uiThemeIdx]);
+
+// 📍 สมองกลควบคุม Theme แผนที่ 2D & 3D
 const [mapThemeIdx, setMapThemeIdx] = useState(0);
 const mapThemes = [
   { 
@@ -3137,6 +3155,16 @@ return (
                   🎯 TARGET LOCK
                 </button>
 
+                {/* 📍 ฟันธง: ปุ่มสลับ Theme สี UI ล้ำยุค (สับสวิตช์เปลี่ยนสียกแผงทั้งระบบ) */}
+                {/* 📍 อัปเกรด: เพิ่ม gridColumn: 'span 2' บังคับปุ่มให้กางเต็มความกว้าง สร้างฐานสมมาตรร่วมกับ TARGET LOCK และ MAP THEME */}
+                <button 
+                  className="btn btn-gold" 
+                  style={{ marginBottom: 0, fontSize: '15px', letterSpacing: '1px', padding: '14px 5px', textShadow: '0 0 10px currentColor', gridColumn: 'span 2' }} 
+                  onClick={() => setUiThemeIdx((prev) => (prev + 1) % uiThemes.length)}
+                >
+                  🎨 UI COLOR THEME: {uiThemes[uiThemeIdx].name}
+                </button>
+
                 {/* THEME -> Cyan (System Theme) */}
                 <button 
                   className="btn btn-cyan" 
@@ -4751,15 +4779,16 @@ return (
                 <div className="f-label" style={{ left: 'calc(10% - 3cqmin)', top: '70%', borderColor: '#ffffff', color: '#ffffff', boxShadow: '0 0 15px rgba(255,255,255,0.4)', transform: 'translate(calc(-100% - max(12px, 1.2cqmin)), -50%)' }}>IF 70MHz</div>
               </>
             )}
-{/* 📍 3. SATELLITE NODE (แก้ไขให้ไม่มีกรอบ ลอยอิสระ และใช้ป้ายชื่อวงรีแบบหน้า Loading) */}
-            {/* 📍 ฟันธง: ปลดล็อกข้อจำกัดของกล่อง ปล่อยให้ดาวเทียมสามารถขยายร่างได้อย่างอิสระ */}
-            <div style={{ position: 'absolute', left: '50%', top: '16%', zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transform: 'translate(-50%, -50%)' }}>
+            
+           {/* 📍 3. SATELLITE NODE (แก้ไขให้ไม่มีกรอบ ลอยอิสระ และใช้ป้ายชื่อวงรีแบบหน้า Loading) */}
+            {/* 📍 ฟันธง: ปรับ top เป็น '22%' ดันทั้งกลุ่มลงมาให้มีช่องไฟด้านบนสวยงาม ไม่ดูอึดอัด */}
+            <div style={{ position: 'absolute', left: '50%', top: '22%', zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transform: 'translate(-50%, -50%)' }}>
               
-             {/* ป้ายชื่อดาวเทียมแบบวงรี (Hologram Badge) */}
-              {/* 📍 ฟันธง: ขยายป้ายชื่อให้ใหญ่ระดับ Commander พร้อมเปลี่ยนธีมสีเป็น Neon Green แสดงสถานะ ACTIVE ขั้นสุด */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(90deg, rgba(0,255,102,0.05), rgba(0,255,102,0.25), rgba(0,255,102,0.05))', border: '2px solid var(--green)', padding: '15px 50px', borderRadius: '15px', marginBottom: '30px', boxShadow: '0 0 35px rgba(0,255,102,0.5), inset 0 0 25px rgba(0,255,102,0.3)', backdropFilter: 'blur(10px)' }}>
-                {targetConfig.flag && <img src={`https://flagcdn.com/w80/${targetConfig.flag.toLowerCase()}.png`} style={{ width: '48px', borderRadius: '6px', marginRight: '20px', boxShadow: '0 0 15px rgba(255,255,255,0.6)' }} alt="flag" />}
-                <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(28px, 4cqmin, 55px)', fontWeight: '900', color: '#ffffff', letterSpacing: '8px', textShadow: '0 0 20px var(--green), 0 0 40px var(--green)' }}>{targetConfig.displayName}</span>
+              {/* ป้ายชื่อดาวเทียมแบบวงรี (Hologram Badge) */}
+              {/* 📍 ฟันธง: รีดขนาดป้ายให้เพรียวบางลง (Sleek) ลดฟอนต์ ลดกรอบ เพื่อชูให้ตัวดาวเทียมเด่นที่สุด */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(90deg, rgba(0,255,102,0.05), rgba(0,255,102,0.15), rgba(0,255,102,0.05))', border: '1px solid var(--green)', padding: '5px 25px', borderRadius: '8px', marginBottom: '10px', boxShadow: '0 0 15px rgba(0,255,102,0.3), inset 0 0 10px rgba(0,255,102,0.1)', backdropFilter: 'blur(10px)' }}>
+                {targetConfig.flag && <img src={`https://flagcdn.com/w40/${targetConfig.flag.toLowerCase()}.png`} style={{ width: '24px', borderRadius: '3px', marginRight: '10px', boxShadow: '0 0 8px rgba(255,255,255,0.4)' }} alt="flag" />}
+                <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(16px, 2cqmin, 28px)', fontWeight: '900', color: '#ffffff', letterSpacing: '4px', textShadow: '0 0 10px var(--green), 0 0 20px var(--green)' }}>{targetConfig.displayName}</span>
               </div>
 
               {/* รูปร่างดาวเทียมลอยอิสระ */}
@@ -4768,7 +4797,6 @@ return (
                   src="/textures/THEOS-2.webp" 
                   className={linkActive ? 'anim-wobble' : ''} 
                   alt="THEOS-2" 
-                  /* 📍 ฟันธง: ขยายร่างดาวเทียมระดับมโหฬาร (40cqmin) ให้ใหญ่ โดดเด่น และสมมาตรที่สุดกลางอวกาศ! */
                   style={{ width: 'max(380px, 40cqmin)', height: 'auto', objectFit: 'contain', zIndex: 2, transform: 'translateY(-10px)' }} 
                 />
               ) : (
@@ -4779,8 +4807,6 @@ return (
                   style={{ width: 'max(120px, 15cqmin)', height: 'max(120px, 15cqmin)', filter: linkActive ? 'drop-shadow(0 0 10px var(--cyan))' : 'none', zIndex: 2, transform: 'translateY(-10px)' }} 
                 />
               )}
-
-              {/* 📍 ฟันธง: ลบจุดเชื่อมต่อ (conn-dot) ใต้ดาวเทียมออก ปล่อยให้คลื่นสัญญาณวิ่งเข้าหาบอดี้ดาวเทียมโดยตรง */}
             </div>
 
             {/* 📍 4. SRC S-BAND ANTENNA SYSTEM */}
@@ -5012,7 +5038,6 @@ return (
 </div>
   </div>
 )}
-
       <div className="scanlines"></div>
     </>
   );
