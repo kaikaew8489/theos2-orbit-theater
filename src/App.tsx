@@ -2352,24 +2352,20 @@ const [collisionState, setCollisionState] = useState(null); // เก็บพ�
 const demoDebrisData = useMemo(() => {
   if (!isCollisionDemo || !collisionState || !targetData) return null;
   
-  // คำนวณเวลาที่ผ่านไปจากจุดปะทะ (วินาที)
   const dt = (simulatedTimeMs - collisionState.timeMs) / 1000;
   
-  // 📍 ฟันธง: สร้างวงโคจรเอียง 22 องศา (ตามภาพ Reference ของท่านเป๊ะ!)
-  const speedDegPerSec = 0.0675; // ความเร็วดาวเทียม LEO
+  // 📍 ฟันธง: สร้างวงโคจรเอียง 22 องศา (ดาวเทียมข้าศึก)
+  const speedDegPerSec = 0.0675; 
   const vLat = speedDegPerSec * Math.sin(22 * Math.PI / 180);
   const vLng = speedDegPerSec * Math.cos(22 * Math.PI / 180);
   
-  // คำนวณพิกัดดาวเทียมข้าศึกแบบ Real-time ตามแกนเวลา (ซิงค์กับปุ่มความเร็ว 1X, 50X, 100X ได้ 100%)
   let currentLat = collisionState.lat + (dt * vLat);
   let currentLng = collisionState.lng + (dt * vLng);
   
-  // ป้องกันค่าพิกัดทะลุขอบโลก
   currentLng = ((currentLng + 180) % 360 + 360) % 360 - 180;
   if (currentLat > 90) currentLat = 180 - currentLat;
   if (currentLat < -90) currentLat = -180 - currentLat;
   
-  // คำนวณระยะห่างจริง (Real-time Distance)
   const dx = (currentLng - targetData.lng) * Math.cos(targetData.lat * Math.PI / 180) * 111.32;
   const dy = (currentLat - targetData.lat) * 111.32;
   const dz = collisionState.altKm - targetData.altKm;
@@ -2382,8 +2378,8 @@ const demoDebrisData = useMemo(() => {
     lng: currentLng,
     altKm: collisionState.altKm,
     altitude: collisionState.altKm / EARTH_RADIUS_KM,
-    distanceKm: dist,
-    isEvading: dist < 50 // ถ้าระยะต่ำกว่า 50km ให้ THEOS-2 ยิงไอพ่นหลบ!
+    distanceKm: dist
+    // 📍 เอา isEvading ออก ปล่อยให้มันวิ่งตัดกันตรงๆ ให้เด็กเห็นภาพจุดตัดของวงโคจรเต็มๆ!
   };
 }, [isCollisionDemo, collisionState, targetData, simulatedTimeMs]);
 
@@ -2679,34 +2675,36 @@ return (
             objectsData={isCollisionDemo && demoDebrisData ? [...allSatObjects, demoDebrisData] : allSatObjects}
             objectLat="lat" objectLng="lng" objectAltitude="altitude"
             
-            /* 📍 เฟส 2: เปลี่ยนจากก้อนอุกกาบาต เป็นโมเดล "ดาวเทียม" ขนานแท้! (สมจริง 100%) */
-            objectThreeObject={(d) => {
-              if (d.type === 'debris') {
-                const group = createSatelliteModel(false); // เรียกใช้โมเดลดาวเทียมแทนอุกกาบาต
-                const threatRing = new THREE.Mesh(new THREE.SphereGeometry(3, 16, 16), new THREE.MeshBasicMaterial({ color: '#ff3333', wireframe: true, transparent: true, opacity: 0.6 }));
-                group.add(threatRing);
-                return group;
-              }
-              
-              const satGroup = createSatelliteModel(d.isTarget);
-              
-              if (d.isTarget && isCollisionDemo && demoDebrisData) {
-                const shield = new THREE.Mesh(new THREE.SphereGeometry(10, 32, 32), new THREE.MeshBasicMaterial({ color: demoDebrisData.isEvading ? '#00ff66' : '#ff0000', transparent: true, opacity: 0.15, wireframe: false }));
-                const shieldWire = new THREE.Mesh(new THREE.SphereGeometry(10.5, 16, 16), new THREE.MeshBasicMaterial({ color: demoDebrisData.isEvading ? '#00ff66' : '#ff3333', transparent: true, opacity: 0.4, wireframe: true }));
-                satGroup.add(shield); satGroup.add(shieldWire);
+           /* 📍 เฟส 2: เปลี่ยนจากก้อนอุกกาบาต เป็นโมเดล "ดาวเทียม" ขนานแท้! (สมจริง 100%) */
+           objectThreeObject={(d) => {
+            if (d.type === 'debris') {
+              const group = createSatelliteModel(false); // 📍 ฟันธง: ใชัโมเดลดาวเทียมคู่กรณี
+              const threatRing = new THREE.Mesh(new THREE.SphereGeometry(4, 16, 16), new THREE.MeshBasicMaterial({ color: '#ff3333', wireframe: true, transparent: true, opacity: 0.6 }));
+              group.add(threatRing);
+              return group;
+            }
+            
+            const satGroup = createSatelliteModel(d.isTarget);
+            
+            if (d.isTarget && isCollisionDemo && demoDebrisData) {
+              // 📍 ฟันธง: เปลี่ยนวงกลมสีแดง เป็นเรดาร์สแกนสีเขียว (Green Radar Pulse) อาศัยเวลา simulatedTimeMs เป็นตัวขยายสเกล!
+              const pulseCycle = (simulatedTimeMs % 2000) / 2000; // วนลูป 0.0 ถึง 1.0 ทุกๆ 2 วินาที
+              const scale = 1 + (pulseCycle * 1.5); // ขยายตัวจาก 1 เท่า ไป 2.5 เท่าอย่างต่อเนื่อง
+              const opacity = 0.6 * (1 - pulseCycle); // ค่อยๆ จางหายไปที่ขอบ
 
-                if (demoDebrisData.isEvading) {
-                  const thrusterFlame = new THREE.Mesh(new THREE.ConeGeometry(3, 20, 8), new THREE.MeshBasicMaterial({ color: '#ffcc00' }));
-                  thrusterFlame.position.set(0, -10, 0); thrusterFlame.rotation.x = Math.PI;
-                  const flameGlow = new THREE.Mesh(new THREE.SphereGeometry(6, 16, 16), new THREE.MeshBasicMaterial({ color: '#ff0000', transparent: true, opacity: 0.8 }));
-                  flameGlow.position.set(0, -12, 0);
-                  satGroup.add(thrusterFlame); satGroup.add(flameGlow);
+              const radarPulse = new THREE.Mesh(
+                new THREE.SphereGeometry(10, 32, 32), 
+                new THREE.MeshBasicMaterial({ color: '#00ff66', transparent: true, opacity: opacity, wireframe: true })
+              );
+              radarPulse.scale.setScalar(scale);
+              satGroup.add(radarPulse);
 
-                  satGroup.position.y += 15; satGroup.position.x += 8; satGroup.rotation.z -= 0.6; 
-                }
-              }
-              return satGroup;
-            }}
+              // เพิ่มแกนเรดาร์สีเขียวเข้มด้านในให้ดูมีมิติ
+              const innerCore = new THREE.Mesh(new THREE.SphereGeometry(5, 16, 16), new THREE.MeshBasicMaterial({ color: '#00ff66', transparent: true, opacity: 0.15, wireframe: false }));
+              satGroup.add(innerCore);
+            }
+            return satGroup;
+          }}
             
             objectLabel={(d) => {
               if (d.type === 'satellite') {
@@ -2749,25 +2747,17 @@ return (
                 }
               }
               /* 📍 เฟส 2 (ป้ายระบุพิกัดขยะ): ย้ายป้ายเตือนออกห่างจากโมเดล 3D ไม่ให้บังกัน 1,000,000% */
-              else if (d.type === 'debris') {
-                if (d.isEvading) {
-                   el.innerHTML = `
-                    <div style="color: #00ff66; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 16px; text-shadow: 0 0 10px #00ff66; transform: translate(70px, -70px); pointer-events: none; background: rgba(0,20,10,0.9); border: 2px solid #00ff66; padding: 10px 20px; border-radius: 6px; white-space: nowrap; box-shadow: 0 0 20px rgba(0,255,102,0.6), inset 0 0 10px rgba(0,255,102,0.3);">
-                      ✅ COLLISION AVOIDED<br/>
-                      <span style="font-size:18px; color:#fff;">THRUSTERS: <span style="color:#ff9900;">FIRING!</span></span>
-                    </div>
-                  `;
-                } else {
-                   el.innerHTML = `
-                    <div style="color: #ff3333; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 16px; text-shadow: 0 0 10px #ff3333; transform: translate(70px, -70px); pointer-events: none; background: rgba(20,0,0,0.9); border: 2px solid #ff3333; padding: 10px 20px; border-radius: 6px; white-space: nowrap; box-shadow: 0 0 20px rgba(255,51,51,0.6), inset 0 0 10px rgba(255,51,51,0.3);">
-                      🚨 IMPACT WARNING<br/>
-                      <span style="font-size:26px; color:#fff;">DIST: ${d.distanceKm.toFixed(1)} km</span><br/>
-                      <span style="font-size:12px; color:#ff9900;">INCLINATION: 22° CROSSING</span>
-                    </div>
-                  `;
-                }
-              }
-              return el;
+             /* 📍 เฟส 2 (ป้ายระบุพิกัดขยะ): โชว์แค่ระยะทาง และดันออกไปไกลๆ (translate(100px, -100px)) ไม่ให้บังดาวเทียมเด็ดขาด! */
+             else if (d.type === 'debris') {
+              el.innerHTML = `
+                <div style="color: #ff3333; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 16px; text-shadow: 0 0 10px #ff3333; transform: translate(100px, -100px); pointer-events: none; background: rgba(20,0,0,0.9); border: 2px solid #ff3333; padding: 10px 20px; border-radius: 6px; white-space: nowrap; box-shadow: 0 0 20px rgba(255,51,51,0.6), inset 0 0 10px rgba(255,51,51,0.3);">
+                  🚨 CONFLICT WARNING<br/>
+                  <span style="font-size:26px; color:#fff;">DIST: ${d.distanceKm.toFixed(1)} km</span><br/>
+                  <span style="font-size:12px; color:#ff9900;">INCLINATION: 22° CROSSING</span>
+                </div>
+              `;
+            }
+            return el;
             }}
 
             pathsData={dynamicPathsToDraw}
