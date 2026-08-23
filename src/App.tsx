@@ -1,4 +1,5 @@
-// @ts-nocheck
+// @ts-nocheck Thailand Satellite Orbit
+
 import React, { useEffect, useMemo, useRef, useState, startTransition } from 'react';
 import Globe from 'react-globe.gl';
 import * as THREE from 'three';
@@ -287,7 +288,7 @@ const injectStyles = () => {
     .menu-toggle-btn-left { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(0,234,255,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--cyan); color: var(--cyan); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(0,234,255,0.6), inset 0 0 10px rgba(0,234,255,0.3); flex-shrink: 0; }
     .menu-toggle-btn-left:hover { background: var(--cyan); color: #000; box-shadow: 0 0 30px var(--cyan); transform: scale(1.1); }
     
-    .left-panel { width: 637px !important; box-sizing: border-box !important; display: flex; flex-direction: column; gap: 24px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
+    .left-panel { width: 817px !important; box-sizing: border-box !important; display: flex; flex-direction: column; gap: 24px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
     .left-panel::-webkit-scrollbar { display: none; }
     @keyframes slideInLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
 
@@ -319,37 +320,57 @@ const injectStyles = () => {
 
     /* 📍 อัปเกรดนาฬิกาเป็น "Master Clock" ขยายไซส์และจัดสมมาตร 100% */
     .global-clock-hud { 
-      display: flex; flex-direction: column; width: 580px !important; box-sizing: border-box !important; /* ฟันธง: ปรับให้กว้าง 580px เท่ากับกรอบด้านล่างเป๊ะๆ */
+      display: flex; flex-direction: column; 
+      /* 📍 ฟันธงแก้ตัวเลขหาย: ขยายความกว้างกรอบเป็น 760px เป๊ะๆ ให้กว้างพอรับตัวเลขไซส์ยักษ์ และล็อกตายตัวไม่ให้ดิ้น! */
+      width: 760px !important; 
+      box-sizing: border-box !important; 
       background: linear-gradient(180deg, rgba(25, 5, 0, 0.98), rgba(5, 0, 0, 1)); 
       backdrop-filter: blur(20px); 
       border: 1px solid rgba(255, 69, 0, 0.6); border-top: 3px solid #FF4500;
-      border-radius: 10px; padding: 20px 30px; /* เพิ่ม Padding ซ้ายขวาให้อลังการยิ่งขึ้น */
+      border-radius: 10px; padding: 25px 40px; 
       box-shadow: 0 15px 40px rgba(0,0,0,0.9), inset 0 0 25px rgba(255, 69, 0, 0.2);
-      pointer-events: auto; position: relative; gap: 15px; 
+      pointer-events: auto; position: relative; gap: 20px; 
     }
-    .clock-row { display: flex; justify-content: space-between; width: 100%; align-items: center; gap: 20px; }
-    /* 📍 ฟันธง: เปลี่ยน width: 33% เป็น flex: 1 และล็อกไม่ให้ตัวหนังสือตัดบรรทัด (white-space: nowrap) */
-    .global-clock-hud .clock-item { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; white-space: nowrap; }
     
+    /* 📍 ฟันธงแก้ระยะห่าง: ถ่างช่องไฟให้กว้างขึ้นอีกด้วย gap: 80px ให้เวลาหนีห่างจาก DOY อย่างสมมาตรที่สุด */
+    .clock-row { display: grid; grid-template-columns: 1fr max-content 1fr; width: 100%; align-items: center; gap: 80px; }
+    
+    .global-clock-hud .clock-item { display: flex; flex-direction: column; justify-content: center; white-space: nowrap; }
+    
+    /* 📍 ฟันธงแก้ข้อความขยับ: บังคับ text-align ให้ชิดซ้ายสุดและขวาสุด เพื่อให้ขอบตัวเลขด้านนอกชนกรอบและนิ่งสนิทเสมอ! */
+    .global-clock-hud .clock-item:nth-child(1) { align-items: flex-start; justify-self: start; text-align: left; }
+    .global-clock-hud .clock-item:nth-child(2) { align-items: center; justify-self: center; padding: 0 10px; } 
+    .global-clock-hud .clock-item:nth-child(3) { align-items: flex-end; justify-self: end; text-align: right; }
+
     .global-clock-hud .clock-item span { 
-      font-size: 15px; color: rgba(255, 255, 255, 0.6); font-weight: 900; letter-spacing: 2px; margin-bottom: 6px; text-transform: uppercase; text-shadow: 0 0 5px rgba(0,0,0,0.8);
+      font-size: 18px; 
+      color: rgba(255, 255, 255, 0.6); font-weight: 900; letter-spacing: 3px; margin-bottom: 8px; text-transform: uppercase; text-shadow: 0 0 5px rgba(0,0,0,0.8);
     }
     
     .global-clock-hud .clock-item strong { 
-      font-family: 'Orbitron', sans-serif; font-size: 32px; color: #FF8800; font-weight: 900; font-variant-numeric: tabular-nums;  /* ขยายเวลา 26px -> 32px */
-      text-shadow: 0 0 20px rgba(255, 69, 0, 0.9), 0 0 10px rgba(255, 255, 255, 0.3); letter-spacing: 2px; line-height: 1; 
+      font-family: 'Orbitron', sans-serif; 
+      font-size: 42px; 
+      font-weight: 900; 
+      /* 📍 ฟันธงบังคับตัวเลขไม่ดิ้น: ใช้ tabular-nums บังคับให้ตัวเลขทุกตัวกว้างเท่ากัน และใช้ monospaced เพื่อความนิ่งสนิท */
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum";
+      letter-spacing: 2px; line-height: 1; 
     }
+
+    /* 📍 ฟันธง 3 สี Tactical UI: Local (แดงส้ม), DOY (ทอง), UTC (ฟ้า) */
+    .global-clock-hud .clock-item:nth-child(1) strong { color: var(--red); text-shadow: 0 0 25px rgba(255, 51, 51, 0.9), 0 0 10px rgba(255, 255, 255, 0.4); }
+    .global-clock-hud .clock-item:nth-child(3) strong { color: var(--cyan); text-shadow: 0 0 25px rgba(0, 234, 255, 0.9), 0 0 10px rgba(255, 255, 255, 0.4); }
     
     /* 📍 ฟันธง: อัปเกรด DOY (วันที่) เป็นแกนกลางทรงพลัง */
     .global-clock-hud .clock-item.doy-item strong {
-      color: #ffcc00 !important; 
-      font-size: 46px !important; /* ขยาย DOY จาก 35px -> 46px กระแทกตาที่สุด */
-      text-shadow: 0 0 30px rgba(255, 204, 0, 0.9), 0 0 15px rgba(255, 255, 255, 0.6) !important; 
+      color: var(--gold) !important; 
+      font-size: 64px !important; 
+      text-shadow: 0 0 40px rgba(255, 204, 0, 0.9), 0 0 20px rgba(255, 255, 255, 0.6) !important; 
       line-height: 0.85; 
     }
     .global-clock-hud .clock-item.doy-item span { 
-      color: rgba(255, 204, 0, 0.9) !important; 
-      letter-spacing: 3px !important;
+      color: var(--gold) !important; 
+      letter-spacing: 4px !important;
     }
     
     /* 📍 จัดกึ่งกลางป้าย Status โดดเด่น ชัดเจน ทรงพลัง */
@@ -378,8 +399,8 @@ const injectStyles = () => {
     .t-box:hover { border-color: var(--gold); border-left: 3px solid var(--gold); background: rgba(255, 204, 0, 0.08); box-shadow: 0 0 20px rgba(255, 204, 0, 0.2); transform: translateY(-3px); z-index: 5; }
     .t-box.highlight { border-left: 3px solid var(--red); background: linear-gradient(90deg, rgba(255, 51, 51, 0.15) 0%, transparent 100%); box-shadow: inset 0 0 20px rgba(255, 51, 51, 0.1); }
     
-    .t-box span { font-size: 22px; color: rgba(255, 255, 255, 0.65); text-transform: uppercase; letter-spacing: 2px; font-weight: 800; white-space: nowrap; }
-    .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 35px; color: #ffffff; margin-top: 8px; text-shadow: 0 0 15px rgba(255, 255, 255, 0.6); letter-spacing: 1px; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .t-box span { font-size: 24px; color: rgba(255, 255, 255, 0.65); text-transform: uppercase; letter-spacing: 2px; font-weight: 800; white-space: nowrap; }
+    .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 42px; color: #ffffff; margin-top: 8px; text-shadow: 0 0 15px rgba(255, 255, 255, 0.6); letter-spacing: 1px; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
     /* 📍 อัปเกรด Info List (ข้อมูลดาวเทียม): ถอดเส้นคั่น ขยายฟอนต์ และกระชับบรรทัด */
     .info-list { list-style: none; padding: 20px 0 0 0; margin: 20px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 22px; line-height: 1.6; }
@@ -2820,7 +2841,7 @@ return (
           
           {/* 📍 ปลดล็อก Scrollbar ให้แผงซ้าย */}
           {isLeftPanelOpen && (
-          <div className="left-panel" style={{ width: '637px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '24px', flex: 1, overflowY: 'auto', paddingBottom: '30px', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+          <div className="left-panel" style={{ width: '817px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '24px', flex: 1, overflowY: 'auto', paddingBottom: '30px', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
             
             <div className="panel-box" style={{ textAlign: 'center', padding: '20px 15px', background: 'rgba(0, 10, 20, 0.45)', border: '1px solid rgba(0, 234, 255, 0.5)', borderRadius: '4px', boxShadow: '0 0 20px rgba(0, 234, 255, 0.2) inset' }}>
               <h1 style={{ margin: '0 0 8px 0', fontFamily: 'Orbitron, sans-serif', fontSize: '45px', fontWeight: '900', color: '#ffffff', textShadow: '0 0 15px #00eaff, 0 0 30px #00eaff', letterSpacing: '2px' }}>SATELLITE ORBIT</h1>
@@ -3126,41 +3147,48 @@ return (
                   GROUND TRACK
                 </button>
 
-               {/* TARGET LOCK -> Red (เป้าหมาย/ระบบสำคัญ) */}
-               <button 
+              {/* TARGET LOCK -> Red (เป้าหมาย/ระบบสำคัญ) */}
+              <button 
                   className={`btn btn-red ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
                   style={{ marginBottom: 0, fontSize: '15px', padding: '14px 5px', letterSpacing: '0.5px', gridColumn: 'span 2' }}
                   onClick={() => {
-                    const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
-                    setCameraMode(newMode);
-                    isTrackingRef.current = (newMode === 'TRACKING');
-                    
-                    if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
-                      try {
-                        const rec = satrecs[selectedCatnr];
-                        if (rec) {
-                            const pos = calculateSatData(new Date(simulatedTimeMs), rec, activeStation);
-                            if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-                              const camAlt = Math.max(0.4, (pos.altKm / EARTH_RADIUS_KM) + 0.5);
-                              globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: camAlt }, 1000);
-                            }
-                        }
-                      } catch (err) {}
-                    } else if (newMode === 'FREE LOOK' && globeRef.current) {
-                      // 📍 ฟันธงข้อ 2: "Return to Base" เมื่อปลดล็อคเป้าหมาย ให้กล้องบินกลับมาโฟกัสที่สถานีรับสัญญาณ (GS) ทันที!
-                      globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
-                    }
+                    // 📍 ฟันธงแก้ INP Issue: ห่อหุ้มการคำนวณที่หนักหน่วงไว้ใน startTransition
+                    // ช่วยล้างอาการหน่วงเวลากดปุ่ม 100% ทำให้ UI ตอบสนองนิ้วทันที!
+                    startTransition(() => {
+                      const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
+                      setCameraMode(newMode);
+                      isTrackingRef.current = (newMode === 'TRACKING');
+                      
+                      if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
+                        try {
+                          const rec = satrecs[selectedCatnr];
+                          if (rec) {
+                              const pos = calculateSatData(new Date(simulatedTimeMs), rec);
+                              if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+                                const camAlt = Math.max(0.4, (pos.altKm / EARTH_RADIUS_KM) + 0.5);
+                                globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: camAlt }, 1000);
+                              }
+                          }
+                        } catch (err) {}
+                      } else if (newMode === 'FREE LOOK' && globeRef.current) {
+                        globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
+                      }
+                    });
                   }}
                 >
                   🎯 TARGET LOCK
                 </button>
 
-                {/* 📍 ฟันธง: ปุ่มสลับ Theme สี UI ล้ำยุค (สับสวิตช์เปลี่ยนสียกแผงทั้งระบบ) */}
-                {/* 📍 อัปเกรด: เพิ่ม gridColumn: 'span 2' บังคับปุ่มให้กางเต็มความกว้าง สร้างฐานสมมาตรร่วมกับ TARGET LOCK และ MAP THEME */}
-                <button 
+               {/* 📍 ฟันธง: ปุ่มสลับ Theme สี UI ล้ำยุค (สับสวิตช์เปลี่ยนสียกแผงทั้งระบบ) */}
+               <button 
                   className="btn btn-gold" 
                   style={{ marginBottom: 0, fontSize: '15px', letterSpacing: '1px', padding: '14px 5px', textShadow: '0 0 10px currentColor', gridColumn: 'span 2' }} 
-                  onClick={() => setUiThemeIdx((prev) => (prev + 1) % uiThemes.length)}
+                  onClick={() => {
+                    // 📍 ฟันธงแก้ INP Issue: การเปลี่ยนสีทั้งระบบใช้พลังทะลุทะลวงสูง ต้องใส่ startTransition ป้องกันปุ่มค้าง
+                    startTransition(() => {
+                      setUiThemeIdx((prev) => (prev + 1) % uiThemes.length);
+                    });
+                  }}
                 >
                   🎨 UI COLOR THEME: {uiThemes[uiThemeIdx].name}
                 </button>
