@@ -2723,13 +2723,13 @@ objectThreeObject={(d) => {
   if (d.catnr === '58016') {
     const textureLoader = new THREE.TextureLoader();
     const spriteMaterial = new THREE.SpriteMaterial({ 
-      map: textureLoader.load('/textures/THEOS-2-1.webp'), 
+      map: textureLoader.load('/textures/THEOS-2.webp'), 
       transparent: true,
       color: 0xffffff 
     });
     const sprite = new THREE.Sprite(spriteMaterial);
     // 📍 ฟันธง: ลดสเกล THEOS-2 ลงมาที่ 8 ให้สมส่วนกับอุกกาบาต
-    sprite.scale.set(12, 12, 1); 
+    sprite.scale.set(13, 13, 1); 
     group.add(sprite);
   } else {
     // ดาวเทียมดวงอื่นให้เป็นโมเดลกล่องทองแดงเล็กๆ
