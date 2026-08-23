@@ -1583,20 +1583,35 @@ useEffect(() => {
     }
   });
 }, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying]);
+// 📍 ฟันธง: สร้างโกดังเก็บอ็อบเจ็กต์ดาวเทียม ป้องกันการสร้าง 3D Models รัวๆ ทุก 50ms (หยุด WebGL Memory Leak ต้นเหตุจอดำ 100%)
+const satObjectsRef = useRef({});
+
 const allSatObjects = useMemo(() => {
   const currentD = new Date(simulatedTimeMs);
   return SATELLITE_OPTIONS.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
     if (!satrecs[sat.catnr]) return null;
     const data = calculateSatData(currentD, satrecs[sat.catnr]);
     if (!data) return null;
-    return {
-      ...data, 
-      type: 'satellite', 
-      name: sat.displayName,
-      catnr: sat.catnr,
-      isTarget: sat.catnr === selectedCatnr,
-      altitude: Math.max(0.05, data.altKm / EARTH_RADIUS_KM)
-    };
+    
+    // 📍 รีไซเคิลอ็อบเจ็กต์เดิม ไม่สร้างใหม่ (ป้องกัน GPU พัง)
+    if (!satObjectsRef.current[sat.catnr]) {
+      satObjectsRef.current[sat.catnr] = { type: 'satellite', catnr: sat.catnr, name: sat.displayName };
+    }
+    
+    const obj = satObjectsRef.current[sat.catnr];
+    obj.lat = data.lat;
+    obj.lng = data.lng;
+    obj.altKm = data.altKm;
+    obj.altitude = Math.max(0.05, data.altKm / EARTH_RADIUS_KM);
+    obj.isTarget = sat.catnr === selectedCatnr;
+    
+    // อัปเดตข้อมูลแกน Tracking
+    obj.elevationDeg = data.elevationDeg;
+    obj.azimuthDeg = data.azimuthDeg;
+    obj.rangeKm = data.rangeKm;
+    obj.speedKmS = data.speedKmS;
+    
+    return obj;
   }).filter(Boolean);
 }, [simulatedTimeMs, satrecs, selectedCatnr, selectedCatnrs]);
 
@@ -2352,20 +2367,25 @@ const [collisionState, setCollisionState] = useState(null); // เก็บพ�
 const demoDebrisData = useMemo(() => {
   if (!isCollisionDemo || !collisionState || !targetData) return null;
   
-  const dt = (simulatedTimeMs - collisionState.timeMs) / 1000;
+  const dtSec = (simulatedTimeMs - collisionState.timeMs) / 1000;
   
-  // 📍 ฟันธง: สร้างวงโคจรเอียง 22 องศา (ดาวเทียมข้าศึก)
-  const speedDegPerSec = 0.0675; 
-  const vLat = speedDegPerSec * Math.sin(22 * Math.PI / 180);
-  const vLng = speedDegPerSec * Math.cos(22 * Math.PI / 180);
+  // 📍 ฟันธง: อัปเกรดสมการเป็น Great Circle (วงกลมใหญ่) แบบสมบูรณ์แบบ
+  // ไดนามิกความเอียง (Inclination) ให้ครอบคลุมจุดตัดเสมอ ไม่งั้นจะชนไม่ได้ตามหลักฟิสิกส์
+  const orbitalPeriod = 5400; // รอบละ 90 นาที
+  const angle = (dtSec / orbitalPeriod) * 2 * Math.PI;
+  const incDeg = Math.max(22, Math.abs(collisionState.lat) + 2); // บังคับเอียง 22 องศาเป็นอย่างต่ำ
+  const inc = incDeg * Math.PI / 180;
+  const targetLatRad = collisionState.lat * Math.PI / 180;
   
-  let currentLat = collisionState.lat + (dt * vLat);
-  let currentLng = collisionState.lng + (dt * vLng);
+  // คำนวณ Phase ให้จุดตัดเกิดตอน dt=0 พอดีเป๊ะ
+  const phase = Math.asin(Math.max(-1, Math.min(1, Math.sin(targetLatRad) / Math.sin(inc))));
+  let currentLat = Math.asin(Math.sin(inc) * Math.sin(phase + angle)) * 180 / Math.PI;
   
+  // คำนวณ Longitude ให้หมุนสอดคล้องกับโลก
+  const lngOffset = Math.atan2(Math.cos(inc) * Math.sin(phase + angle), Math.cos(phase + angle)) - Math.atan2(Math.cos(inc) * Math.sin(phase), Math.cos(phase));
+  let currentLng = collisionState.lng + (lngOffset * 180 / Math.PI) - (dtSec * (360 / 86400));
   currentLng = ((currentLng + 180) % 360 + 360) % 360 - 180;
-  if (currentLat > 90) currentLat = 180 - currentLat;
-  if (currentLat < -90) currentLat = -180 - currentLat;
-  
+
   const dx = (currentLng - targetData.lng) * Math.cos(targetData.lat * Math.PI / 180) * 111.32;
   const dy = (currentLat - targetData.lat) * 111.32;
   const dz = collisionState.altKm - targetData.altKm;
@@ -2373,46 +2393,48 @@ const demoDebrisData = useMemo(() => {
 
   return {
     type: 'debris',
-    name: 'UNKNOWN SATELLITE (22° INC)',
+    name: `UNKNOWN SATELLITE (${incDeg.toFixed(0)}° INC)`,
     lat: currentLat,
     lng: currentLng,
     altKm: collisionState.altKm,
     altitude: collisionState.altKm / EARTH_RADIUS_KM,
     distanceKm: dist
-    // 📍 เอา isEvading ออก ปล่อยให้มันวิ่งตัดกันตรงๆ ให้เด็กเห็นภาพจุดตัดของวงโคจรเต็มๆ!
   };
 }, [isCollisionDemo, collisionState, targetData, simulatedTimeMs]);
 
-// 📍 สมองกล "BULLET TIME" (สโลว์โมชั่นอัตโนมัติเมื่อเข้าโซนวิกฤต)
+// 📍 สมองกล "BULLET TIME" (ปลดล็อกให้เร่งเวลา SIM ได้แล้ว!)
+const hasTriggeredBulletTime = useRef(false);
+
 useEffect(() => {
   if (isCollisionDemo && demoDebrisData) {
-    // ถ้าระยะห่างน้อยกว่า 150 กม. และความเร็วจำลองยังเร็วกว่า 1X (เช่น 50X หรือ 100X)
     if (demoDebrisData.distanceKm < 150 && demoDebrisData.distanceKm > 10 && speedMult > 1) {
-      setSpeedMult(1); // 📍 ฟันธง: บังคับกระทืบเบรกลดความเร็วเป็น 1X (Real-time) ทันที!
-      setCustomAlert({ 
-        show: true, 
-        message: '⏱️ CRITICAL APPROACH: วัตถุเข้าสู่ระยะประชิด!\nระบบเปิดโหมด BULLET TIME (ลดความเร็วเป็น 1X อัตโนมัติ) เพื่อดูการหลบหลีก!', 
-        type: 'error' 
-      });
+      if (!hasTriggeredBulletTime.current) {
+        setSpeedMult(1); // 📍 กระทืบเบรกเป็น 1X แค่ "ครั้งเดียว" ตอนเข้าใกล้
+        hasTriggeredBulletTime.current = true; // ล็อกเกราะไว้ ให้ผู้บัญชาการเร่งเวลา (SIM) ต่อได้อิสระ
+      }
     }
+  } else {
+    hasTriggeredBulletTime.current = false; // รีเซ็ตเมื่อปิดโหมด
   }
 }, [isCollisionDemo, demoDebrisData, speedMult]);
 
-// 📍 วาดเส้นวงโคจรสีแดง (Orbit Path) ของดาวเทียมข้าศึกให้เห็นล่วงหน้า!
+// 📍 วาดเส้นวงโคจรสีแดง (Orbit Path) ของดาวเทียมข้าศึกให้เป็นวงแหวน Great Circle ที่แท้จริง!
 const debrisOrbitPath = useMemo(() => {
   if (!isCollisionDemo || !collisionState) return [];
   const points = [];
-  const speedDegPerSec = 0.0675;
-  const vLat = speedDegPerSec * Math.sin(22 * Math.PI / 180);
-  const vLng = speedDegPerSec * Math.cos(22 * Math.PI / 180);
+  const incDeg = Math.max(22, Math.abs(collisionState.lat) + 2);
+  const inc = incDeg * Math.PI / 180;
+  const targetLatRad = collisionState.lat * Math.PI / 180;
+  const phase = Math.asin(Math.max(-1, Math.min(1, Math.sin(targetLatRad) / Math.sin(inc))));
   
-  for (let m = -45; m <= 45; m += 1) { // วาดเส้นทางยาว +- 45 นาที
-     const dt = m * 60;
-     let pLat = collisionState.lat + (dt * vLat);
-     let pLng = collisionState.lng + (dt * vLng);
+  for (let m = -45; m <= 45; m += 1) { 
+     const dtSec = m * 60;
+     const angle = (dtSec / 5400) * 2 * Math.PI;
+     let pLat = Math.asin(Math.sin(inc) * Math.sin(phase + angle)) * 180 / Math.PI;
+     const lngOffset = Math.atan2(Math.cos(inc) * Math.sin(phase + angle), Math.cos(phase + angle)) - Math.atan2(Math.cos(inc) * Math.sin(phase), Math.cos(phase));
+     let pLng = collisionState.lng + (lngOffset * 180 / Math.PI) - (dtSec * (360 / 86400));
+     
      pLng = ((pLng + 180) % 360 + 360) % 360 - 180;
-     if (pLat > 90) pLat = 180 - pLat;
-     if (pLat < -90) pLat = -180 - pLat;
      points.push({ lat: pLat, lng: pLng, alt: collisionState.altKm / EARTH_RADIUS_KM });
   }
   return [{ points, color: 'rgba(255, 51, 51, 0.6)', stroke: 2.0 }];
@@ -2425,7 +2447,7 @@ const [diagramPos, setDiagramPos] = useState({ x: 200, y: 150 });
 const [isDraggingDiagram, setIsDraggingDiagram] = useState(false);
 const dragDiagramRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
-// 📍 WOW Feature 2 & 3: AUTO-PILOT & DOWNLINK MATRIX STATE
+// 📍 WOW Feature 2 & 3: AUTO-EARTH & DOWNLINK MATRIX STATE
 const [isAutoPilot, setIsAutoPilot] = useState(false);
 const matrixRef = useRef(null);
 const autoPilotTimer = useRef(null);
@@ -2456,7 +2478,7 @@ useEffect(() => {
         const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
         if (timeToAos > 120000) { // ถ้ารอเกิน 2 นาที วาร์ปเลย!
           setSimulatedTimeMs(nextPassTimestamp.time - 30000);
-          setCustomAlert({ show: true, message: 'AUTO-PILOT: TIME TRAVEL INITIATED 🚀', type: 'success' });
+          setCustomAlert({ show: true, message: 'AUTO-EARTH: TIME TRAVEL INITIATED 🚀', type: 'success' });
         }
       }
     }, 8000);
@@ -2674,37 +2696,71 @@ return (
             
             objectsData={isCollisionDemo && demoDebrisData ? [...allSatObjects, demoDebrisData] : allSatObjects}
             objectLat="lat" objectLng="lng" objectAltitude="altitude"
-            
-           /* 📍 เฟส 2: เปลี่ยนจากก้อนอุกกาบาต เป็นโมเดล "ดาวเทียม" ขนานแท้! (สมจริง 100%) */
-           objectThreeObject={(d) => {
-            if (d.type === 'debris') {
-              const group = createSatelliteModel(false); // 📍 ฟันธง: ใชัโมเดลดาวเทียมคู่กรณี
-              const threatRing = new THREE.Mesh(new THREE.SphereGeometry(4, 16, 16), new THREE.MeshBasicMaterial({ color: '#ff3333', wireframe: true, transparent: true, opacity: 0.6 }));
-              group.add(threatRing);
-              return group;
-            }
-            
-            const satGroup = createSatelliteModel(d.isTarget);
-            
-            if (d.isTarget && isCollisionDemo && demoDebrisData) {
-              // 📍 ฟันธง: เปลี่ยนวงกลมสีแดง เป็นเรดาร์สแกนสีเขียว (Green Radar Pulse) อาศัยเวลา simulatedTimeMs เป็นตัวขยายสเกล!
-              const pulseCycle = (simulatedTimeMs % 2000) / 2000; // วนลูป 0.0 ถึง 1.0 ทุกๆ 2 วินาที
-              const scale = 1 + (pulseCycle * 1.5); // ขยายตัวจาก 1 เท่า ไป 2.5 เท่าอย่างต่อเนื่อง
-              const opacity = 0.6 * (1 - pulseCycle); // ค่อยๆ จางหายไปที่ขอบ
 
-              const radarPulse = new THREE.Mesh(
-                new THREE.SphereGeometry(10, 32, 32), 
-                new THREE.MeshBasicMaterial({ color: '#00ff66', transparent: true, opacity: opacity, wireframe: true })
-              );
-              radarPulse.scale.setScalar(scale);
-              satGroup.add(radarPulse);
+/* 📍 เฟส 2: เปลี่ยนจากก้อนอุกกาบาต เป็นโมเดล "ดาวเทียม" ขนานแท้! (สมจริง 100%) */
+objectThreeObject={(d) => {
+  if (d.type === 'debris') {
+    const group = new THREE.Group();
+    
+    // 📍 1. โชว์ภาพอุกกาบาตแบบคมชัด
+    const textureLoader = new THREE.TextureLoader();
+    const spriteMaterial = new THREE.SpriteMaterial({ 
+      map: textureLoader.load('/textures/asteroid.webp'), 
+      transparent: true,
+      color: 0xffffff 
+    });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    // 📍 ฟันธง: ลดสเกลอุกกาบาตลงมาที่ 12 ให้สมมาตรกำลังดี
+    sprite.scale.set(13, 13, 1); 
+    group.add(sprite);
+    
+    return group;
+  }
+  
+  const group = new THREE.Group();
 
-              // เพิ่มแกนเรดาร์สีเขียวเข้มด้านในให้ดูมีมิติ
-              const innerCore = new THREE.Mesh(new THREE.SphereGeometry(5, 16, 16), new THREE.MeshBasicMaterial({ color: '#00ff66', transparent: true, opacity: 0.15, wireframe: false }));
-              satGroup.add(innerCore);
-            }
-            return satGroup;
-          }}
+  // 📍 2. อัปเกรด THEOS-2 ให้เป็นรูปภาพ (Sprite) ดวงเดียวเด่นๆ! 
+  if (d.catnr === '58016') {
+    const textureLoader = new THREE.TextureLoader();
+    const spriteMaterial = new THREE.SpriteMaterial({ 
+      map: textureLoader.load('/textures/THEOS-2-1.webp'), 
+      transparent: true,
+      color: 0xffffff 
+    });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    // 📍 ฟันธง: ลดสเกล THEOS-2 ลงมาที่ 8 ให้สมส่วนกับอุกกาบาต
+    sprite.scale.set(12, 12, 1); 
+    group.add(sprite);
+  } else {
+    // ดาวเทียมดวงอื่นให้เป็นโมเดลกล่องทองแดงเล็กๆ
+    const satModel = createSatelliteModel(d.isTarget);
+    group.add(satModel);
+  }
+  
+  if (d.isTarget && isCollisionDemo && demoDebrisData) {
+    // 📍 3. คลื่นเรดาร์ 2D (Ripple Effect) ปรับให้เป็นเส้นบางๆ เฉียบๆ แบบ Tactical
+    const pulseCycle = (simulatedTimeMs % 2000) / 2000; 
+    const scale = 1 + (pulseCycle * 15); // ขยายวงให้กว้างขึ้นอีก
+    const opacity = 0.9 * (1 - pulseCycle); 
+
+    // วงแหวนคลื่นรอบนอก (ทำเส้นให้บางลงสุดๆ)
+    const ringGeo = new THREE.RingGeometry(2.8, 3.0, 64);
+    const ringMat = new THREE.MeshBasicMaterial({ color: '#00ff66', transparent: true, opacity: opacity, side: THREE.DoubleSide });
+    const ripple = new THREE.Mesh(ringGeo, ringMat);
+    
+    // วงแหวนคลื่นชั้นใน (เบลอๆ)
+    const innerRingGeo = new THREE.RingGeometry(1.2, 1.3, 64);
+    const innerRingMat = new THREE.MeshBasicMaterial({ color: '#00ff66', transparent: true, opacity: opacity * 1.5, side: THREE.DoubleSide });
+    const innerRipple = new THREE.Mesh(innerRingGeo, innerRingMat);
+    
+    ripple.scale.setScalar(scale);
+    innerRipple.scale.setScalar(scale * 0.5);
+
+    group.add(ripple);
+    group.add(innerRipple);
+  }
+  return group;
+}}
             
             objectLabel={(d) => {
               if (d.type === 'satellite') {
@@ -2748,9 +2804,13 @@ return (
               }
               /* 📍 เฟส 2 (ป้ายระบุพิกัดขยะ): ย้ายป้ายเตือนออกห่างจากโมเดล 3D ไม่ให้บังกัน 1,000,000% */
              /* 📍 เฟส 2 (ป้ายระบุพิกัดขยะ): โชว์แค่ระยะทาง และดันออกไปไกลๆ (translate(100px, -100px)) ไม่ให้บังดาวเทียมเด็ดขาด! */
-             else if (d.type === 'debris') {
+            /* 📍 เฟส 2 (ป้ายระบุพิกัดขยะ): เทคนิค Cinematic Auto-Hide ซ่อนป้ายเมื่อระยะ < 80km เพื่อดูฉากชนเต็มตา! */
+            else if (d.type === 'debris') {
+              // 📍 ฟันธง: ถ้าระยะห่างน้อยกว่า 80 กม. สั่ง display: none ให้ป้ายหายวับไปเลย!
+              const visibility = d.distanceKm < 80 ? 'none' : 'block';
+              
               el.innerHTML = `
-                <div style="color: #ff3333; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 16px; text-shadow: 0 0 10px #ff3333; transform: translate(100px, -100px); pointer-events: none; background: rgba(20,0,0,0.9); border: 2px solid #ff3333; padding: 10px 20px; border-radius: 6px; white-space: nowrap; box-shadow: 0 0 20px rgba(255,51,51,0.6), inset 0 0 10px rgba(255,51,51,0.3);">
+                <div style="display: ${visibility}; color: #ff3333; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 16px; text-shadow: 0 0 10px #ff3333; transform: translate(220px, -150px); pointer-events: none; background: rgba(20,0,0,0.9); border: 2px solid #ff3333; padding: 10px 20px; border-radius: 6px; white-space: nowrap; box-shadow: 0 0 20px rgba(255,51,51,0.6), inset 0 0 10px rgba(255,51,51,0.3);">
                   🚨 CONFLICT WARNING<br/>
                   <span style="font-size:26px; color:#fff;">DIST: ${d.distanceKm.toFixed(1)} km</span><br/>
                   <span style="font-size:12px; color:#ff9900;">INCLINATION: 22° CROSSING</span>
@@ -3153,7 +3213,7 @@ return (
 
                 return (
                   <>
-                    {/* 📍 WOW Feature 3: ปุ่ม AUTO-PILOT (Kiosk Mode) */}
+                    {/* 📍 WOW Feature 3: ปุ่ม AUTO-EARTH (Kiosk Mode) */}
                     <button 
                       onClick={() => {
                         const nextState = !isAutoPilot;
@@ -3167,7 +3227,7 @@ return (
                       disabled={isRealtimePassLock}
                       style={{ width: '100%', marginBottom: '16px', padding: '18px', fontSize: '24px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '3px', borderRadius: '6px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', transition: 'all 0.3s', background: isAutoPilot ? 'linear-gradient(90deg, #ff00ff, #00eaff)' : 'rgba(255, 0, 255, 0.1)', color: isAutoPilot ? '#fff' : '#ff00ff', border: '2px solid #ff00ff', boxShadow: isAutoPilot ? '0 0 20px #ff00ff' : 'inset 0 0 10px rgba(255,0,255,0.2)', opacity: isRealtimePassLock ? 0.3 : 1 }}
                     >
-                      {isAutoPilot ? '🤖 AUTO-PILOT: ACTIVE' : '🤖 AUTO-PILOT: OFF'}
+                      {isAutoPilot ? '🤖 AUTO-EARTH: ACTIVE' : '🤖 AUTO-EARTH: OFF'}
                     </button>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
@@ -3401,7 +3461,7 @@ return (
                className="btn"
                onClick={() => {
                  if (!isCollisionDemo) {
-                   // 📍 ฟันธง: สร้างจุดปะทะในอนาคตล่วงหน้า 10 นาที (เพื่อให้เด็กกดเร่งเวลา 50X ดูมันวิ่งเข้าหากันได้!)
+                   // 📍 ฟันธง: สร้างจุดปะทะในอนาคตล่วงหน้า 10 นาที (ไม่ต้องมี Popup แจ้งเตือนแล้ว)
                    const targetTime = simulatedTimeMs + (10 * 60000); 
                    const rec = satrecs[selectedCatnr];
                    if (rec) {
@@ -3409,13 +3469,13 @@ return (
                      if (futurePos) {
                        setCollisionState({ timeMs: targetTime, lat: futurePos.lat, lng: futurePos.lng, altKm: futurePos.altKm });
                        setIsCollisionDemo(true);
-                       setCustomAlert({ show: true, message: '🚨 CONFLICT WARNING: ตรวจพบดาวเทียมไม่ทราบฝ่าย (วงโคจร 22°) กำลังพุ่งตัดหน้า THEOS-2 ในอีก 10 นาที!\n\n👉 แนะนำ: ให้ผู้บัญชาการ "กดเร่งเวลา 50X หรือ 100X" เพื่อดูการตัดกันของวงโคจรแบบ Real-time!', type: 'error' });
-                       setCameraMode('TRACKING'); isTrackingRef.current = true;
+                       setCameraMode('TRACKING'); 
+                       isTrackingRef.current = true;
                      }
                    }
                  } else {
-                   setIsCollisionDemo(false); setCollisionState(null);
-                   setCustomAlert({ show: true, message: '✅ DEMO TERMINATED: ยกเลิกโหมดจำลองการชนวงโคจร', type: 'success' });
+                   setIsCollisionDemo(false); 
+                   setCollisionState(null);
                  }
                }}
                style={{ 
@@ -5062,7 +5122,7 @@ return (
                   {linkActive && ['50%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
                     <div key={`bpsk-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
                       <div style={{ width: '3px', height: '3px', background: 'var(--cyan)', borderRadius: '50%', boxShadow: '0 0 5px var(--cyan)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
-                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(0,234,255,0.6)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + Math.random()*0.2}s infinite alternate` }}></div>
+                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(0,234,255,0.6)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
                     </div>
                   )))}
                 </div>
@@ -5108,7 +5168,7 @@ return (
                   {linkActive && ['20%', '80%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
                     <div key={`c-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
                       <div style={{ width: '3px', height: '3px', background: 'var(--red)', borderRadius: '50%', boxShadow: '0 0 5px var(--red)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
-                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + Math.random()*0.2}s infinite alternate` }}></div>
+                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
                     </div>
                   )))}
                 </div>
