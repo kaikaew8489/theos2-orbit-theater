@@ -1583,35 +1583,20 @@ useEffect(() => {
     }
   });
 }, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying]);
-// 📍 ฟันธง: สร้างโกดังเก็บอ็อบเจ็กต์ดาวเทียม ป้องกันการสร้าง 3D Models รัวๆ ทุก 50ms (หยุด WebGL Memory Leak ต้นเหตุจอดำ 100%)
-const satObjectsRef = useRef({});
-
 const allSatObjects = useMemo(() => {
   const currentD = new Date(simulatedTimeMs);
   return SATELLITE_OPTIONS.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
     if (!satrecs[sat.catnr]) return null;
     const data = calculateSatData(currentD, satrecs[sat.catnr]);
     if (!data) return null;
-    
-    // 📍 รีไซเคิลอ็อบเจ็กต์เดิม ไม่สร้างใหม่ (ป้องกัน GPU พัง)
-    if (!satObjectsRef.current[sat.catnr]) {
-      satObjectsRef.current[sat.catnr] = { type: 'satellite', catnr: sat.catnr, name: sat.displayName };
-    }
-    
-    const obj = satObjectsRef.current[sat.catnr];
-    obj.lat = data.lat;
-    obj.lng = data.lng;
-    obj.altKm = data.altKm;
-    obj.altitude = Math.max(0.05, data.altKm / EARTH_RADIUS_KM);
-    obj.isTarget = sat.catnr === selectedCatnr;
-    
-    // อัปเดตข้อมูลแกน Tracking
-    obj.elevationDeg = data.elevationDeg;
-    obj.azimuthDeg = data.azimuthDeg;
-    obj.rangeKm = data.rangeKm;
-    obj.speedKmS = data.speedKmS;
-    
-    return obj;
+    return {
+      ...data, 
+      type: 'satellite', 
+      name: sat.displayName,
+      catnr: sat.catnr,
+      isTarget: sat.catnr === selectedCatnr,
+      altitude: Math.max(0.05, data.altKm / EARTH_RADIUS_KM)
+    };
   }).filter(Boolean);
 }, [simulatedTimeMs, satrecs, selectedCatnr, selectedCatnrs]);
 
@@ -2360,94 +2345,13 @@ useEffect(() => {
   return () => cancelAnimationFrame(animationFrameId);
 }, [isAnalyzerOpen, linkActive, selectedCatnr, simulatedTimeMs, xBandSpan, sBandSpan, showXBand, showSBand]);
 
-// 📍 WOW Feature: SPACE CONFLICT DEMO (วงโคจรตัดกันแบบสมจริง)
-const [isCollisionDemo, setIsCollisionDemo] = useState(false);
-const [collisionState, setCollisionState] = useState(null); // เก็บพิกัดจุดปะทะ
-
-const demoDebrisData = useMemo(() => {
-  if (!isCollisionDemo || !collisionState || !targetData) return null;
-  
-  const dtSec = (simulatedTimeMs - collisionState.timeMs) / 1000;
-  
-  // 📍 ฟันธง: อัปเกรดสมการเป็น Great Circle (วงกลมใหญ่) แบบสมบูรณ์แบบ
-  // ไดนามิกความเอียง (Inclination) ให้ครอบคลุมจุดตัดเสมอ ไม่งั้นจะชนไม่ได้ตามหลักฟิสิกส์
-  const orbitalPeriod = 5400; // รอบละ 90 นาที
-  const angle = (dtSec / orbitalPeriod) * 2 * Math.PI;
-  const incDeg = Math.max(22, Math.abs(collisionState.lat) + 2); // บังคับเอียง 22 องศาเป็นอย่างต่ำ
-  const inc = incDeg * Math.PI / 180;
-  const targetLatRad = collisionState.lat * Math.PI / 180;
-  
-  // คำนวณ Phase ให้จุดตัดเกิดตอน dt=0 พอดีเป๊ะ
-  const phase = Math.asin(Math.max(-1, Math.min(1, Math.sin(targetLatRad) / Math.sin(inc))));
-  let currentLat = Math.asin(Math.sin(inc) * Math.sin(phase + angle)) * 180 / Math.PI;
-  
-  // คำนวณ Longitude ให้หมุนสอดคล้องกับโลก
-  const lngOffset = Math.atan2(Math.cos(inc) * Math.sin(phase + angle), Math.cos(phase + angle)) - Math.atan2(Math.cos(inc) * Math.sin(phase), Math.cos(phase));
-  let currentLng = collisionState.lng + (lngOffset * 180 / Math.PI) - (dtSec * (360 / 86400));
-  currentLng = ((currentLng + 180) % 360 + 360) % 360 - 180;
-
-  const dx = (currentLng - targetData.lng) * Math.cos(targetData.lat * Math.PI / 180) * 111.32;
-  const dy = (currentLat - targetData.lat) * 111.32;
-  const dz = collisionState.altKm - targetData.altKm;
-  const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-
-  return {
-    type: 'debris',
-    name: `UNKNOWN SATELLITE (${incDeg.toFixed(0)}° INC)`,
-    lat: currentLat,
-    lng: currentLng,
-    altKm: collisionState.altKm,
-    altitude: collisionState.altKm / EARTH_RADIUS_KM,
-    distanceKm: dist
-  };
-}, [isCollisionDemo, collisionState, targetData, simulatedTimeMs]);
-
-// 📍 สมองกล "BULLET TIME" (ปลดล็อกให้เร่งเวลา SIM ได้แล้ว!)
-const hasTriggeredBulletTime = useRef(false);
-
-useEffect(() => {
-  if (isCollisionDemo && demoDebrisData) {
-    if (demoDebrisData.distanceKm < 150 && demoDebrisData.distanceKm > 10 && speedMult > 1) {
-      if (!hasTriggeredBulletTime.current) {
-        setSpeedMult(1); // 📍 กระทืบเบรกเป็น 1X แค่ "ครั้งเดียว" ตอนเข้าใกล้
-        hasTriggeredBulletTime.current = true; // ล็อกเกราะไว้ ให้ผู้บัญชาการเร่งเวลา (SIM) ต่อได้อิสระ
-      }
-    }
-  } else {
-    hasTriggeredBulletTime.current = false; // รีเซ็ตเมื่อปิดโหมด
-  }
-}, [isCollisionDemo, demoDebrisData, speedMult]);
-
-// 📍 วาดเส้นวงโคจรสีแดง (Orbit Path) ของดาวเทียมข้าศึกให้เป็นวงแหวน Great Circle ที่แท้จริง!
-const debrisOrbitPath = useMemo(() => {
-  if (!isCollisionDemo || !collisionState) return [];
-  const points = [];
-  const incDeg = Math.max(22, Math.abs(collisionState.lat) + 2);
-  const inc = incDeg * Math.PI / 180;
-  const targetLatRad = collisionState.lat * Math.PI / 180;
-  const phase = Math.asin(Math.max(-1, Math.min(1, Math.sin(targetLatRad) / Math.sin(inc))));
-  
-  for (let m = -45; m <= 45; m += 1) { 
-     const dtSec = m * 60;
-     const angle = (dtSec / 5400) * 2 * Math.PI;
-     let pLat = Math.asin(Math.sin(inc) * Math.sin(phase + angle)) * 180 / Math.PI;
-     const lngOffset = Math.atan2(Math.cos(inc) * Math.sin(phase + angle), Math.cos(phase + angle)) - Math.atan2(Math.cos(inc) * Math.sin(phase), Math.cos(phase));
-     let pLng = collisionState.lng + (lngOffset * 180 / Math.PI) - (dtSec * (360 / 86400));
-     
-     pLng = ((pLng + 180) % 360 + 360) % 360 - 180;
-     points.push({ lat: pLat, lng: pLng, alt: collisionState.altKm / EARTH_RADIUS_KM });
-  }
-  return [{ points, color: 'rgba(255, 51, 51, 0.6)', stroke: 2.0 }];
-}, [isCollisionDemo, collisionState]);
-
-
 // 📍 WOW Feature 1: DIAGRAM STATE
 const [isDiagramOpen, setIsDiagramOpen] = useState(false);
 const [diagramPos, setDiagramPos] = useState({ x: 200, y: 150 });
 const [isDraggingDiagram, setIsDraggingDiagram] = useState(false);
 const dragDiagramRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
-// 📍 WOW Feature 2 & 3: AUTO-EARTH & DOWNLINK MATRIX STATE
+// 📍 WOW Feature 2 & 3: AUTO-PILOT & DOWNLINK MATRIX STATE
 const [isAutoPilot, setIsAutoPilot] = useState(false);
 const matrixRef = useRef(null);
 const autoPilotTimer = useRef(null);
@@ -2478,7 +2382,7 @@ useEffect(() => {
         const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
         if (timeToAos > 120000) { // ถ้ารอเกิน 2 นาที วาร์ปเลย!
           setSimulatedTimeMs(nextPassTimestamp.time - 30000);
-          setCustomAlert({ show: true, message: 'AUTO-EARTH: TIME TRAVEL INITIATED 🚀', type: 'success' });
+          setCustomAlert({ show: true, message: 'AUTO-PILOT: TIME TRAVEL INITIATED 🚀', type: 'success' });
         }
       }
     }, 8000);
@@ -2562,55 +2466,6 @@ useEffect(() => {
 }, [radarPos.y, gsPos.y, anglesPos.y, dbPos.y, passPos.y, diagramPos.y, analyzerPos.y, imgPos.y]);
 return (
   <>
-
-{/* 📍 GLOBAL POPUP SCI-FI ALERT (ฟันธง: แสดงผลระดับสูงสุด ครอบทั้งจอ 1,000,000% ไม่มีใครบังได้!) */}
-{customAlert.show && (
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(2, 6, 15, 0.85)', backdropFilter: 'blur(15px)', zIndex: 9999999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <div style={{ 
-          background: 'linear-gradient(135deg, rgba(0, 20, 10, 0.95), rgba(0, 5, 2, 0.95))', 
-          border: `2px solid ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, 
-          boxShadow: `0 0 50px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.4)' : 'rgba(255, 51, 51, 0.4)'}, inset 0 0 20px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`, 
-          borderRadius: '8px', padding: '35px 50px', textAlign: 'center', minWidth: '420px', position: 'relative', overflow: 'hidden',
-          animation: 'slideInRight 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)' 
-        }}>
-          
-          <div style={{ position: 'absolute', top: '-50%', left: '-50%', width: '200%', height: '200%', background: `radial-gradient(circle at center, ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.15)' : 'rgba(255, 51, 51, 0.15)'} 0%, transparent 60%)`, pointerEvents: 'none', animation: 'pulse 2.5s infinite' }}></div>
-          
-          <h2 style={{ fontFamily: 'Orbitron', color: customAlert.type === 'success' ? 'var(--green)' : 'var(--red)', fontSize: '28px', margin: '0 0 15px 0', textShadow: `0 0 20px ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, letterSpacing: '2px', position: 'relative', zIndex: 1 }}>
-            {customAlert.type === 'success' ? '🚀 SYSTEM MESSAGE' : '🚨 SYSTEM WARNING'}
-          </h2>
-          <p style={{ fontFamily: 'Rajdhani', color: '#fff', fontSize: '22px', marginBottom: '30px', letterSpacing: '1.5px', fontWeight: 'bold', textShadow: '0 0 10px rgba(255, 255, 255, 0.5)', position: 'relative', zIndex: 1, whiteSpace: 'pre-line' }}>{customAlert.message}</p>
-          
-          <button 
-            onClick={() => setCustomAlert({ show: false, message: '', type: 'success' })} 
-            style={{ 
-              background: customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 51, 51, 0.1)', 
-              border: `1px solid ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, 
-              color: customAlert.type === 'success' ? 'var(--green)' : 'var(--red)', 
-              padding: '12px 50px', fontSize: '18px', fontFamily: 'Orbitron', fontWeight: '900', cursor: 'pointer', borderRadius: '4px', letterSpacing: '3px', transition: 'all 0.2s', position: 'relative', zIndex: 1,
-              boxShadow: `0 0 15px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`
-            }}
-            onMouseOver={(e) => { 
-              e.currentTarget.style.background = customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'; 
-              e.currentTarget.style.color = '#000'; 
-              e.currentTarget.style.boxShadow = `0 0 30px ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`; 
-              e.currentTarget.style.transform = 'scale(1.05)';
-            }}
-            onMouseOut={(e) => { 
-              e.currentTarget.style.background = customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 51, 51, 0.1)'; 
-              e.currentTarget.style.color = customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'; 
-              e.currentTarget.style.boxShadow = `0 0 15px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`;
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-          >
-            ACKNOWLEDGE
-          </button>
-        </div>
-      </div>
-    )}
-
-    {/* 📍 หน้าจอ Loading Screen (Splash Screen) ปิดทับทุกสิ่งจนกว่าจะโหลดเสร็จ */}
-
     {/* 📍 หน้าจอ Loading Screen (Splash Screen) ปิดทับทุกสิ่งจนกว่าจะโหลดเสร็จ */}
     <div className={`loading-overlay ${isAppReady ? 'fade-out' : ''}`}>
     <div className="loading-logo">
@@ -2663,122 +2518,59 @@ return (
         { type: 'station', lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, name: GROUND_STATION.name, altitude: 0 },
         ...allSatObjects.filter(sat => sat.isTarget)
       ];
-      
-      if (isCollisionDemo && demoDebrisData) {
-        memoizedHtmlElements.push(demoDebrisData);
-      }
-
       const memoizedRings = [{ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng }];
-
-      // 📍 นำเส้นวงโคจร 22 องศา และเลเซอร์วัดระยะ เข้าสู่ระบบเรนเดอร์
-      const dynamicPathsToDraw = [...pathsToDraw3D];
-      if (isCollisionDemo && debrisOrbitPath) {
-        dynamicPathsToDraw.push(...debrisOrbitPath); 
-      }
-      if (isCollisionDemo && demoDebrisData && targetData && !isNaN(targetData.lat)) {
-        dynamicPathsToDraw.push({
-          points: [
-            { lat: targetData.lat, lng: targetData.lng, alt: Math.max(0.01, targetData.altKm / EARTH_RADIUS_KM) },
-            { lat: demoDebrisData.lat, lng: demoDebrisData.lng, alt: demoDebrisData.altitude }
-          ],
-          color: 'rgba(255, 51, 51, 1)', stroke: 1.5, isLaser: true
-        });
-      }
 
       return (
         <Globe
             ref={globeRef} width={size.width} height={size.height}
             backgroundColor="#000000"
+            
+            /* 📍 ฟันธง: ปลดล็อก 3D Globe ให้ดึงรูปจากระบบ Theme ตามที่ Commander สั่ง! */
             globeImageUrl={mapThemes[mapThemeIdx].url}
+            
+            /* 📍 รักษาระบบภูมิประเทศภูเขา (Bump Map) ให้สมจริงเหมือนเดิม */
             bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
             backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
-            showAtmosphere={true} atmosphereColor="#00b3ff" atmosphereAltitude={0.15}
             
-            objectsData={isCollisionDemo && demoDebrisData ? [...allSatObjects, demoDebrisData] : allSatObjects}
+            /* 📍 รักษาออร่าชั้นบรรยากาศสีฟ้าให้คงอยู่เหมือนเดิม */
+            showAtmosphere={true}
+            atmosphereColor="#00b3ff"
+            atmosphereAltitude={0.15}
+            
+            /* 📍 จุดตาย: ถอดวงเล็บ [...] ออก เพื่อไม่ให้เกิดการสร้างข้อมูลอาร์เรย์ใหม่ซ้ำซ้อนจนเครื่องคอขวด */
+            objectsData={allSatObjects}
+            
             objectLat="lat" objectLng="lng" objectAltitude="altitude"
-
-/* 📍 เฟส 2: เปลี่ยนจากก้อนอุกกาบาต เป็นโมเดล "ดาวเทียม" ขนานแท้! (สมจริง 100%) */
-objectThreeObject={(d) => {
-  if (d.type === 'debris') {
-    const group = new THREE.Group();
-    
-    // 📍 1. โชว์ภาพอุกกาบาตแบบคมชัด
-    const textureLoader = new THREE.TextureLoader();
-    const spriteMaterial = new THREE.SpriteMaterial({ 
-      map: textureLoader.load('/textures/asteroid.webp'), 
-      transparent: true,
-      color: 0xffffff 
-    });
-    const sprite = new THREE.Sprite(spriteMaterial);
-    // 📍 ฟันธง: ลดสเกลอุกกาบาตลงมาที่ 12 ให้สมมาตรกำลังดี
-    sprite.scale.set(13, 13, 1); 
-    group.add(sprite);
-    
-    return group;
-  }
-  
-  const group = new THREE.Group();
-
-  // 📍 2. อัปเกรด THEOS-2 ให้เป็นรูปภาพ (Sprite) ดวงเดียวเด่นๆ! 
-  if (d.catnr === '58016') {
-    const textureLoader = new THREE.TextureLoader();
-    const spriteMaterial = new THREE.SpriteMaterial({ 
-      map: textureLoader.load('/textures/THEOS-2.webp'), 
-      transparent: true,
-      color: 0xffffff 
-    });
-    const sprite = new THREE.Sprite(spriteMaterial);
-    // 📍 ฟันธง: ลดสเกล THEOS-2 ลงมาที่ 8 ให้สมส่วนกับอุกกาบาต
-    sprite.scale.set(13, 13, 1); 
-    group.add(sprite);
-  } else {
-    // ดาวเทียมดวงอื่นให้เป็นโมเดลกล่องทองแดงเล็กๆ
-    const satModel = createSatelliteModel(d.isTarget);
-    group.add(satModel);
-  }
-  
-  if (d.isTarget && isCollisionDemo && demoDebrisData) {
-    // 📍 3. คลื่นเรดาร์ 2D (Ripple Effect) ปรับให้เป็นเส้นบางๆ เฉียบๆ แบบ Tactical
-    const pulseCycle = (simulatedTimeMs % 2000) / 2000; 
-    const scale = 1 + (pulseCycle * 15); // ขยายวงให้กว้างขึ้นอีก
-    const opacity = 0.9 * (1 - pulseCycle); 
-
-    // วงแหวนคลื่นรอบนอก (ทำเส้นให้บางลงสุดๆ)
-    const ringGeo = new THREE.RingGeometry(2.8, 3.0, 64);
-    const ringMat = new THREE.MeshBasicMaterial({ color: '#00ff66', transparent: true, opacity: opacity, side: THREE.DoubleSide });
-    const ripple = new THREE.Mesh(ringGeo, ringMat);
-    
-    // วงแหวนคลื่นชั้นใน (เบลอๆ)
-    const innerRingGeo = new THREE.RingGeometry(1.2, 1.3, 64);
-    const innerRingMat = new THREE.MeshBasicMaterial({ color: '#00ff66', transparent: true, opacity: opacity * 1.5, side: THREE.DoubleSide });
-    const innerRipple = new THREE.Mesh(innerRingGeo, innerRingMat);
-    
-    ripple.scale.setScalar(scale);
-    innerRipple.scale.setScalar(scale * 0.5);
-
-    group.add(ripple);
-    group.add(innerRipple);
-  }
-  return group;
-}}
+            objectThreeObject={(d) => createSatelliteModel(d.isTarget)}
             
             objectLabel={(d) => {
-              if (d.type === 'satellite') {
-                const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
-                const flagUrl = satInfo?.flag ? `https://flagcdn.com/w20/${satInfo.flag}.png` : '';
-                return `
-                  <div style="display: flex; align-items: center; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-shadow: 0 0 5px #000, 0 0 15px #00eaff; transform: translate(15px, -15px); pointer-events: none; white-space: nowrap;">
-                    ${flagUrl ? `<img src="${flagUrl}" style="width:20px; margin-right:8px; border-radius:2px; box-shadow: 0 0 8px rgba(0,234,255,0.8);" />` : ''}
-                    ${d.name}
-                  </div>`;
-              }
+              if (d.type !== 'satellite') return '';
+              const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
+              const flagHtml = satInfo?.flag ? `<img src="https://flagcdn.com/w20/${satInfo.flag}.png" width="20" style="vertical-align: middle; border-radius: 2px; margin-right: 6px; box-shadow: 0 0 5px rgba(255,255,255,0.4);" />` : '🛰️ ';
+              
+              /* 📍 ฟันธง: ดึงระยะหลบเมาส์กลับมาที่ (45px, -55px) เป็นระยะที่พ้นไอคอนมือและสวยงามที่สุด และถอดแท็ก Style เดิมออกเพราะย้ายไปฝัง CSS หลักแล้ว */
+              return `
+                <div style="background: rgba(0, 10, 25, 0.95); border: 1px solid var(--cyan); border-radius: 6px; padding: 12px 18px; font-family: 'Rajdhani', sans-serif; box-shadow: 0 5px 25px rgba(0,234,255,0.3); transform: translate(45px, -55px); pointer-events: none;">
+                  <strong style="color: #fff; font-size: 16px; display: flex; align-items: center; border-bottom: 1px dashed rgba(0,234,255,0.4); padding-bottom: 6px; margin-bottom: 6px; text-shadow: 0 0 10px var(--cyan); letter-spacing: 1px;">
+                    ${flagHtml}${satInfo?.displayName || d.name}
+                  </strong>
+                  <div style="font-weight: bold; line-height: 1.5; font-size: 13px; letter-spacing: 0.5px;">
+                    <span style="color: var(--cyan); display: inline-block; width: 55px;">NORAD:</span> <span style="color: #fff;">${d.catnr}</span><br/>
+                    <span style="color: var(--gold); display: inline-block; width: 55px;">ALT:</span> <span style="color: #fff;">${Math.round(d.altKm).toLocaleString()} km</span><br/>
+                    <span style="color: var(--red); display: inline-block; width: 55px;">SPD:</span> <span style="color: #fff;">${d.speedKmS ? d.speedKmS.toFixed(2) : '--'} km/s</span><br/>
+                    <span style="color: var(--green); display: inline-block; width: 55px;">POS:</span> <span style="color: #fff;">${Math.abs(d.lat).toFixed(2)}°${d.lat >= 0 ? 'N' : 'S'}, ${Math.abs(d.lng).toFixed(2)}°${d.lng >= 0 ? 'E' : 'W'}</span>
+                  </div>
+                </div>
+              `;
             }}
             onObjectClick={(d) => {
               if (d.type === 'satellite') {
                 setSelectedCatnr(d.catnr);
                 if (!selectedCatnrs.includes(d.catnr)) setSelectedCatnrs([...selectedCatnrs, d.catnr]);
-                isTrackingRef.current = true; setCameraMode('TRACKING');
+                isTrackingRef.current = true;
+                setCameraMode('TRACKING');
                 if (globeRef.current) {
+                  // ฟันธง: ซูมกล้องถอยหลังให้พ้นระยะความสูงของดาวเทียม (GEO สูงมาก กล้องต้องถอยไกล)
                   const camAlt = Math.max(0.4, (d.altKm / EARTH_RADIUS_KM) + 0.5);
                   globeRef.current.pointOfView({ lat: d.lat, lng: d.lng, altitude: camAlt }, 1000);
                 }
@@ -2789,48 +2581,47 @@ objectThreeObject={(d) => {
             htmlLat="lat" htmlLng="lng" htmlAltitude="altitude"
             htmlElement={d => {
               const el = document.createElement('div');
-              if (d.type === 'station') {
-                if (stationDisplayMode === 'none') { el.innerHTML = ``; } 
-                else {
-                  const showIcon = stationDisplayMode === 'both' || stationDisplayMode === 'icon';
-                  const showName = stationDisplayMode === 'both' || stationDisplayMode === 'name';
-                  el.innerHTML = `
-                    <div style="position: relative; display: flex; align-items: center; justify-content: center; pointer-events: none;">
-                      ${showIcon ? `<span style="font-size: 38px; line-height: 1; filter: drop-shadow(0 0 15px #00eaff);">📡</span>` : `<span style="width: 38px; height: 38px; display: inline-block;"></span>`}
-                      ${showName ? `<span style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); color: #00eaff; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 14px; text-shadow: 0 0 8px #000, 0 0 15px #00eaff; margin-top: 4px; letter-spacing: 1.5px; white-space: nowrap;">${d.name}</span>` : ''}
-                    </div>
-                  `;
-                }
-              }
-              /* 📍 เฟส 2 (ป้ายระบุพิกัดขยะ): ย้ายป้ายเตือนออกห่างจากโมเดล 3D ไม่ให้บังกัน 1,000,000% */
-             /* 📍 เฟส 2 (ป้ายระบุพิกัดขยะ): โชว์แค่ระยะทาง และดันออกไปไกลๆ (translate(100px, -100px)) ไม่ให้บังดาวเทียมเด็ดขาด! */
-            /* 📍 เฟส 2 (ป้ายระบุพิกัดขยะ): เทคนิค Cinematic Auto-Hide ซ่อนป้ายเมื่อระยะ < 80km เพื่อดูฉากชนเต็มตา! */
-            else if (d.type === 'debris') {
-              // 📍 ฟันธง: ถ้าระยะห่างน้อยกว่า 80 กม. สั่ง display: none ให้ป้ายหายวับไปเลย!
-              const visibility = d.distanceKm < 80 ? 'none' : 'block';
               
-              el.innerHTML = `
-                <div style="display: ${visibility}; color: #ff3333; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 16px; text-shadow: 0 0 10px #ff3333; transform: translate(220px, -150px); pointer-events: none; background: rgba(20,0,0,0.9); border: 2px solid #ff3333; padding: 10px 20px; border-radius: 6px; white-space: nowrap; box-shadow: 0 0 20px rgba(255,51,51,0.6), inset 0 0 10px rgba(255,51,51,0.3);">
-                  🚨 CONFLICT WARNING<br/>
-                  <span style="font-size:26px; color:#fff;">DIST: ${d.distanceKm.toFixed(1)} km</span><br/>
-                  <span style="font-size:12px; color:#ff9900;">INCLINATION: 22° CROSSING</span>
-                </div>
-              `;
+             /* 📍 ถ้าเป็นสถานีภาคพื้นดิน (ระบบเลือกโหมดแสดงผล Dynamic) */
+             if (d.type === 'station') {
+              if (stationDisplayMode === 'none') {
+                el.innerHTML = ``; // ไม่แสดงอะไรเลย (ล่องหน)
+              } else {
+                const showIcon = stationDisplayMode === 'both' || stationDisplayMode === 'icon';
+                const showName = stationDisplayMode === 'both' || stationDisplayMode === 'name';
+                
+                el.innerHTML = `
+                  <div style="position: relative; display: flex; align-items: center; justify-content: center; pointer-events: none;">
+                    ${showIcon ? `<span style="font-size: 38px; line-height: 1; filter: drop-shadow(0 0 15px #00eaff);">📡</span>` : `<span style="width: 38px; height: 38px; display: inline-block;"></span>`}
+                    ${showName ? `<span style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); color: #00eaff; font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 14px; text-shadow: 0 0 8px #000, 0 0 15px #00eaff; margin-top: 4px; letter-spacing: 1.5px; white-space: nowrap;">${d.name}</span>` : ''}
+                  </div>
+                `;
+              }
             }
-            return el;
+              /* 📍 ถ้าเป็นดาวเทียมเป้าหมาย */
+              else {
+                const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
+                const flagUrl = satInfo?.flag ? `https://flagcdn.com/w20/${satInfo.flag}.png` : '';
+                el.innerHTML = `
+                  <div style="display: flex; align-items: center; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-shadow: 0 0 5px #000, 0 0 15px #00eaff; transform: translate(15px, -15px); pointer-events: none; white-space: nowrap;">
+                    ${flagUrl ? `<img src="${flagUrl}" style="width:20px; margin-right:8px; border-radius:2px; box-shadow: 0 0 8px rgba(0,234,255,0.8);" />` : ''}
+                    ${d.name}
+                  </div>`;
+              }
+              return el;
             }}
 
-            pathsData={dynamicPathsToDraw}
+            pathsData={pathsToDraw3D}
             pathPoints="points"
             pathPointLat="lat" pathPointLng="lng" pathPointAlt="alt"
             pathColor="color" pathStroke="stroke"
             pathResolution={4}
             pathTransitionDuration={0}
 
-            pathDashLength={d => d.isSignal ? 0.05 : (d.isLaser ? 0.02 : 0)}
-            pathDashGap={d => d.isSignal ? 0.05 : (d.isLaser ? 0.02 : 0)}
-            pathDashAnimateTime={d => d.isSignal ? 1500 : (d.isLaser ? 1000 : 0)}
-
+            /* 📍 ฟันธง 4: สั่งให้เฉพาะเส้นที่ฝังแท็ก isSignal วิ่งเป็นช็อตๆ ลงมาที่สถานี */
+            pathDashLength={d => d.isSignal ? 0.05 : 0}
+            pathDashGap={d => d.isSignal ? 0.05 : 0}
+            pathDashAnimateTime={d => d.isSignal ? 1500 : 0}
             
             ringsData={memoizedRings}
             ringColor={() => linkActive ? t => `rgba(255, 170, 0, ${1-t})` : t => `rgba(255, 51, 51, ${1-t})`}
@@ -3213,7 +3004,7 @@ objectThreeObject={(d) => {
 
                 return (
                   <>
-                    {/* 📍 WOW Feature 3: ปุ่ม AUTO-EARTH (Kiosk Mode) */}
+                    {/* 📍 WOW Feature 3: ปุ่ม AUTO-PILOT (Kiosk Mode) */}
                     <button 
                       onClick={() => {
                         const nextState = !isAutoPilot;
@@ -3227,7 +3018,7 @@ objectThreeObject={(d) => {
                       disabled={isRealtimePassLock}
                       style={{ width: '100%', marginBottom: '16px', padding: '18px', fontSize: '24px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '3px', borderRadius: '6px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', transition: 'all 0.3s', background: isAutoPilot ? 'linear-gradient(90deg, #ff00ff, #00eaff)' : 'rgba(255, 0, 255, 0.1)', color: isAutoPilot ? '#fff' : '#ff00ff', border: '2px solid #ff00ff', boxShadow: isAutoPilot ? '0 0 20px #ff00ff' : 'inset 0 0 10px rgba(255,0,255,0.2)', opacity: isRealtimePassLock ? 0.3 : 1 }}
                     >
-                      {isAutoPilot ? '🤖 AUTO-EARTH: ACTIVE' : '🤖 AUTO-EARTH: OFF'}
+                      {isAutoPilot ? '🤖 AUTO-PILOT: ACTIVE' : '🤖 AUTO-PILOT: OFF'}
                     </button>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
@@ -3447,47 +3238,14 @@ objectThreeObject={(d) => {
                  UPLOAD TLE
                </button>
              </div>
-{/* แถว 3: IMAGING PLAN (ขยายใหญ่ โดดเด่น) */}
-<button 
+
+             {/* แถว 3: IMAGING PLAN (ขยายใหญ่ โดดเด่น) */}
+             <button 
                className={`btn btn-red ${isImgOpen ? 'active' : ''}`}
                onClick={() => { setIsImgOpen(!isImgOpen); if (!isImgOpen) bringToFront('img'); }}
                style={{ width: '100%', marginBottom: '10px', padding: '18px', fontSize: '20px', letterSpacing: '3px', fontWeight: '900' }}
              >
               MISSION PLAN
-             </button>
-
-             {/* 📍 แถวพิเศษ: SPACE CONFLICT / COLLISION DEMO */}
-             <button 
-               className="btn"
-               onClick={() => {
-                 if (!isCollisionDemo) {
-                   // 📍 ฟันธง: สร้างจุดปะทะในอนาคตล่วงหน้า 10 นาที (ไม่ต้องมี Popup แจ้งเตือนแล้ว)
-                   const targetTime = simulatedTimeMs + (10 * 60000); 
-                   const rec = satrecs[selectedCatnr];
-                   if (rec) {
-                     const futurePos = calculateSatData(new Date(targetTime), rec);
-                     if (futurePos) {
-                       setCollisionState({ timeMs: targetTime, lat: futurePos.lat, lng: futurePos.lng, altKm: futurePos.altKm });
-                       setIsCollisionDemo(true);
-                       setCameraMode('TRACKING'); 
-                       isTrackingRef.current = true;
-                     }
-                   }
-                 } else {
-                   setIsCollisionDemo(false); 
-                   setCollisionState(null);
-                 }
-               }}
-               style={{ 
-                 width: '100%', marginBottom: '10px', padding: '18px', fontSize: '20px', letterSpacing: '2px', fontWeight: '900',
-                 background: isCollisionDemo ? 'linear-gradient(90deg, rgba(255,51,51,0.3) 0%, rgba(153,0,0,0.8) 100%)' : 'rgba(255, 102, 0, 0.05)',
-                 color: isCollisionDemo ? '#fff' : '#FF6600',
-                 border: `2px solid ${isCollisionDemo ? '#ff3333' : 'rgba(255, 102, 0, 0.4)'}`,
-                 boxShadow: isCollisionDemo ? '0 0 30px rgba(255,51,51,0.6), inset 0 0 15px rgba(255,51,51,0.4)' : 'none',
-                 transition: 'all 0.3s',
-               }}
-             >
-               {isCollisionDemo ? '🚨 ABORT CONFLICT DEMO' : '☄️ CONFLICT DEMO'}
              </button>
 
              {/* 📍 แถว 4: ระบบ 2x2 Grid สมมาตร 100% พร้อมสีสัน Hover สุดล้ำ */}
@@ -4224,6 +3982,52 @@ objectThreeObject={(d) => {
           {/* 📍 เอฟเฟกต์แสงแฟลร์ (Background Flare) */}
           <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '120%', height: '120%', background: 'radial-gradient(circle, rgba(255, 69, 0, 0.15) 0%, transparent 60%)', filter: 'blur(80px)', pointerEvents: 'none', zIndex: 0, animation: 'pulse 4s infinite' }}></div>
 
+          {/* 📍 POPUP SCI-FI ALERT (อัปเกรดแสงแฟลร์เป็นสีเขียว/แดง ตามสถานะ) */}
+          {customAlert.show && (
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(2, 6, 15, 0.85)', backdropFilter: 'blur(10px)', zIndex: 99999, display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: 'inherit' }}>
+              <div style={{ 
+                background: 'linear-gradient(135deg, rgba(0, 20, 10, 0.95), rgba(0, 5, 2, 0.95))', 
+                border: `2px solid ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, 
+                boxShadow: `0 0 50px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.4)' : 'rgba(255, 51, 51, 0.4)'}, inset 0 0 20px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`, 
+                borderRadius: '8px', padding: '35px 50px', textAlign: 'center', minWidth: '420px', position: 'relative', overflow: 'hidden',
+                animation: 'slideInRight 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)' 
+              }}>
+                
+                {/* เอฟเฟกต์แสงแฟลร์ (Flare) เปลี่ยนสีอัตโนมัติตามสถานะ */}
+                <div style={{ position: 'absolute', top: '-50%', left: '-50%', width: '200%', height: '200%', background: `radial-gradient(circle at center, ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.15)' : 'rgba(255, 51, 51, 0.15)'} 0%, transparent 60%)`, pointerEvents: 'none', animation: 'pulse 2.5s infinite' }}></div>
+                
+                <h2 style={{ fontFamily: 'Orbitron', color: customAlert.type === 'success' ? 'var(--green)' : 'var(--red)', fontSize: '28px', margin: '0 0 15px 0', textShadow: `0 0 20px ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, letterSpacing: '2px', position: 'relative', zIndex: 1 }}>
+                  {customAlert.type === 'success' ? '🚀 SYSTEM SUCCESS' : '❌ SYSTEM ERROR'}
+                </h2>
+                <p style={{ fontFamily: 'Rajdhani', color: '#fff', fontSize: '20px', marginBottom: '30px', letterSpacing: '1.5px', fontWeight: 'bold', textShadow: '0 0 10px rgba(255, 255, 255, 0.5)', position: 'relative', zIndex: 1 }}>{customAlert.message}</p>
+                
+                <button 
+                  onClick={() => setCustomAlert({ show: false, message: '', type: 'success' })} 
+                  style={{ 
+                    background: customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 51, 51, 0.1)', 
+                    border: `1px solid ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, 
+                    color: customAlert.type === 'success' ? 'var(--green)' : 'var(--red)', 
+                    padding: '12px 50px', fontSize: '18px', fontFamily: 'Orbitron', fontWeight: '900', cursor: 'pointer', borderRadius: '4px', letterSpacing: '3px', transition: 'all 0.2s', position: 'relative', zIndex: 1,
+                    boxShadow: `0 0 15px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`
+                  }}
+                  onMouseOver={(e) => { 
+                    e.currentTarget.style.background = customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'; 
+                    e.currentTarget.style.color = '#000'; 
+                    e.currentTarget.style.boxShadow = `0 0 30px ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`; 
+                    e.currentTarget.style.transform = 'scale(1.05)';
+                  }}
+                  onMouseOut={(e) => { 
+                    e.currentTarget.style.background = customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 51, 51, 0.1)'; 
+                    e.currentTarget.style.color = customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'; 
+                    e.currentTarget.style.boxShadow = `0 0 15px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`;
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                >
+                  ACKNOWLEDGE
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Header */}
           <div className="modal-header" style={{ position: 'relative', zIndex: 10, borderBottom: '2px solid #FF4500', padding: '12px 20px', cursor: maximizedWins.img ? 'default' : (isDraggingImg ? 'grabbing' : 'grab'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(255, 69, 0, 0.2) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(255, 69, 0, 0.5)' }} onMouseDown={(e) => { if(!maximizedWins.img) handleImgMouseDown(e); }}>
@@ -5122,7 +4926,7 @@ objectThreeObject={(d) => {
                   {linkActive && ['50%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
                     <div key={`bpsk-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
                       <div style={{ width: '3px', height: '3px', background: 'var(--cyan)', borderRadius: '50%', boxShadow: '0 0 5px var(--cyan)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
-                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(0,234,255,0.6)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
+                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(0,234,255,0.6)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + Math.random()*0.2}s infinite alternate` }}></div>
                     </div>
                   )))}
                 </div>
@@ -5168,7 +4972,7 @@ objectThreeObject={(d) => {
                   {linkActive && ['20%', '80%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
                     <div key={`c-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
                       <div style={{ width: '3px', height: '3px', background: 'var(--red)', borderRadius: '50%', boxShadow: '0 0 5px var(--red)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
-                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
+                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + Math.random()*0.2}s infinite alternate` }}></div>
                     </div>
                   )))}
                 </div>
