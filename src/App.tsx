@@ -1583,20 +1583,36 @@ useEffect(() => {
     }
   });
 }, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying]);
+
+// 📍 ฟันธง: สร้างโกดังเก็บอ็อบเจ็กต์ดาวเทียม ป้องกันการสร้าง 3D Models รัวๆ ทุก 50ms (หยุด WebGL Memory Leak)
+const satObjectsRef = useRef({});
+
 const allSatObjects = useMemo(() => {
   const currentD = new Date(simulatedTimeMs);
   return SATELLITE_OPTIONS.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
     if (!satrecs[sat.catnr]) return null;
     const data = calculateSatData(currentD, satrecs[sat.catnr]);
     if (!data) return null;
-    return {
-      ...data, 
-      type: 'satellite', 
-      name: sat.displayName,
-      catnr: sat.catnr,
-      isTarget: sat.catnr === selectedCatnr,
-      altitude: Math.max(0.05, data.altKm / EARTH_RADIUS_KM)
-    };
+    
+    // 📍 รีไซเคิลอ็อบเจ็กต์เดิม ไม่สร้างใหม่ (ป้องกัน GPU พัง)
+    if (!satObjectsRef.current[sat.catnr]) {
+      satObjectsRef.current[sat.catnr] = { type: 'satellite', catnr: sat.catnr, name: sat.displayName };
+    }
+    
+    const obj = satObjectsRef.current[sat.catnr];
+    obj.lat = data.lat;
+    obj.lng = data.lng;
+    obj.altKm = data.altKm;
+    obj.altitude = Math.max(0.05, data.altKm / EARTH_RADIUS_KM);
+    obj.isTarget = sat.catnr === selectedCatnr;
+    
+    // อัปเดตข้อมูลแกน Tracking ให้สมองกลอื่นๆ เอาไปใช้ต่อได้
+    obj.elevationDeg = data.elevationDeg;
+    obj.azimuthDeg = data.azimuthDeg;
+    obj.rangeKm = data.rangeKm;
+    obj.speedKmS = data.speedKmS;
+    
+    return obj;
   }).filter(Boolean);
 }, [simulatedTimeMs, satrecs, selectedCatnr, selectedCatnrs]);
 
@@ -2466,6 +2482,53 @@ useEffect(() => {
 }, [radarPos.y, gsPos.y, anglesPos.y, dbPos.y, passPos.y, diagramPos.y, analyzerPos.y, imgPos.y]);
 return (
   <>
+
+  {/* 📍 GLOBAL POPUP SCI-FI ALERT (วางไว้บนสุด เพื่อให้ทะลุทุกหน้าต่าง) */}
+  {customAlert.show && (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(2, 6, 15, 0.85)', backdropFilter: 'blur(15px)', zIndex: 9999999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <div style={{ 
+          background: 'linear-gradient(135deg, rgba(0, 20, 10, 0.95), rgba(0, 5, 2, 0.95))', 
+          border: `2px solid ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, 
+          boxShadow: `0 0 50px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.4)' : 'rgba(255, 51, 51, 0.4)'}, inset 0 0 20px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`, 
+          borderRadius: '8px', padding: '35px 50px', textAlign: 'center', minWidth: '420px', position: 'relative', overflow: 'hidden',
+          animation: 'slideInRight 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)' 
+        }}>
+          
+          <div style={{ position: 'absolute', top: '-50%', left: '-50%', width: '200%', height: '200%', background: `radial-gradient(circle at center, ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.15)' : 'rgba(255, 51, 51, 0.15)'} 0%, transparent 60%)`, pointerEvents: 'none', animation: 'pulse 2.5s infinite' }}></div>
+          
+          <h2 style={{ fontFamily: 'Orbitron', color: customAlert.type === 'success' ? 'var(--green)' : 'var(--red)', fontSize: '28px', margin: '0 0 15px 0', textShadow: `0 0 20px ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, letterSpacing: '2px', position: 'relative', zIndex: 1 }}>
+            {customAlert.type === 'success' ? '🚀 SYSTEM MESSAGE' : '🚨 SYSTEM WARNING'}
+          </h2>
+          <p style={{ fontFamily: 'Rajdhani', color: '#fff', fontSize: '22px', marginBottom: '30px', letterSpacing: '1.5px', fontWeight: 'bold', textShadow: '0 0 10px rgba(255, 255, 255, 0.5)', position: 'relative', zIndex: 1, whiteSpace: 'pre-line' }}>{customAlert.message}</p>
+          
+          <button 
+            onClick={() => setCustomAlert({ show: false, message: '', type: 'success' })} 
+            style={{ 
+              background: customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 51, 51, 0.1)', 
+              border: `1px solid ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, 
+              color: customAlert.type === 'success' ? 'var(--green)' : 'var(--red)', 
+              padding: '12px 50px', fontSize: '18px', fontFamily: 'Orbitron', fontWeight: '900', cursor: 'pointer', borderRadius: '4px', letterSpacing: '3px', transition: 'all 0.2s', position: 'relative', zIndex: 1,
+              boxShadow: `0 0 15px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`
+            }}
+            onMouseOver={(e) => { 
+              e.currentTarget.style.background = customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'; 
+              e.currentTarget.style.color = '#000'; 
+              e.currentTarget.style.boxShadow = `0 0 30px ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`; 
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseOut={(e) => { 
+              e.currentTarget.style.background = customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 51, 51, 0.1)'; 
+              e.currentTarget.style.color = customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'; 
+              e.currentTarget.style.boxShadow = `0 0 15px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`;
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            ACKNOWLEDGE
+          </button>
+        </div>
+      </div>
+    )}
+
     {/* 📍 หน้าจอ Loading Screen (Splash Screen) ปิดทับทุกสิ่งจนกว่าจะโหลดเสร็จ */}
     <div className={`loading-overlay ${isAppReady ? 'fade-out' : ''}`}>
     <div className="loading-logo">
@@ -3006,19 +3069,24 @@ return (
                   <>
                     {/* 📍 WOW Feature 3: ปุ่ม AUTO-PILOT (Kiosk Mode) */}
                     <button 
-                      onClick={() => {
-                        const nextState = !isAutoPilot;
-                        setIsAutoPilot(nextState);
-                        // 📍 ฟันธง: ย้ายคำสั่งกล้องมาไว้ตรงนี้! จะทำงานแค่ครั้งเดียวตอนกดปิด (OFF)
-                        if (!nextState && globeRef.current) {
-                          globeRef.current.controls().autoRotate = false;
-                          globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
-                        }
-                      }}
+                     onClick={() => {
+                      const nextState = !isAutoPilot;
+                      setIsAutoPilot(nextState);
+                      // 📍 ฟันธง: ถ้าเปิด Auto-Pilot ต้องเตะ Target Lock ออกทันที!
+                      if (nextState) {
+                        setCameraMode('FREE LOOK');
+                        isTrackingRef.current = false;
+                      }
+                      // 📍 ย้ายคำสั่งกล้องมาไว้ตรงนี้! จะทำงานแค่ครั้งเดียวตอนกดปิด (OFF)
+                      if (!nextState && globeRef.current) {
+                        globeRef.current.controls().autoRotate = false;
+                        globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
+                      }
+                    }}
                       disabled={isRealtimePassLock}
                       style={{ width: '100%', marginBottom: '16px', padding: '18px', fontSize: '24px', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '3px', borderRadius: '6px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', transition: 'all 0.3s', background: isAutoPilot ? 'linear-gradient(90deg, #ff00ff, #00eaff)' : 'rgba(255, 0, 255, 0.1)', color: isAutoPilot ? '#fff' : '#ff00ff', border: '2px solid #ff00ff', boxShadow: isAutoPilot ? '0 0 20px #ff00ff' : 'inset 0 0 10px rgba(255,0,255,0.2)', opacity: isRealtimePassLock ? 0.3 : 1 }}
                     >
-                      {isAutoPilot ? '🤖 AUTO-PILOT: ACTIVE' : '🤖 AUTO-PILOT: OFF'}
+                      {isAutoPilot ? '🤖 AUTO-EARTH: ACTIVE' : '🤖 AUTO-EARTH: OFF'}
                     </button>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
@@ -3049,7 +3117,11 @@ return (
                       <button className="btn" style={{ flex: '1', margin: 0, padding: '0', fontSize: '20px', letterSpacing: '3px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => {
                         setSimulatedTimeMs(Date.now()); setSpeedMult(1); setIsPlaying(true); isTrackingRef.current = false; setCameraMode('FREE LOOK');
                         setSelectedPlanId(null); setMapZoom(1); setImgMapOrigin('center center'); setTacticalZoom(1); setZoomOrigin('center center');
-                        if (globeRef.current) globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
+                        setIsAutoPilot(false); // 📍 ฟันธง: สั่งยกเลิก Auto-Pilot ทันที
+                        if (globeRef.current) {
+                          globeRef.current.controls().autoRotate = false; // 📍 ปิดโหมดหมุนโลก
+                          globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
+                        }
                       }}>RESET</button>
                     </div>
 
@@ -3158,6 +3230,12 @@ return (
                       const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
                       setCameraMode(newMode);
                       isTrackingRef.current = (newMode === 'TRACKING');
+                      
+                      // 📍 ฟันธง: ถ้ากดเปิด Target Lock ต้องเตะ Auto-Pilot ออกทันที!
+                      if (newMode === 'TRACKING') {
+                        setIsAutoPilot(false);
+                        if (globeRef.current) globeRef.current.controls().autoRotate = false;
+                      }
                       
                       if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
                         try {
@@ -3981,53 +4059,6 @@ return (
 
           {/* 📍 เอฟเฟกต์แสงแฟลร์ (Background Flare) */}
           <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '120%', height: '120%', background: 'radial-gradient(circle, rgba(255, 69, 0, 0.15) 0%, transparent 60%)', filter: 'blur(80px)', pointerEvents: 'none', zIndex: 0, animation: 'pulse 4s infinite' }}></div>
-
-          {/* 📍 POPUP SCI-FI ALERT (อัปเกรดแสงแฟลร์เป็นสีเขียว/แดง ตามสถานะ) */}
-          {customAlert.show && (
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(2, 6, 15, 0.85)', backdropFilter: 'blur(10px)', zIndex: 99999, display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: 'inherit' }}>
-              <div style={{ 
-                background: 'linear-gradient(135deg, rgba(0, 20, 10, 0.95), rgba(0, 5, 2, 0.95))', 
-                border: `2px solid ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, 
-                boxShadow: `0 0 50px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.4)' : 'rgba(255, 51, 51, 0.4)'}, inset 0 0 20px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`, 
-                borderRadius: '8px', padding: '35px 50px', textAlign: 'center', minWidth: '420px', position: 'relative', overflow: 'hidden',
-                animation: 'slideInRight 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)' 
-              }}>
-                
-                {/* เอฟเฟกต์แสงแฟลร์ (Flare) เปลี่ยนสีอัตโนมัติตามสถานะ */}
-                <div style={{ position: 'absolute', top: '-50%', left: '-50%', width: '200%', height: '200%', background: `radial-gradient(circle at center, ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.15)' : 'rgba(255, 51, 51, 0.15)'} 0%, transparent 60%)`, pointerEvents: 'none', animation: 'pulse 2.5s infinite' }}></div>
-                
-                <h2 style={{ fontFamily: 'Orbitron', color: customAlert.type === 'success' ? 'var(--green)' : 'var(--red)', fontSize: '28px', margin: '0 0 15px 0', textShadow: `0 0 20px ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, letterSpacing: '2px', position: 'relative', zIndex: 1 }}>
-                  {customAlert.type === 'success' ? '🚀 SYSTEM SUCCESS' : '❌ SYSTEM ERROR'}
-                </h2>
-                <p style={{ fontFamily: 'Rajdhani', color: '#fff', fontSize: '20px', marginBottom: '30px', letterSpacing: '1.5px', fontWeight: 'bold', textShadow: '0 0 10px rgba(255, 255, 255, 0.5)', position: 'relative', zIndex: 1 }}>{customAlert.message}</p>
-                
-                <button 
-                  onClick={() => setCustomAlert({ show: false, message: '', type: 'success' })} 
-                  style={{ 
-                    background: customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 51, 51, 0.1)', 
-                    border: `1px solid ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`, 
-                    color: customAlert.type === 'success' ? 'var(--green)' : 'var(--red)', 
-                    padding: '12px 50px', fontSize: '18px', fontFamily: 'Orbitron', fontWeight: '900', cursor: 'pointer', borderRadius: '4px', letterSpacing: '3px', transition: 'all 0.2s', position: 'relative', zIndex: 1,
-                    boxShadow: `0 0 15px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`
-                  }}
-                  onMouseOver={(e) => { 
-                    e.currentTarget.style.background = customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'; 
-                    e.currentTarget.style.color = '#000'; 
-                    e.currentTarget.style.boxShadow = `0 0 30px ${customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'}`; 
-                    e.currentTarget.style.transform = 'scale(1.05)';
-                  }}
-                  onMouseOut={(e) => { 
-                    e.currentTarget.style.background = customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 51, 51, 0.1)'; 
-                    e.currentTarget.style.color = customAlert.type === 'success' ? 'var(--green)' : 'var(--red)'; 
-                    e.currentTarget.style.boxShadow = `0 0 15px ${customAlert.type === 'success' ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 51, 51, 0.2)'}`;
-                    e.currentTarget.style.transform = 'scale(1)';
-                  }}
-                >
-                  ACKNOWLEDGE
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Header */}
           <div className="modal-header" style={{ position: 'relative', zIndex: 10, borderBottom: '2px solid #FF4500', padding: '12px 20px', cursor: maximizedWins.img ? 'default' : (isDraggingImg ? 'grabbing' : 'grab'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(255, 69, 0, 0.2) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(255, 69, 0, 0.5)' }} onMouseDown={(e) => { if(!maximizedWins.img) handleImgMouseDown(e); }}>
@@ -4926,7 +4957,7 @@ return (
                   {linkActive && ['50%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
                     <div key={`bpsk-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
                       <div style={{ width: '3px', height: '3px', background: 'var(--cyan)', borderRadius: '50%', boxShadow: '0 0 5px var(--cyan)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
-                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(0,234,255,0.6)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + Math.random()*0.2}s infinite alternate` }}></div>
+                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(0,234,255,0.6)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
                     </div>
                   )))}
                 </div>
@@ -4972,7 +5003,7 @@ return (
                   {linkActive && ['20%', '80%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
                     <div key={`c-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
                       <div style={{ width: '3px', height: '3px', background: 'var(--red)', borderRadius: '50%', boxShadow: '0 0 5px var(--red)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
-                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + Math.random()*0.2}s infinite alternate` }}></div>
+                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
                     </div>
                   )))}
                 </div>
