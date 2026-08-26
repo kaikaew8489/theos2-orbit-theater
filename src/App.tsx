@@ -288,110 +288,100 @@ const injectStyles = () => {
     .menu-toggle-btn-left { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(0,234,255,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--cyan); color: var(--cyan); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(0,234,255,0.6), inset 0 0 10px rgba(0,234,255,0.3); flex-shrink: 0; }
     .menu-toggle-btn-left:hover { background: var(--cyan); color: #000; box-shadow: 0 0 30px var(--cyan); transform: scale(1.1); }
     
-    .left-panel { width: 817px !important; box-sizing: border-box !important; display: flex; flex-direction: column; gap: 24px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
+    .left-panel { width: 780px !important; box-sizing: border-box !important; display: flex; flex-direction: column; gap: 24px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
     .left-panel::-webkit-scrollbar { display: none; }
     @keyframes slideInLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
 
     /* 📍 อัปเกรดแสงแฟลร์สีฟ้า (Cyan Flare) ของแผงข้อมูลให้สว่างวาบยิ่งขึ้น */
+    /* 📍 ฟันธง: ลิงก์กรอบแผงข้อมูลเข้ากับระบบ Theme และลดแสงแฟลร์ขอบลงให้ดูคลีน */
     .panel-box { 
       box-sizing: border-box !important;
-      background: linear-gradient(145deg, rgba(0, 25, 45, 0.85) 0%, rgba(0, 5, 15, 0.95) 100%) !important; 
+      background: linear-gradient(145deg, rgba(5, 10, 20, 0.85) 0%, rgba(0, 5, 10, 0.95) 100%) !important; 
       backdrop-filter: blur(15px) !important; 
-      border: 2px solid #00eaff !important; 
+      border: 2px solid var(--cyan) !important; 
       border-radius: 10px; padding: 20px; 
-      box-shadow: 0 0 60px rgba(0, 234, 255, 0.45), inset 0 0 30px rgba(0, 234, 255, 0.25) !important; 
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8), inset 0 0 20px rgba(255, 255, 255, 0.05) !important; 
       position: relative; overflow: hidden;
-      flex-shrink: 0 !important; /* 📍 ฟันธง: ล็อกห้ามกล่องโดนบีบความสูง ป้องกันตัวหนังสือแหว่ง 100% */
+      flex-shrink: 0 !important; 
     }
 
     .control-group { 
-      background: linear-gradient(145deg, rgba(0, 15, 30, 0.85) 0%, rgba(0, 5, 15, 0.95) 100%) !important; 
+      background: linear-gradient(145deg, rgba(5, 10, 20, 0.85) 0%, rgba(0, 5, 15, 0.95) 100%) !important; 
       backdrop-filter: blur(15px) !important; 
       border: 1px solid var(--cyan); border-top: 2px solid var(--cyan);
       border-radius: 8px; padding: 20px; 
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 234, 255, 0.3), inset 0 0 20px rgba(0, 234, 255, 0.15); 
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(255, 255, 255, 0.05); 
       position: relative; overflow: visible; 
       flex-shrink: 0; 
-      margin-top: 28px; /* 📍 ฟันธง: ดันตัวกล่องลงมา 28px เพื่อเปิดพื้นที่ว่างด้านบน ไม่ให้ป้ายโดนขอบจอตัดแหว่ง! */
+      margin-top: 28px; 
     }
     
-    .main-title h1 { margin: 0 0 8px 0; font-family: 'Orbitron', sans-serif; font-size: 30px; font-weight: 900; color: #ffffff; text-shadow: 0 0 20px #00eaff, 0 0 40px #00eaff; letter-spacing: 2px; }
-    .main-title span { display: block !important; font-size: 13px !important; color: #ffffff !important; font-weight: 600 !important; letter-spacing: 2px !important; text-shadow: 0 0 10px rgba(255,255,255,0.8) !important; text-transform: uppercase !important; }
-
+    .main-title h1 { margin: 0 0 8px 0; font-family: 'Orbitron', sans-serif; font-size: 30px; font-weight: 900; color: #ffffff; text-shadow: 0 0 20px var(--cyan); letter-spacing: 2px; }
+    .main-title span { display: block !important; font-size: 13px !important; color: #ffffff !important; font-weight: 600 !important; letter-spacing: 2px !important; text-shadow: 0 0 10px rgba(0,0,0,0.8) !important; text-transform: uppercase !important; }
     /* 📍 อัปเกรดนาฬิกาเป็น "Master Clock" ขยายไซส์และจัดสมมาตร 100% */
     .global-clock-hud { 
       display: flex; flex-direction: column; 
-      /* 📍 ฟันธงแก้ตัวเลขหาย: ขยายความกว้างกรอบเป็น 760px เป๊ะๆ ให้กว้างพอรับตัวเลขไซส์ยักษ์ และล็อกตายตัวไม่ให้ดิ้น! */
-      width: 760px !important; 
+      width: 723px !important; 
       box-sizing: border-box !important; 
-      background: linear-gradient(180deg, rgba(25, 5, 0, 0.98), rgba(5, 0, 0, 1)); 
+      background: linear-gradient(180deg, rgba(5, 10, 20, 0.98), rgba(0, 0, 5, 1)); 
       backdrop-filter: blur(20px); 
-      border: 1px solid rgba(255, 69, 0, 0.6); border-top: 3px solid #FF4500;
+      border: 1px solid var(--cyan); border-top: 3px solid var(--cyan);
       border-radius: 10px; padding: 25px 40px; 
-      box-shadow: 0 15px 40px rgba(0,0,0,0.9), inset 0 0 25px rgba(255, 69, 0, 0.2);
+      box-shadow: 0 15px 40px rgba(0,0,0,0.9), inset 0 0 15px rgba(255, 255, 255, 0.05);
       pointer-events: auto; position: relative; gap: 20px; 
+      flex-shrink: 0 !important; 
     }
     
-    /* 📍 ฟันธงแก้ระยะห่าง: ถ่างช่องไฟให้กว้างขึ้นอีกด้วย gap: 80px ให้เวลาหนีห่างจาก DOY อย่างสมมาตรที่สุด */
-    .clock-row { display: grid; grid-template-columns: 1fr max-content 1fr; width: 100%; align-items: center; gap: 80px; }
+    .clock-row { display: grid; grid-template-columns: 1fr max-content 1fr; width: 100%; align-items: center; gap: 40px; }
     
     .global-clock-hud .clock-item { display: flex; flex-direction: column; justify-content: center; white-space: nowrap; }
-    
-    /* 📍 ฟันธงแก้ข้อความขยับ: บังคับ text-align ให้ชิดซ้ายสุดและขวาสุด เพื่อให้ขอบตัวเลขด้านนอกชนกรอบและนิ่งสนิทเสมอ! */
     .global-clock-hud .clock-item:nth-child(1) { align-items: flex-start; justify-self: start; text-align: left; }
     .global-clock-hud .clock-item:nth-child(2) { align-items: center; justify-self: center; padding: 0 10px; } 
     .global-clock-hud .clock-item:nth-child(3) { align-items: flex-end; justify-self: end; text-align: right; }
 
     .global-clock-hud .clock-item span { 
-      font-size: 18px; 
-      color: rgba(255, 255, 255, 0.6); font-weight: 900; letter-spacing: 3px; margin-bottom: 8px; text-transform: uppercase; text-shadow: 0 0 5px rgba(0,0,0,0.8);
+      font-size: 22px; /* 📍 ขยายจาก 18px เป็น 22px */
+      color: rgba(255, 255, 255, 0.95); /* 📍 เร่งแสงให้ขาวสว่างเกือบ 100% ไม่จมแล้ว! */
+      font-weight: 900; letter-spacing: 4px; margin-bottom: 8px; text-transform: uppercase; text-shadow: 0 0 8px rgba(0,0,0,0.9);
     }
-    
     .global-clock-hud .clock-item strong { 
       font-family: 'Orbitron', sans-serif; 
       font-size: 42px; 
       font-weight: 900; 
-      /* 📍 ฟันธงบังคับตัวเลขไม่ดิ้น: ใช้ tabular-nums บังคับให้ตัวเลขทุกตัวกว้างเท่ากัน และใช้ monospaced เพื่อความนิ่งสนิท */
       font-variant-numeric: tabular-nums;
       font-feature-settings: "tnum";
       letter-spacing: 2px; line-height: 1; 
     }
 
-    /* 📍 ฟันธง 3 สี Tactical UI: Local (แดงส้ม), DOY (ทอง), UTC (ฟ้า) */
-    .global-clock-hud .clock-item:nth-child(1) strong { color: var(--red); text-shadow: 0 0 25px rgba(255, 51, 51, 0.9), 0 0 10px rgba(255, 255, 255, 0.4); }
-    .global-clock-hud .clock-item:nth-child(3) strong { color: var(--cyan); text-shadow: 0 0 25px rgba(0, 234, 255, 0.9), 0 0 10px rgba(255, 255, 255, 0.4); }
+    .global-clock-hud .clock-item:nth-child(1) strong { color: var(--red); text-shadow: none; }
+    .global-clock-hud .clock-item:nth-child(3) strong { color: var(--cyan); text-shadow: none; }
     
-    /* 📍 ฟันธง: อัปเกรด DOY (วันที่) เป็นแกนกลางทรงพลัง */
     .global-clock-hud .clock-item.doy-item strong {
       color: var(--gold) !important; 
       font-size: 64px !important; 
-      text-shadow: 0 0 40px rgba(255, 204, 0, 0.9), 0 0 20px rgba(255, 255, 255, 0.6) !important; 
+      text-shadow: none !important; 
       line-height: 0.85; 
     }
-    .global-clock-hud .clock-item.doy-item span { 
-      color: var(--gold) !important; 
-      letter-spacing: 4px !important;
-    }
-    
+
     /* 📍 จัดกึ่งกลางป้าย Status โดดเด่น ชัดเจน ทรงพลัง */
     .status-badge { 
       width: 100%; display: flex; justify-content: center; align-items: center; gap: 10px;
-      padding: 8px 0; border-radius: 4px; font-size: 13px; font-weight: 900; font-family: 'Orbitron', sans-serif; 
-      letter-spacing: 3px; border: 1px solid; text-transform: uppercase; 
+      padding: 16px 0 !important; border-radius: 4px; font-size: 22px !important; font-weight: 900; font-family: 'Orbitron', sans-serif; 
+      letter-spacing: 4px; border: 1px solid; text-transform: uppercase; 
     }
     
-    .status-badge.live { background: rgba(0, 255, 102, 0.1); border-color: #00ff66; color: #00ff66; box-shadow: inset 0 0 15px rgba(0, 255, 102, 0.2); }
-    .status-badge.sim { background: rgba(255, 171, 46, 0.1); border-color: #ffab2e; color: #ffab2e; box-shadow: inset 0 0 15px rgba(255, 171, 46, 0.2); }
+    .status-badge.live { background: rgba(0,0,0,0.5); border-color: var(--green); color: var(--green); box-shadow: inset 0 0 15px rgba(255, 255, 255, 0.05); }
+    .status-badge.sim { background: rgba(0,0,0,0.5); border-color: var(--gold); color: var(--gold); box-shadow: inset 0 0 15px rgba(255, 255, 255, 0.05); }
 
-    /* 📍 อัปเกรด: บังคับธงชาติและชื่อดาวเทียมให้ใหญ่กระแทกตาระดับรัฐมนตรีมองเห็น */
-    .target-header { display: flex; flex-direction: row !important; align-items: center; justify-content: center; gap: 25px; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px dashed rgba(0,234,255,0.4); }
-    .target-header img { width: 64px; border-radius: 8px; border: 2px solid var(--cyan); box-shadow: 0 0 25px var(--cyan); }
-    /* 📍 ฟันธงแก้ข้อ 1: บังคับชื่อดาวเทียมให้ย่อขนาด (clamp) ลดช่องไฟ และตัดขึ้นบรรทัดใหม่ได้สูงสุด 2 บรรทัด ป้องกันการทะลุกรอบ 100% */
-    .target-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: clamp(20px, 2.5vw, 42px); font-weight: 900; color: #fff; letter-spacing: 2px; text-shadow: 0 0 30px var(--cyan), 0 0 15px #000; line-height: 1.1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-align: center; }
+    .target-header { display: flex; flex-direction: row !important; align-items: center; justify-content: center; gap: 25px; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px dashed rgba(255,255,255,0.2); }
+    .target-header img { width: 64px; border-radius: 8px; border: 2px solid var(--cyan); box-shadow: 0 0 25px rgba(0,0,0,0.5); }
+    .target-header h2 { margin: 0; font-family: 'Orbitron', sans-serif; font-size: clamp(20px, 2.5vw, 42px); font-weight: 900; color: #fff; letter-spacing: 2px; text-shadow: none; line-height: 1.1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-align: center; }
     
     .status-banner { text-align: center; font-family: 'Orbitron', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 2px; padding: 25px 15px; margin-bottom: 25px; border-radius: 12px; transition: all 0.3s; min-height: 160px; justify-content: center; }
-    .status-banner.standby { background: linear-gradient(180deg, rgba(255, 51, 51, 0.2), rgba(0,0,0,0.6)); border: 2px solid var(--red); color: var(--red); box-shadow: 0 0 30px rgba(255, 51, 51, 0.6), inset 0 0 20px rgba(255, 51, 51, 0.4); text-shadow: 0 0 10px var(--red); }
-    .status-banner.active { background: linear-gradient(180deg, rgba(0, 234, 255, 0.2), rgba(0,0,0,0.6)); border: 2px solid var(--cyan); color: var(--cyan); box-shadow: 0 0 30px rgba(0, 234, 255, 0.6), inset 0 0 20px rgba(0, 234, 255, 0.4); text-shadow: 0 0 10px var(--cyan); }
+    
+    /* 📍 ฟันธง: ซิงค์ป้ายสถานะกับ Theme และลบเงาตกกระทบเรืองแสงทิ้ง ให้เหลือแต่ขอบคมๆ */
+    .status-banner.standby { background: rgba(0,0,0,0.5); border: 2px solid var(--red); color: var(--red); box-shadow: 0 10px 20px rgba(0,0,0,0.5), inset 0 0 15px rgba(255, 255, 255, 0.05); text-shadow: none; }
+    .status-banner.active { background: rgba(0,0,0,0.5); border: 2px solid var(--green); color: var(--green); box-shadow: 0 10px 20px rgba(0,0,0,0.5), inset 0 0 15px rgba(255, 255, 255, 0.05); text-shadow: none; }
 
     /* 📍 แก้ไขกรอบวงสีแดง (Telemetry Grid): ล็อกความสูงและตั้งค่าไม่ให้ตัวหนังสือตัดบรรทัด (ป้องกันการเด้ง) */
     .telemetry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
@@ -403,25 +393,24 @@ const injectStyles = () => {
     .t-box strong { font-family: 'Orbitron', sans-serif; font-size: 42px; color: #ffffff; margin-top: 8px; text-shadow: 0 0 15px rgba(255, 255, 255, 0.6); letter-spacing: 1px; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
     /* 📍 อัปเกรด Info List (ข้อมูลดาวเทียม): ถอดเส้นคั่น ขยายฟอนต์ และกระชับบรรทัด */
-    .info-list { list-style: none; padding: 20px 0 0 0; margin: 20px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 22px; line-height: 1.6; }
-    .info-list li { display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 4px; margin-bottom: 12px; }
+    .info-list { list-style: none; padding: 25px 0 0 0; margin: 25px 0 0 0; border-top: 1px dashed rgba(0, 234, 255, 0.4); font-size: 26px; line-height: 1.8; }
+    .info-list li { display: flex; justify-content: space-between; align-items: center; border-bottom: none; padding-bottom: 8px; margin-bottom: 18px; }
     .info-list li:last-child { margin-bottom: 0; padding-bottom: 0; }
-    .info-list span { color: rgba(255, 255, 255, 0.7); font-weight: 600; letter-spacing: 0.5px; }
-    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-align: right; font-size: 25px; letter-spacing: 1.5px; }
-
+    .info-list span { color: rgba(255, 255, 255, 0.95); font-size: 25px; font-weight: 800; letter-spacing: 1.5px; } /* 📍 ขยายไซส์เป็น 25px เพิ่มความหนา และดันสีให้สว่างชัดเจนแก้ปวดตา 100% */
+    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 10px rgba(0, 234, 255, 0.4); text-align: right; font-size: 30px; letter-spacing: 2px; }
     .right-container { display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; height: 100%; z-index: 20; }
     .menu-toggle-btn { width: 42px; height: 42px; background: linear-gradient(135deg, rgba(255,204,0,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--gold); color: var(--gold); font-size: 22px; cursor: pointer; border-radius: 8px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: 15px; box-shadow: 0 0 15px rgba(255,204,0,0.6), inset 0 0 10px rgba(255,204,0,0.3); }
     .menu-toggle-btn:hover { background: var(--gold); color: #000; box-shadow: 0 0 30px var(--gold); transform: scale(1.1); }
     
     /* 📍 ฟันธง: ขยายแผงขวาให้กว้าง 637px สมมาตรกับแผงซ้าย 100% พร้อมขยายช่องไฟ (Gap) เป็น 24px */
-    .right-panel { width: 637px !important; display: flex; flex-direction: column; gap: 24px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
+    .right-panel { width: 780px !important; display: flex; flex-direction: column; gap: 24px; pointer-events: auto; flex: 1; min-height: 0; animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; }
     .right-panel::-webkit-scrollbar { display: none; } /* 📍 ซ่อน Scrollbar ให้ UI ดูคลีนสไตล์ Sci-Fi */
 
-    /* 📍 ฟันธง: อัปเกรดหัวข้อแผงขวาเป็น "ป้าย Badge ทับเส้นขอบ (Legend Style)" แยกหมวดหมู่ชัดเจนลดอาการตาล้า */
+    /* 📍 ฟันธง: ขยายป้ายหัวข้อหมวดหมู่ */
     .control-group p { 
-      text-align: center; margin: -40px auto 22px auto; width: fit-content; 
-      font-size: 20px !important; font-weight: 900; letter-spacing: 4px !important; 
-      padding: 6px 30px !important; color: #ffffff !important;
+      text-align: center; margin: -45px auto 26px auto; width: fit-content; 
+      font-size: 26px !important; font-weight: 900; letter-spacing: 5px !important; 
+      padding: 10px 40px !important; color: #ffffff !important;
       background: #010408; border-radius: 4px; border: 1px solid; 
       font-family: 'Orbitron', sans-serif;
     }
@@ -429,10 +418,17 @@ const injectStyles = () => {
     .control-group:nth-child(2) p { border-color: var(--green); box-shadow: 0 0 15px rgba(0,255,102,0.4), inset 0 0 10px rgba(0,255,102,0.2); text-shadow: 0 0 10px var(--green); }
     .control-group:nth-child(3) p { border-color: var(--cyan); box-shadow: 0 0 15px rgba(0,234,255,0.4), inset 0 0 10px rgba(0,234,255,0.2); text-shadow: 0 0 10px var(--cyan); }
     
-    /* 📍 อัปเกรดขนาดปุ่มระดับ Masterpiece: เพิ่มความหนากล่องและขยายฟอนต์รองรับกรอบ 637px */
-    .btn { display: block; width: 100%; background: rgba(0, 15, 30, 0.5); border: 1px solid rgba(0, 234, 255, 0.5); color: var(--cyan); padding: 20px !important; margin-bottom: 12px; font-family: 'Rajdhani', sans-serif; font-size: 20px !important; font-weight: 900; cursor: pointer; text-align: center; border-radius: 6px; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); letter-spacing: 3px !important; text-transform: uppercase; text-shadow: 0 0 10px rgba(0, 234, 255, 0.8); box-shadow: 0 5px 15px rgba(0,0,0,0.4); position: relative; overflow: hidden; }
-    
+    /* 📍 ฟันธง: บังคับขยายปุ่มทั้งหมดทะลุข้อจำกัดเดิม */
+    .btn { display: block; width: 100%; background: rgba(0, 15, 30, 0.5); border: 1px solid rgba(0, 234, 255, 0.5); color: var(--cyan); padding: 24px !important; margin-bottom: 15px; font-family: 'Rajdhani', sans-serif; font-size: 24px !important; font-weight: 900; cursor: pointer; text-align: center; border-radius: 6px; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); letter-spacing: 3px !important; text-transform: uppercase; text-shadow: 0 0 10px rgba(0, 234, 255, 0.8); box-shadow: 0 5px 15px rgba(0,0,0,0.4); position: relative; overflow: hidden; }
     .btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent); transform: skewX(-20deg); transition: 0.5s; }
+    .btn:hover::before { left: 150%; }
+    .btn:disabled { opacity: 0.3; pointer-events: none; filter: grayscale(100%); }
+    .speed-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    
+    /* 📍 ล็อกสเกลเฉพาะจุด ป้องกันปุ่มเบียดกันทะลุกรอบ */
+    .speed-row .btn { padding: 14px 4px !important; font-size: 22px !important; }
+    .media-btn { padding: 12px !important; }
+    .media-btn .icon { font-size: 46px !important; }
     .btn:hover::before { left: 150%; }
     .btn:disabled { opacity: 0.3; pointer-events: none; filter: grayscale(100%); }
     .speed-row { display: flex; gap: 8px; margin-bottom: 8px; }
@@ -567,8 +563,24 @@ const injectStyles = () => {
     }
     .matrix-column { display: flex; flex-direction: column; font-family: monospace; font-size: 10px; color: rgba(0, 234, 255, 0.7); line-height: 1; animation: matrix-fall linear infinite; }
 
-    /* 📍 ฟันธง: สังหารเงาดำของ Tooltip พื้นฐานจากไลบรารีทิ้งอย่างถาวร 100% */
-    .scene-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; }
+    /* 📍 ฟันธง 2: สังหารกรอบสีเทาผีหลอกของ Tooltip ทะลวงถึงตัวลูก (Inner Div) ทิ้งอย่างถาวร 1,000,000% */
+    /* 📍 ฟันธง 2: สังหารกล่องชั้นนอกสีเทา และบังคับย้ายหนีไอคอนมือไปทางขวาบน (Top-Right) */
+    /* 📍 ฟันธง 2: ดัน Tooltip หนีไอคอนมือให้ไกลขึ้นอีก (ขยับขวา 60px ดันขึ้นบน 120%) */
+    body .scene-tooltip { 
+      background: rgba(0, 10, 25, 0.95) !important; 
+      border: 2px solid var(--cyan) !important; 
+      border-radius: 8px !important; 
+      padding: 18px 24px !important; 
+      font-family: 'Rajdhani', sans-serif !important; 
+      box-shadow: 0 5px 25px rgba(0,234,255,0.4) !important; 
+
+     /* 📍 จุดเปลี่ยนฟันธง: ห้ามใช้ transform เด็ดขาดเพราะหักล้างกับระบบเมาส์ ให้ใช้ margin ผลักหนีแทน */
+    margin-top: -80px !important;
+    margin-left: 45px !important;
+    pointer-events: none !important; 
+    min-width: 350px !important; 
+    color: #fff !important;
+    }
 
   `;
   
@@ -1246,7 +1258,7 @@ useEffect(() => {
     setIsRightPanelOpen(!isRightPanelOpen);
   };
 
-  // คำนวณตำแหน่งดวงอาทิตย์
+// คำนวณตำแหน่งดวงอาทิตย์
   const currentSunPos = useMemo(() => {
     const d = new Date(simulatedTimeMs);
     const doy = getUtcDayOfYear(d);
@@ -1288,31 +1300,27 @@ useEffect(() => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 📍 1. สมองกลควบคุมเวลา (ป้องกัน Time Drift ขั้นเด็ดขาด!)
-  useEffect(() => {
-    if (!isPlaying) return;
-    let lastTick = Date.now(); // 📍 เก็บเวลาจริงเพื่อคำนวณ Delta
-    const timer = setInterval(() => {
-      const now = Date.now();
-      const deltaMs = now - lastTick;
-      lastTick = now;
+ // 📍 1. สมองกลควบคุมเวลา (ล็อก Tick Rate ที่ 40ms ให้ CPU หายใจ และส่งไม้ต่อให้ WebGL เกลี่ยเฟรม)
+ useEffect(() => {
+  if (!isPlaying) return;
+  let lastTick = Date.now(); 
+  const timer = setInterval(() => {
+    const now = Date.now();
+    const deltaMs = now - lastTick;
+    lastTick = now;
 
-      setSimulatedTimeMs(prev => {
-        if (isNaN(prev)) return now;
-        
-        // 🟢 ถ้าโหมด LIVE (1X) และเวลาห่างจากความจริงไม่เกิน 5 นาที (300,000ms) ป้องกัน Browser Throttling
-        // ฟันธง: บังคับล็อกเวลา Date.now() ทันที ระบบจะไม่มีวันหลุด LIVE ยกเว้นผู้ใช้จงใจไถลเวลาไปไกล
-        if (speedMult === 1 && Math.abs(prev - now) < 300000) {
-          return now;
-        }
-        // 🟠 ถ้าโหมด SIM (หรือไถลเวลาไปไกลแล้ว) ให้บวกเวลาตาม Delta จริงที่ผ่านไป (แก้บั๊ก setInterval ไม่แม่นยำ)
-        return prev + (deltaMs * speedMult);
-      });
-    }, 50);
-    return () => clearInterval(timer);
-  }, [isPlaying, speedMult]);
+    setSimulatedTimeMs(prev => {
+      if (isNaN(prev)) return now;
+      // ป้องกัน Time Drift ตอนโหมด LIVE
+      if (speedMult === 1 && Math.abs(prev - now) < 300000) return now;
+      return prev + (deltaMs * speedMult);
+    });
+  }, 40); // 📍 ฟันธง: ล็อกรอบการอัปเดตที่ 40ms (25fps)
+  return () => clearInterval(timer);
+}, [isPlaying, speedMult]);
 
-  useEffect(() => {
+  // 📍 ฟันธง: เปลี่ยนกลับเป็น React.useEffect เพื่อให้กล้องขยับ "พร้อมกับ" การอัปเดตโมเดล 3D (สังหารบั๊กภาพสั่นเวลา Target Lock)
+  React.useEffect(() => {
     if (isPlaying && globeRef.current && selectedCatnr && !isFlatMap && isTrackingRef.current) {
       try {
         const rec = satrecs[selectedCatnr];
@@ -1616,6 +1624,10 @@ const allSatObjects = useMemo(() => {
   }).filter(Boolean);
 }, [simulatedTimeMs, satrecs, selectedCatnr, selectedCatnrs]);
 
+// 📍 ฟันธง 1.1: สร้างสวิตช์หน่วงเวลา (Throttle) ตัดคอขวด CPU 
+ // ถ้าเร่งเกิน 100X ให้วาดเส้นนำทางวงโคจรใหม่ทุกๆ 30 นาทีซิมูเลชัน (ลดภาระขยะใน Memory ได้ 1,000,000%)
+ const orbitUpdateTrigger = Math.floor(simulatedTimeMs / (speedMult >= 100 ? 1800000 : 300000));
+
  // 📍 ฟันธง: อัปเกรดสมองกลวาดเส้นวงโคจร (Orbit Path) สร้าง The GEO Belt สำหรับดาวเทียมค้างฟ้า
  const orbitVisualPath = useMemo(() => {
   if (!targetSatrec) return [];
@@ -1644,35 +1656,37 @@ const allSatObjects = useMemo(() => {
     if (points.length < 2) return [];
     return [{ points, color: 'rgba(255, 204, 0, 0.8)', stroke: 1.0 }]; 
   }
-}, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000)]);
+}, [selectedCatnr, targetSatrec, orbitUpdateTrigger]);
 
- // 📍 ฟันธง 2: ระบบวาดเส้นแดงบน 3D (อัปเกรดให้รองรับไฟล์ PDF และกันบั๊กเวลา)
+// 📍 ฟันธง 2: ระบบวาดเส้นแดงบน 3D ใช้ useRef เป็นโกดัง Cache (ลดภาระ CPU ไม่ต้องคำนวณใหม่ทุก 16ms)
+const imagingSwathCache = useRef({});
 const imagingSwathPaths = useMemo(() => {
   if (!targetSatrec || selectedCatnr !== '58016') return []; 
   const paths = [];
   
   sourcePlans.forEach(plan => {
-    const points = [];
-    // แปลงเวลาให้เป็นตัวเลข Number ที่แน่นอน ป้องกันบั๊ก String ทับซ้อน
     const pStart = new Date(plan.start).getTime();
     const pEnd = new Date(plan.end).getTime();
 
     if (simulatedTimeMs > pEnd) return;
 
-    for (let t = pStart; t <= pEnd; t += 1000) {
-      const pos = calculateSatData(new Date(t), targetSatrec);
-      if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-        points.push({ lat: pos.lat, lng: pos.lng, alt: 0.002 });
+    if (!imagingSwathCache.current[plan.id]) {
+      const points = [];
+      for (let t = pStart; t <= pEnd; t += 1000) {
+        const pos = calculateSatData(new Date(t), targetSatrec);
+        if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+          points.push({ lat: pos.lat, lng: pos.lng, alt: 0.002 });
+        }
       }
+      imagingSwathCache.current[plan.id] = { id: plan.id, points };
     }
     
-    if (points.length >= 2) {
+    const cachedPlan = imagingSwathCache.current[plan.id];
+    if (cachedPlan.points.length >= 2) {
       const isImagingNow = simulatedTimeMs >= pStart && simulatedTimeMs <= pEnd;
-      paths.push({ 
-        points, 
-        color: isImagingNow ? 'rgba(255, 51, 51, 1)' : 'rgba(255, 100, 51, 0.45)', 
-        stroke: isImagingNow ? 6.0 : 4.0 
-      });
+      cachedPlan.color = isImagingNow ? 'rgba(255, 51, 51, 1)' : 'rgba(255, 100, 51, 0.45)';
+      cachedPlan.stroke = isImagingNow ? 6.0 : 4.0;
+      paths.push(cachedPlan);
     }
   });
   return paths;
@@ -1715,9 +1729,10 @@ const imagingPlansData = useMemo(() => {
   }
   if (points.length < 2) return [];
   return [{ points, color: 'rgba(255, 215, 0, 0.8)', stroke: 0.5 }];
-}, [selectedCatnr, targetSatrec, Math.floor(simulatedTimeMs / 60000), showGroundTrack]);
+}, [selectedCatnr, targetSatrec, orbitUpdateTrigger, showGroundTrack]);
   
-// 📍 อัปเกรดเส้นขอบ Footprint ให้เนียนกริบและเป็นสีแดง Tactical ตามบัญชา Commander!
+// 📍 ฟันธง 1.2: สังหารฟังก์ชัน getCirclePolygon ทิ้ง! คำนวณสดลงในโกดังรีไซเคิล (Zero Memory Allocation)
+const footprintPtsRef = useRef({}); 
 const footprintBoundaryPath = useMemo(() => {
   const paths = [];
   allSatObjects.forEach(sat => {
@@ -1725,17 +1740,30 @@ const footprintBoundaryPath = useMemo(() => {
       const isPrimary = sat.catnr === selectedCatnr;
       const radiusDeg = getFootprintRadiusDeg(sat.altKm, stationMask);
       if (!isNaN(radiusDeg)) {
-        // 📍 ฟันธง: เพิ่มความละเอียดวงกลมเป็น 128 จุดให้เนียนกริบ และยกลอยขึ้นมาที่ alt: 0.005
-        const pts = getCirclePolygon(sat.lat, sat.lng, radiusDeg, 128).map(c => ({ lng: c[0], lat: c[1], alt: 0.005 }));
-        if (pts.length >= 3) {
-          paths.push({
-            points: pts,
-            // 📍 ฟันธง: ใช้สีแดงสดสว่างวาบ (Red Solid) สำหรับเป้าหมายหลัก
-            color: isPrimary ? 'rgba(255, 51, 51, 0.95)' : 'rgba(255, 51, 51, 0.3)',
-            // 📍 ฟันธง: เพิ่มความหนาของเส้น (Stroke) ให้ชัดเจนทะลุจอ!
-            stroke: isPrimary ? 2.5 : 1.0 
-          });
+        
+        if (!footprintPtsRef.current[sat.catnr]) {
+            footprintPtsRef.current[sat.catnr] = Array.from({length: 129}, () => ({lng: 0, lat: 0, alt: 0.005}));
         }
+        const pts = footprintPtsRef.current[sat.catnr];
+        
+        // คำนวณสมการวงกลมสดๆ ยัดใส่พิกัดเดิม ไม่สร้าง Array ขยะแม้แต่ชิ้นเดียว!
+        const lat1 = (sat.lat * Math.PI) / 180;
+        const lon1 = (sat.lng * Math.PI) / 180;
+        const d = (radiusDeg * Math.PI) / 180;
+        
+        for (let i = 0; i <= 128; i++) {
+            const tc = (2 * Math.PI * i) / 128;
+            let lat = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(tc));
+            let lon = lon1 + Math.atan2(Math.sin(tc) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat));
+            pts[i].lng = ((lon + 3 * Math.PI) % (2 * Math.PI) - Math.PI) * 180 / Math.PI;
+            pts[i].lat = (lat * 180) / Math.PI;
+        }
+
+        paths.push({
+          points: pts,
+          color: isPrimary ? 'rgba(255, 51, 51, 0.95)' : 'rgba(255, 51, 51, 0.3)',
+          stroke: isPrimary ? 2.5 : 1.0 
+        });
       }
     }
   });
@@ -2603,29 +2631,64 @@ return (
             /* 📍 จุดตาย: ถอดวงเล็บ [...] ออก เพื่อไม่ให้เกิดการสร้างข้อมูลอาร์เรย์ใหม่ซ้ำซ้อนจนเครื่องคอขวด */
             objectsData={allSatObjects}
             
-            objectLat="lat" objectLng="lng" objectAltitude="altitude"
-            objectThreeObject={(d) => createSatelliteModel(d.isTarget)}
+          objectLat="lat" objectLng="lng" objectAltitude="altitude"
             
-            objectLabel={(d) => {
-              if (d.type !== 'satellite') return '';
-              const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
-              const flagHtml = satInfo?.flag ? `<img src="https://flagcdn.com/w20/${satInfo.flag}.png" width="20" style="vertical-align: middle; border-radius: 2px; margin-right: 6px; box-shadow: 0 0 5px rgba(255,255,255,0.4);" />` : '🛰️ ';
+           /* 📍 ฟันธง: แก้ไขไอคอน THEOS-2 ให้สมมาตรและคมชัด 100% (รักษาสัดส่วน Aspect Ratio) */
+           objectThreeObject={(d) => {
+            if (d.catnr === '58016') {
+              if (!window.theos2TextureCache) {
+                // 📍 ฟันธง: เพิ่ม Callback ตอนโหลดภาพ สั่งเปิดโหมดความคมชัด LinearFilter ทะลวงความเบลอทิ้ง
+                window.theos2TextureCache = new THREE.TextureLoader().load('/textures/THEOS-2.webp', (texture) => {
+                  texture.minFilter = THREE.LinearFilter;
+                  texture.magFilter = THREE.LinearFilter;
+                });
+              }
+              // 📍 ฟันธง: เติม transparent และ depthWrite: false ป้องกันขอบภาพสีดำกลืนไปกับพื้นโลก
+              const material = new THREE.SpriteMaterial({ 
+                map: window.theos2TextureCache, 
+                color: 0xffffff,
+                transparent: true,
+                depthWrite: false
+              });
+              const sprite = new THREE.Sprite(material);
               
-              /* 📍 ฟันธง: ดึงระยะหลบเมาส์กลับมาที่ (45px, -55px) เป็นระยะที่พ้นไอคอนมือและสวยงามที่สุด และถอดแท็ก Style เดิมออกเพราะย้ายไปฝัง CSS หลักแล้ว */
-              return `
-                <div style="background: rgba(0, 10, 25, 0.95); border: 1px solid var(--cyan); border-radius: 6px; padding: 12px 18px; font-family: 'Rajdhani', sans-serif; box-shadow: 0 5px 25px rgba(0,234,255,0.3); transform: translate(45px, -55px); pointer-events: none;">
-                  <strong style="color: #fff; font-size: 16px; display: flex; align-items: center; border-bottom: 1px dashed rgba(0,234,255,0.4); padding-bottom: 6px; margin-bottom: 6px; text-shadow: 0 0 10px var(--cyan); letter-spacing: 1px;">
-                    ${flagHtml}${satInfo?.displayName || d.name}
-                  </strong>
-                  <div style="font-weight: bold; line-height: 1.5; font-size: 13px; letter-spacing: 0.5px;">
-                    <span style="color: var(--cyan); display: inline-block; width: 55px;">NORAD:</span> <span style="color: #fff;">${d.catnr}</span><br/>
-                    <span style="color: var(--gold); display: inline-block; width: 55px;">ALT:</span> <span style="color: #fff;">${Math.round(d.altKm).toLocaleString()} km</span><br/>
-                    <span style="color: var(--red); display: inline-block; width: 55px;">SPD:</span> <span style="color: #fff;">${d.speedKmS ? d.speedKmS.toFixed(2) : '--'} km/s</span><br/>
-                    <span style="color: var(--green); display: inline-block; width: 55px;">POS:</span> <span style="color: #fff;">${Math.abs(d.lat).toFixed(2)}°${d.lat >= 0 ? 'N' : 'S'}, ${Math.abs(d.lng).toFixed(2)}°${d.lng >= 0 ? 'E' : 'W'}</span>
-                  </div>
+              const size = d.isTarget ? 14 : 5; 
+              // 📍 ฟันธง: ปลดล็อกการบีบอัดภาพ! โดยคูณแกน X ให้กว้างกว่าแกน Y (สัดส่วน 1.8 ต่อ 1) ภาพจะกลับมาสมมาตรพอดีเป๊ะ
+              sprite.scale.set(size * 1.8, size, 1);
+              
+              return sprite;
+            }
+            // ถ้าไม่ใช่ THEOS-2 ให้โยนกลับไปวาดกล่อง 3D กล่องเหลี่ยมตามปกติ
+            return createSatelliteModel(d.isTarget);
+          }}
+            
+        /* 📍 ฟันธง: ปิด Auto-Tween 100% สังหารอาการ Rubber-banding เวลาเร่งซิม 800X */
+        objectsTransitionDuration={0}
+        pathsTransitionDuration={0}
+        ringsTransitionDuration={0}
+        polygonsTransitionDuration={0}
+        htmlElementsTransitionDuration={0}
+
+           objectLabel={(d) => {
+            if (d.type !== 'satellite') return '';
+            const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
+            const flagHtml = satInfo?.flag ? `<img src="https://flagcdn.com/w40/${satInfo.flag}.png" width="30" style="vertical-align: middle; border-radius: 3px; margin-right: 10px; box-shadow: 0 0 5px rgba(255,255,255,0.4);" />` : '🛰️ ';
+            
+          /* 📍 ฟันธง 3: ระเบิดไซส์ Tooltip ให้อลังการเตะตา (ขยายหัวข้อ 38px และ ข้อมูล 28px) */
+            return `
+              <div style="font-variant-numeric: tabular-nums; min-width: 380px; padding: 10px;">
+                <strong style="font-size: 38px; display: flex; align-items: center; border-bottom: 3px dashed rgba(0,234,255,0.5); padding-bottom: 16px; margin-bottom: 18px; text-shadow: 0 0 15px var(--cyan); letter-spacing: 3px; font-family: 'Orbitron', sans-serif;">
+                  ${flagHtml}${satInfo?.displayName || d.name}
+                </strong>
+                <div style="font-weight: 900; line-height: 2.4; font-size: 24px; letter-spacing: 1.5px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: var(--cyan);">NORAD:</span> <span style="font-family: 'Orbitron', sans-serif; font-size: 28px; color: #fff;">${d.catnr}</span></div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: var(--gold);">ALT:</span> <span style="font-family: 'Orbitron', sans-serif; font-size: 28px; color: #fff;">${Math.round(d.altKm).toLocaleString()} km</span></div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: var(--red);">SPD:</span> <span style="font-family: 'Orbitron', sans-serif; font-size: 28px; color: #fff;">${d.speedKmS ? d.speedKmS.toFixed(2) : '--'} km/s</span></div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;"><span style="color: var(--green);">POS:</span> <span style="font-family: 'Orbitron', sans-serif; font-size: 28px; color: #fff;">${Math.abs(d.lat).toFixed(2)}°${d.lat >= 0 ? 'N' : 'S'} , ${Math.abs(d.lng).toFixed(2)}°${d.lng >= 0 ? 'E' : 'W'}</span></div>
                 </div>
-              `;
-            }}
+              </div>
+            `;
+          }}
             onObjectClick={(d) => {
               if (d.type === 'satellite') {
                 setSelectedCatnr(d.catnr);
@@ -2661,16 +2724,17 @@ return (
                 `;
               }
             }
-              /* 📍 ถ้าเป็นดาวเทียมเป้าหมาย */
-              else {
-                const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
-                const flagUrl = satInfo?.flag ? `https://flagcdn.com/w20/${satInfo.flag}.png` : '';
-                el.innerHTML = `
-                  <div style="display: flex; align-items: center; color: #fff; font-family: 'Rajdhani', sans-serif; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-shadow: 0 0 5px #000, 0 0 15px #00eaff; transform: translate(15px, -15px); pointer-events: none; white-space: nowrap;">
-                    ${flagUrl ? `<img src="${flagUrl}" style="width:20px; margin-right:8px; border-radius:2px; box-shadow: 0 0 8px rgba(0,234,255,0.8);" />` : ''}
-                    ${d.name}
-                  </div>`;
-              }
+       /* 📍 ถ้าเป็นดาวเทียมเป้าหมาย */
+       else {
+        const satInfo = SATELLITE_OPTIONS.find(s => s.catnr === d.catnr);
+        const flagUrl = satInfo?.flag ? `https://flagcdn.com/w40/${satInfo.flag}.png` : '';
+        /* 📍 ฟันธง 3: ลดขนาดป้ายชื่อลงมาเหลือ 18px และดันกลับขึ้นไปใต้ฐานดาวเทียมแบบสมมาตรเป๊ะ! */
+        el.innerHTML = `
+          <div style="display: flex; align-items: center; color: #ffffff; font-family: 'Orbitron', sans-serif; font-size: 18px; font-weight: 900; letter-spacing: 2px; text-shadow: 0 0 8px #000, 0 0 15px #00eaff; transform: translate(-50%, 45px); pointer-events: none; white-space: nowrap;">
+            ${flagUrl ? `<img src="${flagUrl}" style="width:24px; margin-right:8px; border-radius:4px; box-shadow: 0 0 10px rgba(0,234,255,0.8);" />` : ''}
+            ${d.name}
+          </div>`;
+      }
               return el;
             }}
 
@@ -2957,7 +3021,7 @@ return (
                          return `- ${pad2(hrs)}h ${pad2(mins)}m ${pad2(secs)}s`;
                        })()}
                      </span>
-                     <span style={{ fontSize: '18px', color: 'rgba(255, 255, 255, 0.8)', fontWeight: 'bold' }}>EXPECTED MAX EL: <strong style={{color: 'var(--cyan)', fontSize: '20px'}}>{nextPassTimestamp.maxEl.toFixed(1)}°</strong></span>
+                     <span style={{ fontSize: '22px', color: 'rgba(255, 255, 255, 0.95)', fontWeight: 'bold', letterSpacing: '1px' }}>EXPECTED MAX EL: <strong style={{color: 'var(--cyan)', fontSize: '32px', textShadow: '0 0 10px var(--cyan)', marginLeft: '8px'}}>{nextPassTimestamp.maxEl.toFixed(1)}°</strong></span>
                    </>
                 ) : (
                    <span style={{ fontSize: '20px', fontWeight: 'bold', letterSpacing: '2px' }}>NO UPCOMING PASS</span>
@@ -3126,12 +3190,17 @@ return (
                     </div>
 
                     <div className="time-scrubber-container">
-                    <div className="scrubber-labels" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <span style={{ width: '90px', textAlign: 'left', color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontFamily: 'Orbitron', fontWeight: 'bold' }}>{sliderMode === 'DAILY' ? '00:00 UTC' : 'AOS -5m'}</span>
-                        <button onClick={() => setSliderMode(sliderMode === 'DAILY' ? 'PASS' : 'DAILY')} disabled={isRealtimePassLock} style={{ background: sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.1)' : 'rgba(255, 204, 0, 0.15)', border: `1px solid ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`, color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', borderRadius: '6px', padding: '8px 16px', fontSize: '14px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', transition: 'all 0.3s', boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.2)' : 'rgba(255, 204, 0, 0.3)'}`, opacity: isRealtimePassLock ? 0.3 : 1 }}>
+                    <div className="scrubber-labels" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                        {/* 📍 ฟันธง: ขยายเวลาซ้ายสุดเป็น 20px และเพิ่มความกว้างกรอบเป็น 150px */}
+                        <span style={{ width: '150px', textAlign: 'left', color: 'rgba(255,255,255,0.6)', fontSize: '20px', fontFamily: 'Orbitron', fontWeight: 'bold' }}>{sliderMode === 'DAILY' ? '00:00 UTC' : 'AOS -5m'}</span>
+                        
+                        {/* 📍 ฟันธง: ขยายปุ่มเปลี่ยนโหมดเป็น 18px และเพิ่ม Padding ให้ดูแน่นขึ้น */}
+                        <button onClick={() => setSliderMode(sliderMode === 'DAILY' ? 'PASS' : 'DAILY')} disabled={isRealtimePassLock} style={{ background: sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.1)' : 'rgba(255, 204, 0, 0.15)', border: `1px solid ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`, color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', borderRadius: '6px', padding: '12px 24px', fontSize: '18px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', transition: 'all 0.3s', boxShadow: `0 0 15px ${sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.2)' : 'rgba(255, 204, 0, 0.3)'}`, opacity: isRealtimePassLock ? 0.3 : 1 }}>
                           MODE: {sliderMode === 'DAILY' ? '🌍 24H GLOBAL' : '🎯 ACTIVE PASS'} ⟲
                         </button>
-                        <span style={{ width: '90px', textAlign: 'right', color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontFamily: 'Orbitron', fontWeight: 'bold' }}>{sliderMode === 'DAILY' ? '23:59 UTC' : 'LOS +5m'}</span>
+                        
+                        {/* 📍 ฟันธง: ขยายเวลาขวาสุดเป็น 20px และเพิ่มความกว้างกรอบเป็น 150px */}
+                        <span style={{ width: '150px', textAlign: 'right', color: 'rgba(255,255,255,0.6)', fontSize: '20px', fontFamily: 'Orbitron', fontWeight: 'bold' }}>{sliderMode === 'DAILY' ? '23:59 UTC' : 'LOS +5m'}</span>
                       </div>
                       
                       {(() => {
@@ -3155,8 +3224,10 @@ return (
                           </div>
                         );
                       })()}
-                      <div style={{ textAlign: 'center', fontSize: '16px', color: 'rgba(255,255,255,0.7)', marginTop: '12px', fontVariantNumeric: 'tabular-nums', fontWeight: 'bold', letterSpacing: '1px' }}>
-                        CURRENT SIM: <strong style={{ color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', fontSize: '22px', textShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0,234,255,0.8)' : 'rgba(255,204,0,0.8)'}`, marginLeft: '8px' }}>{formatTime(new Date(simulatedTimeMs))} UTC</strong>
+                      
+                      {/* 📍 ฟันธง: ขยายคำว่า CURRENT SIM เป็น 24px และขยายตัวเลขเวลาเป็น 36px กระแทกตาสุดๆ */}
+                      <div style={{ textAlign: 'center', fontSize: '24px', color: 'rgba(255,255,255,0.7)', marginTop: '20px', fontVariantNumeric: 'tabular-nums', fontWeight: 'bold', letterSpacing: '2px' }}>
+                        CURRENT SIM: <strong style={{ color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', fontSize: '36px', textShadow: `0 0 15px ${sliderMode === 'DAILY' ? 'rgba(0,234,255,0.8)' : 'rgba(255,204,0,0.8)'}`, marginLeft: '12px' }}>{formatTime(new Date(simulatedTimeMs))} UTC</strong>
                       </div>
                     </div>
                   </>
@@ -3168,39 +3239,38 @@ return (
            <div className="control-group">
               <p>DISPLAY CONTROLS</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '10px' }}>
-                {/* 📍 สลับสีปุ่มให้หลากหลาย ไม่เขียวล้วนจนลายตา */}
                 
-                {/* STATION MASK -> Cyan */}
-                <button 
+               {/* STATION MASK -> Cyan */}
+               <button 
                   className="btn btn-cyan active"
-                  style={{ marginBottom: 0, fontSize: '14px', padding: '12px 5px', letterSpacing: '1.5px', gridColumn: 'span 2' }} 
+                  style={{ marginBottom: 0, fontSize: '15px', padding: '16px 5px', letterSpacing: '1px' }} 
                   onClick={() => setStationMask(prev => prev === 5 ? 0 : (prev === 0 ? 3 : 5))}
                 >
                 STATION MASK: {stationMask}° 
                 </button>
                 
-                {/* DAY/NIGHT -> Gold (ดวงอาทิตย์/สิ่งแวดล้อม) */}
+                {/* DAY/NIGHT -> Gold */}
                 <button 
                   className={`btn btn-gold ${realtimeSun ? 'active' : ''}`} 
-                  style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
+                  style={{ marginBottom: 0, fontSize: '16px', padding: '14px 5px', letterSpacing: '1px' }} 
                   onClick={() => setRealtimeSun(!realtimeSun)}
                 >
                   {realtimeSun ? 'DAY/NIGHT' : 'SUN OFF'}
                 </button>
                 
-                {/* 3D GLOBE / 2D TACTICAL -> Gold (มุมมอง/สิ่งแวดล้อม) */}
+                {/* 3D GLOBE / 2D TACTICAL -> Gold */}
                 <button 
                   className={`btn btn-gold ${isFlatMap ? 'active' : ''}`} 
-                  style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
+                  style={{ marginBottom: 0, fontSize: '16px', padding: '14px 5px', letterSpacing: '1px' }} 
                   onClick={() => setIsFlatMap(!isFlatMap)}
                 >
                   {isFlatMap ? '2D TACTICAL' : '3D GLOBE'}
                 </button>
                 
-                {/* STATION MODE -> Green (เซนเซอร์/ป้ายชื่อ) */}
+                {/* STATION MODE -> Green */}
                 <button 
                   className={`btn btn-green ${stationDisplayMode !== 'none' ? 'active' : ''}`}
-                  style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }}
+                  style={{ marginBottom: 0, fontSize: '16px', padding: '14px 5px', letterSpacing: '1px' }}
                   onClick={() => {
                     const modes = ['both', 'icon', 'name', 'none'];
                     const nextIndex = (modes.indexOf(stationDisplayMode) + 1) % modes.length;
@@ -3210,22 +3280,20 @@ return (
                   {`STATION: ${stationDisplayMode.toUpperCase()}`}
                 </button>
                 
-                {/* GROUND TRACK -> Green (เส้นทาง) */}
+                {/* GROUND TRACK -> Green */}
                 <button 
                   className={`btn btn-green ${showGroundTrack ? 'active' : ''}`} 
-                  style={{ marginBottom: 0, fontSize: '12px', padding: '10px 5px', letterSpacing: '0.5px' }} 
+                  style={{ marginBottom: 0, fontSize: '16px', padding: '14px 5px', letterSpacing: '1px' }} 
                   onClick={() => setShowGroundTrack(!showGroundTrack)}
                 >
                   GROUND TRACK
                 </button>
 
-              {/* TARGET LOCK -> Red (เป้าหมาย/ระบบสำคัญ) */}
+              {/* TARGET LOCK -> Red */}
               <button 
                   className={`btn btn-red ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
-                  style={{ marginBottom: 0, fontSize: '15px', padding: '14px 5px', letterSpacing: '0.5px', gridColumn: 'span 2' }}
+                  style={{ marginBottom: 0, fontSize: '15px', padding: '16px 5px', letterSpacing: '1px' }}
                   onClick={() => {
-                    // 📍 ฟันธงแก้ INP Issue: ห่อหุ้มการคำนวณที่หนักหน่วงไว้ใน startTransition
-                    // ช่วยล้างอาการหน่วงเวลากดปุ่ม 100% ทำให้ UI ตอบสนองนิ้วทันที!
                     startTransition(() => {
                       const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
                       setCameraMode(newMode);
@@ -3257,51 +3325,52 @@ return (
                   🎯 TARGET LOCK
                 </button>
 
-               {/* 📍 ฟันธง: ปุ่มสลับ Theme สี UI ล้ำยุค (สับสวิตช์เปลี่ยนสียกแผงทั้งระบบ) */}
-               <button 
+              {/* UI COLOR THEME */}
+              <button 
                   className="btn btn-gold" 
-                  style={{ marginBottom: 0, fontSize: '15px', letterSpacing: '1px', padding: '14px 5px', textShadow: '0 0 10px currentColor', gridColumn: 'span 2' }} 
+                  style={{ marginBottom: 0, fontSize: '15px', letterSpacing: '1px', padding: '16px 5px', textShadow: '0 0 10px currentColor', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
                   onClick={() => {
-                    // 📍 ฟันธงแก้ INP Issue: การเปลี่ยนสีทั้งระบบใช้พลังทะลุทะลวงสูง ต้องใส่ startTransition ป้องกันปุ่มค้าง
                     startTransition(() => {
                       setUiThemeIdx((prev) => (prev + 1) % uiThemes.length);
                     });
                   }}
+                  title={`UI COLOR THEME: ${uiThemes[uiThemeIdx].name}`}
                 >
-                  🎨 UI COLOR THEME: {uiThemes[uiThemeIdx].name}
+                  🎨 UI: {uiThemes[uiThemeIdx].name}
                 </button>
 
-                {/* THEME -> Cyan (System Theme) */}
+                {/* THEME MAP */}
                 <button 
                   className="btn btn-cyan" 
-                  style={{ marginBottom: 0, fontSize: '13px', padding: '12px 5px', letterSpacing: '1.5px', gridColumn: 'span 2', borderColor: 'var(--cyan)', color: 'var(--cyan)', textShadow: '0 0 8px var(--cyan)' }} 
+                  style={{ marginBottom: 0, fontSize: '15px', padding: '16px 5px', letterSpacing: '1px', borderColor: 'var(--cyan)', color: 'var(--cyan)', textShadow: '0 0 8px var(--cyan)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
                   onClick={() => setMapThemeIdx((prev) => (prev + 1) % mapThemes.length)}
+                  title={`MAP THEME: ${mapThemes[mapThemeIdx].name}`}
                 >
-                THEME: {mapThemes[mapThemeIdx].name}
+                🌍 MAP: {mapThemes[mapThemeIdx].name}
                 </button>
               </div>
             </div>
 
-          {/* 🛠️ กลุ่มที่ 3: DATA & TOOLS (Redesigned & Regrouped) */}
-          <div className="control-group" style={{ paddingBottom: '15px' }}>
+         {/* 🛠️ กลุ่มที่ 3: DATA & TOOLS (Redesigned & Regrouped) */}
+         <div className="control-group" style={{ paddingBottom: '15px' }}>
              <p>DATA & TOOLS</p>
 
              {/* แถว 1: Database กลาง (Full width) */}
              <button 
                className={`btn btn-cyan ${isModalOpen ? 'active' : ''}`} 
                onClick={() => { setIsModalOpen(!isModalOpen); if (!isModalOpen) bringToFront('db'); }}
-               style={{ width: '100%', marginBottom: '10px', padding: '16px', fontSize: '16px', letterSpacing: '2px', fontWeight: '900' }}
+               style={{ width: '100%', marginBottom: '15px', padding: '22px', fontSize: '24px', letterSpacing: '3px', fontWeight: '900' }}
              >
               SATELLITE DATABASE
              </button>
 
              {/* แถว 2: TLE Sync & Upload รวมไว้ด้วยกัน */}
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '15px' }}>
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
                <button 
                  className="btn btn-cyan" 
                  onClick={handleAutoUpdateTle} 
                  disabled={isUpdatingTle}
-                 style={{ margin: 0, padding: '12px 5px', fontSize: '13px' }}
+                 style={{ margin: 0, padding: '18px 5px', fontSize: '18px', letterSpacing: '2px', fontWeight: '900' }}
                >
                  {isUpdatingTle ? 'FETCHING...' : 'AUTO UPDATE TLE'}
                </button>
@@ -3311,7 +3380,7 @@ return (
                  className="btn btn-cyan" 
                  onClick={() => fileInputRef.current && fileInputRef.current.click()} 
                  disabled={isUpdatingTle}
-                 style={{ margin: 0, padding: '12px 5px', fontSize: '13px' }}
+                 style={{ margin: 0, padding: '18px 5px', fontSize: '18px', letterSpacing: '2px', fontWeight: '900' }}
                >
                  UPLOAD TLE
                </button>
@@ -3321,88 +3390,88 @@ return (
              <button 
                className={`btn btn-red ${isImgOpen ? 'active' : ''}`}
                onClick={() => { setIsImgOpen(!isImgOpen); if (!isImgOpen) bringToFront('img'); }}
-               style={{ width: '100%', marginBottom: '10px', padding: '18px', fontSize: '20px', letterSpacing: '3px', fontWeight: '900' }}
+               style={{ width: '100%', marginBottom: '15px', padding: '22px', fontSize: '24px', letterSpacing: '4px', fontWeight: '900' }}
              >
               MISSION PLAN
              </button>
 
              {/* 📍 แถว 4: ระบบ 2x2 Grid สมมาตร 100% พร้อมสีสัน Hover สุดล้ำ */}
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '15px' }}>
-                
-                {/* 1. GROUND STATION (Cyan) */}
-                <button 
-                  className={`btn ${isGsModalOpen ? 'active' : ''}`}
-                  onClick={() => { setIsGsModalOpen(!isGsModalOpen); if (!isGsModalOpen) bringToFront('gs'); }}
-                  style={{ 
-                    margin: 0, padding: '14px 5px', fontSize: '14px', letterSpacing: '1px', fontWeight: '900',
-                    background: isGsModalOpen ? 'var(--cyan)' : 'rgba(0, 234, 255, 0.05)',
-                    color: isGsModalOpen ? '#000' : 'var(--cyan)',
-                    border: '1px solid var(--cyan)',
-                    boxShadow: isGsModalOpen ? '0 0 20px var(--cyan)' : 'inset 0 0 10px rgba(0, 234, 255, 0.1)',
-                    transition: 'all 0.3s'
-                  }}
-                  onMouseOver={(e) => { if (!isGsModalOpen) { e.currentTarget.style.background = 'var(--cyan)'; e.currentTarget.style.color = '#000'; e.currentTarget.style.boxShadow = '0 0 20px var(--cyan)'; } }}
-                  onMouseOut={(e) => { if (!isGsModalOpen) { e.currentTarget.style.background = 'rgba(0, 234, 255, 0.05)'; e.currentTarget.style.color = 'var(--cyan)'; e.currentTarget.style.boxShadow = 'inset 0 0 10px rgba(0, 234, 255, 0.1)'; } }}
-                >
-                 GROUND STATION
-                </button>
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '15px' }}>
+               
+               {/* 1. GROUND STATION (Cyan) */}
+               <button 
+                 className={`btn ${isGsModalOpen ? 'active' : ''}`}
+                 onClick={() => { setIsGsModalOpen(!isGsModalOpen); if (!isGsModalOpen) bringToFront('gs'); }}
+                 style={{ 
+                   margin: 0, padding: '20px 5px', fontSize: '18px', letterSpacing: '2px', fontWeight: '900',
+                   background: isGsModalOpen ? 'var(--cyan)' : 'rgba(0, 234, 255, 0.05)',
+                   color: isGsModalOpen ? '#000' : 'var(--cyan)',
+                   border: '1px solid var(--cyan)',
+                   boxShadow: isGsModalOpen ? '0 0 20px var(--cyan)' : 'inset 0 0 10px rgba(0, 234, 255, 0.1)',
+                   transition: 'all 0.3s'
+                 }}
+                 onMouseOver={(e) => { if (!isGsModalOpen) { e.currentTarget.style.background = 'var(--cyan)'; e.currentTarget.style.color = '#000'; e.currentTarget.style.boxShadow = '0 0 20px var(--cyan)'; } }}
+                 onMouseOut={(e) => { if (!isGsModalOpen) { e.currentTarget.style.background = 'rgba(0, 234, 255, 0.05)'; e.currentTarget.style.color = 'var(--cyan)'; e.currentTarget.style.boxShadow = 'inset 0 0 10px rgba(0, 234, 255, 0.1)'; } }}
+               >
+                GROUND STATION
+               </button>
 
-                {/* 2. RADAR SKYPLOT (Green) */}
-                <button 
-                  className={`btn ${isRadarOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsRadarOpen(!isRadarOpen); if (!isRadarOpen) bringToFront('radar'); }}
-                  style={{ 
-                    margin: 0, padding: '14px 5px', fontSize: '14px', letterSpacing: '1px', fontWeight: '900',
-                    background: isRadarOpen ? 'var(--green)' : 'rgba(0, 255, 102, 0.05)',
-                    color: isRadarOpen ? '#000' : 'var(--green)',
-                    border: '1px solid var(--green)',
-                    boxShadow: isRadarOpen ? '0 0 20px var(--green)' : 'inset 0 0 10px rgba(0, 255, 102, 0.1)',
-                    transition: 'all 0.3s'
-                  }}
-                  onMouseOver={(e) => { if (!isRadarOpen) { e.currentTarget.style.background = 'var(--green)'; e.currentTarget.style.color = '#000'; e.currentTarget.style.boxShadow = '0 0 20px var(--green)'; } }}
-                  onMouseOut={(e) => { if (!isRadarOpen) { e.currentTarget.style.background = 'rgba(0, 255, 102, 0.05)'; e.currentTarget.style.color = 'var(--green)'; e.currentTarget.style.boxShadow = 'inset 0 0 10px rgba(0, 255, 102, 0.1)'; } }}
-                >
-                 RADAR SKYPLOT
-                </button>
+               {/* 2. RADAR SKYPLOT (Green) */}
+               <button 
+                 className={`btn ${isRadarOpen ? 'active' : ''}`} 
+                 onClick={() => { setIsRadarOpen(!isRadarOpen); if (!isRadarOpen) bringToFront('radar'); }}
+                 style={{ 
+                   margin: 0, padding: '20px 5px', fontSize: '18px', letterSpacing: '2px', fontWeight: '900',
+                   background: isRadarOpen ? 'var(--green)' : 'rgba(0, 255, 102, 0.05)',
+                   color: isRadarOpen ? '#000' : 'var(--green)',
+                   border: '1px solid var(--green)',
+                   boxShadow: isRadarOpen ? '0 0 20px var(--green)' : 'inset 0 0 10px rgba(0, 255, 102, 0.1)',
+                   transition: 'all 0.3s'
+                 }}
+                 onMouseOver={(e) => { if (!isRadarOpen) { e.currentTarget.style.background = 'var(--green)'; e.currentTarget.style.color = '#000'; e.currentTarget.style.boxShadow = '0 0 20px var(--green)'; } }}
+                 onMouseOut={(e) => { if (!isRadarOpen) { e.currentTarget.style.background = 'rgba(0, 255, 102, 0.05)'; e.currentTarget.style.color = 'var(--green)'; e.currentTarget.style.boxShadow = 'inset 0 0 10px rgba(0, 255, 102, 0.1)'; } }}
+               >
+                RADAR SKYPLOT
+               </button>
 
-                {/* 3. POINTING ANGLES (Gold) */}
-                <button 
-                  className={`btn ${isAnglesOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsAnglesOpen(!isAnglesOpen); if (!isAnglesOpen) bringToFront('angles'); }}
-                  style={{ 
-                    margin: 0, padding: '14px 5px', fontSize: '14px', letterSpacing: '1px', fontWeight: '900',
-                    background: isAnglesOpen ? 'var(--gold)' : 'rgba(255, 204, 0, 0.05)',
-                    color: isAnglesOpen ? '#000' : 'var(--gold)',
-                    border: '1px solid var(--gold)',
-                    boxShadow: isAnglesOpen ? '0 0 20px var(--gold)' : 'inset 0 0 10px rgba(255, 204, 0, 0.1)',
-                    transition: 'all 0.3s'
-                  }}
-                  onMouseOver={(e) => { if (!isAnglesOpen) { e.currentTarget.style.background = 'var(--gold)'; e.currentTarget.style.color = '#000'; e.currentTarget.style.boxShadow = '0 0 20px var(--gold)'; } }}
-                  onMouseOut={(e) => { if (!isAnglesOpen) { e.currentTarget.style.background = 'rgba(255, 204, 0, 0.05)'; e.currentTarget.style.color = 'var(--gold)'; e.currentTarget.style.boxShadow = 'inset 0 0 10px rgba(255, 204, 0, 0.1)'; } }}
-                >
-                 POINTING ANGLES
-                </button>
+               {/* 3. POINTING ANGLES (Gold) */}
+               <button 
+                 className={`btn ${isAnglesOpen ? 'active' : ''}`} 
+                 onClick={() => { setIsAnglesOpen(!isAnglesOpen); if (!isAnglesOpen) bringToFront('angles'); }}
+                 style={{ 
+                   margin: 0, padding: '20px 5px', fontSize: '18px', letterSpacing: '2px', fontWeight: '900',
+                   background: isAnglesOpen ? 'var(--gold)' : 'rgba(255, 204, 0, 0.05)',
+                   color: isAnglesOpen ? '#000' : 'var(--gold)',
+                   border: '1px solid var(--gold)',
+                   boxShadow: isAnglesOpen ? '0 0 20px var(--gold)' : 'inset 0 0 10px rgba(255, 204, 0, 0.1)',
+                   transition: 'all 0.3s'
+                 }}
+                 onMouseOver={(e) => { if (!isAnglesOpen) { e.currentTarget.style.background = 'var(--gold)'; e.currentTarget.style.color = '#000'; e.currentTarget.style.boxShadow = '0 0 20px var(--gold)'; } }}
+                 onMouseOut={(e) => { if (!isAnglesOpen) { e.currentTarget.style.background = 'rgba(255, 204, 0, 0.05)'; e.currentTarget.style.color = 'var(--gold)'; e.currentTarget.style.boxShadow = 'inset 0 0 10px rgba(255, 204, 0, 0.1)'; } }}
+               >
+                POINTING ANGLES
+               </button>
 
-                {/* 4. SIGNAL FLOW DIAGRAM (Magenta/Pink เรืองแสงทะลุจอ) */}
-                <button 
-                  className={`btn ${isDiagramOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsDiagramOpen(!isDiagramOpen); if (!isDiagramOpen) bringToFront('diagram'); }}
-                  style={{ 
-                    margin: 0, padding: '14px 5px', fontSize: '14px', letterSpacing: '1px', fontWeight: '900',
-                    background: isDiagramOpen ? '#ff00ff' : 'rgba(255, 0, 255, 0.05)',
-                    color: isDiagramOpen ? '#fff' : '#ff00ff',
-                    border: '1px solid #ff00ff',
-                    boxShadow: isDiagramOpen ? '0 0 25px #ff00ff' : 'inset 0 0 10px rgba(255, 0, 255, 0.15)',
-                    transition: 'all 0.3s'
-                  }}
-                  onMouseOver={(e) => { if (!isDiagramOpen) { e.currentTarget.style.background = '#ff00ff'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.boxShadow = '0 0 25px #ff00ff'; } }}
-                  onMouseOut={(e) => { if (!isDiagramOpen) { e.currentTarget.style.background = 'rgba(255, 0, 255, 0.05)'; e.currentTarget.style.color = '#ff00ff'; e.currentTarget.style.boxShadow = 'inset 0 0 10px rgba(255, 0, 255, 0.15)'; } }}
-                >
-                 SIGNAL FLOW DIAGRAM
-                </button>
+               {/* 4. SIGNAL FLOW DIAGRAM (Magenta/Pink เรืองแสงทะลุจอ) */}
+               <button 
+                 className={`btn ${isDiagramOpen ? 'active' : ''}`} 
+                 onClick={() => { setIsDiagramOpen(!isDiagramOpen); if (!isDiagramOpen) bringToFront('diagram'); }}
+                 style={{ 
+                   margin: 0, padding: '20px 5px', fontSize: '18px', letterSpacing: '2px', fontWeight: '900',
+                   background: isDiagramOpen ? '#ff00ff' : 'rgba(255, 0, 255, 0.05)',
+                   color: isDiagramOpen ? '#fff' : '#ff00ff',
+                   border: '1px solid #ff00ff',
+                   boxShadow: isDiagramOpen ? '0 0 25px #ff00ff' : 'inset 0 0 10px rgba(255, 0, 255, 0.15)',
+                   transition: 'all 0.3s'
+                 }}
+                 onMouseOver={(e) => { if (!isDiagramOpen) { e.currentTarget.style.background = '#ff00ff'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.boxShadow = '0 0 25px #ff00ff'; } }}
+                 onMouseOut={(e) => { if (!isDiagramOpen) { e.currentTarget.style.background = 'rgba(255, 0, 255, 0.05)'; e.currentTarget.style.color = '#ff00ff'; e.currentTarget.style.boxShadow = 'inset 0 0 10px rgba(255, 0, 255, 0.15)'; } }}
+               >
+                SIGNAL FLOW DIAGRAM
+               </button>
 
-              </div>
-           </div>
+             </div>
+          </div>
 
            {/* 🗓️ PASS SCHEDULE (นำใส่กล่อง control-group ให้สมมาตรกับด้านบน) */}
            <div className="control-group" style={{ 
@@ -3446,16 +3515,19 @@ return (
         </div>
       </div>
       
-          {/* --- SKP GISTDA GROUND STATION (ป๊อปอัปขยายได้อิสระ + Auto-Scale) --- */}
-          {isGsModalOpen && (
+         {/* --- SKP GISTDA GROUND STATION (ป๊อปอัปขยายได้อิสระ + Auto-Scale) --- */}
+        {/* --- SKP GISTDA GROUND STATION (ป๊อปอัปขยายได้อิสระ + Auto-Scale) --- */}
+        {isGsModalOpen && (
         <div className="modal-box gs-modal" onMouseDownCapture={() => bringToFront('gs')} style={{ 
           position: 'fixed', 
           top: maximizedWins.gs ? '0px' : `${gsPos.y}px`, 
           left: maximizedWins.gs ? '0px' : `${gsPos.x}px`, 
-          width: maximizedWins.gs ? '100vw' : '480px', 
-          height: maximizedWins.gs ? '100vh' : '690px', 
-          minWidth: '400px', minHeight: '650px',
-          maxWidth: 'none', maxHeight: 'none', 
+          /* 📍 ฟันธง: ปลดล็อก Height เป็น auto ให้กล่องกอดเนื้อหาพอดีเป๊ะ 100% 
+             พร้อมกางโล่ maxHeight: 85vh ป้องกันขอบกล่องทะลุขอบจอด้านล่าง! */
+          width: maximizedWins.gs ? '100vw' : 'min(650px, 90vw)', 
+          height: maximizedWins.gs ? '100vh' : 'auto', 
+          minWidth: '450px', minHeight: 'auto',
+          maxWidth: '100vw', maxHeight: maximizedWins.gs ? 'none' : '85vh', 
           resize: maximizedWins.gs ? 'none' : 'both', overflow: 'hidden', padding: '0',
           background: 'linear-gradient(145deg, rgba(20, 5, 0, 0.92) 0%, rgba(10, 2, 0, 0.98) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
           border: maximizedWins.gs ? 'none' : '2px solid #FF6600', 
@@ -3466,14 +3538,14 @@ return (
           transition: isDraggingGs ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)' 
         }}>
           
-          {/* 📍 ฟันธง: ขยายฟอนต์ Ground Station ให้ใหญ่กระแทกตาและสมมาตรเมื่อย่อขยาย */}
+          {/* 📍 ฟันธง: อัปเกรดฟอนต์ Ground Station สมมาตร 100% เล็กก็ชัด ใหญ่ก็อลังการ! */}
           <style>{`
-            .gs-modal .gs-header-text { font-size: clamp(22px, 3cqw, 40px) !important; }
-            .gs-modal .gs-icon { font-size: clamp(28px, 4cqw, 50px) !important; filter: drop-shadow(0 0 5px #FF6600); }
-            .gs-modal .gs-row { padding: clamp(16px, 2.5cqw, 35px) 0 !important; display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(255, 102, 0, 0.3) !important; align-items: center; }
+            .gs-modal .gs-header-text { font-size: clamp(30px, 5cqw, 65px) !important; }
+            .gs-modal .gs-icon { font-size: clamp(40px, 6cqw, 80px) !important; filter: drop-shadow(0 0 5px #FF6600); }
+            .gs-modal .gs-row { padding: clamp(24px, 3.5cqw, 60px) 0 !important; display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(255, 102, 0, 0.3) !important; align-items: center; }
             .gs-modal .gs-row:last-child { border-bottom: none !important; }
-            .gs-modal .gs-label { font-size: clamp(16px, 2.2cqw, 28px) !important; color: rgba(255,255,255,0.7) !important; font-weight: bold; letter-spacing: 1px; }
-            .gs-modal .gs-value { font-size: clamp(18px, 2.5cqw, 32px) !important; color: #fff !important; font-weight: 900 !important; text-shadow: 0 0 8px rgba(255, 255, 255, 0.4); text-align: right; }
+            .gs-modal .gs-label { font-size: clamp(24px, 4cqw, 45px) !important; color: rgba(255,255,255,0.7) !important; font-weight: bold; letter-spacing: 1.5px; text-transform: uppercase; }
+            .gs-modal .gs-value { font-size: clamp(28px, 4.5cqw, 55px) !important; color: #fff !important; font-weight: 900 !important; text-shadow: 0 0 8px rgba(255, 255, 255, 0.4); text-align: right; }
             .gs-modal .gs-value.highlight { color: #FF6600 !important; text-shadow: 0 0 10px rgba(255, 102, 0, 0.6); }
             .gs-no-scroll::-webkit-scrollbar { display: none; }
             .gs-no-scroll { -ms-overflow-style: none; scrollbar-width: none; }
@@ -3484,13 +3556,14 @@ return (
                <span className="gs-icon">📡</span>
             </div>
             
-            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(255, 102, 0, 0.1)', border: '1px solid #FF6600', padding: 'clamp(6px, 1cqw, 15px) clamp(20px, 2.5cqw, 40px)', borderRadius: '6px', margin: '0 10px', whiteSpace: 'nowrap', boxShadow: 'inset 0 0 10px rgba(255, 102, 0, 0.2)' }}>
-              <span style={{ color: '#fff', fontSize: 'clamp(15px, 2cqw, 30px)', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px #FF6600', pointerEvents: 'none' }}>
+           {/* 📍 ฟันธง: เพิ่ม minWidth: 0 และ overflow: hidden บังคับให้กรอบยืดหยุ่นได้ ไม่ดันปุ่มกระเด็นตกจอ 100% */}
+           <div style={{ flex: '0 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', background: 'rgba(255, 102, 0, 0.1)', border: '1px solid #FF6600', padding: 'clamp(8px, 1.5cqw, 20px) clamp(15px, 2.5cqw, 40px)', borderRadius: '6px', margin: '0 10px', boxShadow: 'inset 0 0 10px rgba(255, 102, 0, 0.2)' }}>
+              <span style={{ color: '#fff', fontSize: 'clamp(20px, 3.5cqw, 45px)', fontWeight: '900', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 15px #FF6600', pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               GISTDA GROUND STATION
               </span>
             </div>
-
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: 'clamp(8px, 1cqw, 15px)' }}>
+           {/* 📍 ฟันธง: เติม flexShrink: 0 ที่กล่องครอบปุ่ม เพื่อล็อกตายตัว ห้ามปุ่มโดนบีบจนตกขอบจอเด็ดขาด! */}
+           <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: 'clamp(8px, 1cqw, 15px)', flexShrink: 0 }}>
               <button className="modal-close-btn" style={{ width: 'clamp(32px, 4cqw, 55px)', height: 'clamp(32px, 4cqw, 55px)', fontSize: 'clamp(15px, 2cqw, 30px)', flexShrink: 0, border: '1px solid #FF6600', color: '#FF6600', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('gs'); }}>{maximizedWins.gs ? '🗗' : '🗖'}</button>
               <button className="modal-close-btn" style={{ width: 'clamp(32px, 4cqw, 55px)', height: 'clamp(32px, 4cqw, 55px)', fontSize: 'clamp(16px, 2.2cqw, 32px)', flexShrink: 0, border: '1px solid #FF6600', color: '#FF6600', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsGsModalOpen(false); }}>✕</button>
             </div>
@@ -3498,14 +3571,14 @@ return (
           
           <div className="gs-no-scroll" style={{ padding: 'clamp(20px, 2.5cqw, 40px) clamp(30px, 3.5cqw, 50px)', display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', fontFamily: 'Rajdhani', letterSpacing: '0.5px' }}>
 
-              <div style={{ background: 'rgba(0, 234, 255, 0.05)', padding: 'clamp(15px, 2cqw, 25px)', borderRadius: '8px', border: '1px solid rgba(0, 234, 255, 0.2)', marginBottom: 'clamp(20px, 2.5cqw, 35px)' }}>
-                <h3 style={{ margin: '0 0 clamp(10px, 1.2cqw, 20px) 0', color: 'var(--cyan)', fontSize: 'clamp(14px, 1.8cqw, 24px)', letterSpacing: '2px' }}>🌐 ACTIVE GROUND STATION NETWORK</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 'clamp(8px, 1cqw, 15px)' }}>
+         <div style={{ background: 'rgba(0, 234, 255, 0.05)', padding: 'clamp(25px, 3cqw, 50px)', borderRadius: '8px', border: '1px solid rgba(0, 234, 255, 0.2)', marginBottom: 'clamp(30px, 4cqw, 60px)' }}>
+                <h3 style={{ margin: '0 0 clamp(20px, 2.5cqw, 35px) 0', color: 'var(--cyan)', fontSize: 'clamp(22px, 3cqw, 40px)', letterSpacing: '2px', textAlign: 'center', fontWeight: '900' }}>🌐 ACTIVE GROUND STATION NETWORK</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 'clamp(15px, 2cqw, 30px)' }}>
                   {GS_NETWORK.map(station => (
                     <button 
                       key={station.id}
                       className={`btn ${activeStation.id === station.id ? 'btn-cyan active' : 'btn-cyan'}`}
-                      style={{ padding: 'clamp(10px, 1.5cqw, 20px) 5px', fontSize: 'clamp(14px, 1.8cqw, 26px)', margin: 0, fontWeight: activeStation.id === station.id ? '900' : 'normal' }}
+                      style={{ padding: 'clamp(20px, 2.5cqw, 35px) 5px', fontSize: 'clamp(24px, 3.5cqw, 50px)', letterSpacing: '2px', margin: 0, fontWeight: activeStation.id === station.id ? '900' : 'bold' }}
                       onClick={() => {
                         setActiveStation(station);
                         if (selectedCatnr) calculateFuturePasses(selectedCatnr);
@@ -3702,15 +3775,16 @@ return (
         </div>
       )}
 
-      {/* --- PASS SCHEDULE --- */}
-      {isPassModalOpen && (
+    {/* --- PASS SCHEDULE --- */}
+    {isPassModalOpen && (
         <div className="modal-box pass-modal" onMouseDownCapture={() => bringToFront('pass')} style={{ 
           position: 'fixed', 
           top: maximizedWins.pass ? '0px' : `${passPos.y}px`, 
           left: maximizedWins.pass ? '0px' : `${passPos.x}px`, 
-          width: maximizedWins.pass ? '100vw' : '850px', 
-          height: maximizedWins.pass ? '100vh' : '550px', 
-          minWidth: '500px', minHeight: '350px',
+          /* 📍 ฟันธง: ระเบิดหน้าต่าง Pass Schedule ให้ใหญ่ขึ้นเป็น 1000x650 สมมาตรตารางแน่นอน */
+          width: maximizedWins.pass ? '100vw' : '1000px', 
+          height: maximizedWins.pass ? '100vh' : '650px', 
+          minWidth: '700px', minHeight: '450px',
           maxWidth: 'none', maxHeight: 'none', resize: maximizedWins.pass ? 'none' : 'both', overflow: 'hidden', 
           background: 'linear-gradient(145deg, rgba(20, 10, 0, 0.9) 0%, rgba(10, 5, 0, 0.95) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
          border: maximizedWins.pass ? 'none' : '2px solid var(--gold)', 
@@ -4386,8 +4460,9 @@ return (
 {isAnglesOpen && (
         <div className="modal-box angles-modal" onMouseDownCapture={() => bringToFront('angles')} style={{
           position: 'fixed', top: maximizedWins.angles ? '0px' : `${anglesPos.y}px`, left: maximizedWins.angles ? '0px' : `${anglesPos.x}px`,
-          width: maximizedWins.angles ? '100vw' : '850px', height: maximizedWins.angles ? '100vh' : '650px',
-          minWidth: '600px', minHeight: '400px', resize: maximizedWins.angles ? 'none' : 'both', overflow: 'hidden',
+          /* 📍 ฟันธง: ขยายกรอบเริ่มต้นให้ใหญ่ขึ้นเป็น 900x750 เพื่อรับกับฟอนต์! */
+          width: maximizedWins.angles ? '100vw' : '900px', height: maximizedWins.angles ? '100vh' : '750px',
+          minWidth: '700px', minHeight: '550px', resize: maximizedWins.angles ? 'none' : 'both', overflow: 'hidden',
           background: 'linear-gradient(145deg, rgba(10, 15, 25, 0.95) 0%, rgba(5, 10, 15, 0.98) 100%)', 
           border: maximizedWins.angles ? 'none' : '2px solid var(--cyan)', 
           borderRadius: maximizedWins.angles ? '0px' : '8px', 
@@ -4403,11 +4478,15 @@ return (
           `}</style>
 
           {/* Header */}
-          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'clamp(10px, 1.5cqw, 20px) clamp(15px, 2cqw, 30px)', cursor: maximizedWins.angles ? 'default' : (isDraggingAngles ? 'grabbing' : 'grab'), background: 'linear-gradient(90deg, rgba(0, 234, 255, 0.15), transparent)', borderBottom: '1px solid rgba(0, 234, 255, 0.4)', zIndex: 10 }} onMouseDown={(e) => { if(!maximizedWins.angles) handleAnglesMouseDown(e); }}>
-            <div style={{ display: 'flex', alignItems: 'center', color: '#fff', fontFamily: 'Orbitron, sans-serif', fontWeight: 'bold', fontSize: 'clamp(18px, 2.5cqw, 35px)', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
+          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'clamp(12px, 1.5cqw, 25px) clamp(20px, 2.5cqw, 40px)', cursor: maximizedWins.angles ? 'default' : (isDraggingAngles ? 'grabbing' : 'grab'), background: 'linear-gradient(90deg, rgba(0, 234, 255, 0.15), transparent)', borderBottom: '1px solid rgba(0, 234, 255, 0.4)', zIndex: 10 }} onMouseDown={(e) => { if(!maximizedWins.angles) handleAnglesMouseDown(e); }}>
+            
+            {/* 📍 ฟันธง: เพิ่ม minWidth: 0 ให้ข้อความยืดหยุ่น และขยายฟอนต์เริ่มต้นเป็น 24px */}
+            <div style={{ flex: '0 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', color: '#fff', fontFamily: 'Orbitron, sans-serif', fontWeight: 'bold', fontSize: 'clamp(24px, 3.5cqw, 45px)', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               <span style={{ marginRight: '10px' }}>📐</span> POINTING ANGLES
             </div>
-            <div style={{ display: 'flex', gap: 'clamp(8px, 1cqw, 15px)' }}>
+            
+            {/* 📍 ฟันธง: ล็อกปุ่มขยาย/ปิด ด้วย flexShrink: 0 ห้ามหายไปไหน! */}
+            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: 'clamp(8px, 1cqw, 15px)', flexShrink: 0 }}>
               <button className="modal-close-btn" style={{ width: 'clamp(32px, 3.5cqw, 50px)', height: 'clamp(32px, 3.5cqw, 50px)', fontSize: 'clamp(15px, 1.8cqw, 28px)', borderColor: 'var(--cyan)', color: 'var(--cyan)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('angles')}>{maximizedWins.angles ? '🗗' : '🗖'}</button>
               <button className="modal-close-btn" style={{ width: 'clamp(32px, 3.5cqw, 50px)', height: 'clamp(32px, 3.5cqw, 50px)', fontSize: 'clamp(16px, 1.9cqw, 30px)', borderColor: 'var(--red)', color: 'var(--red)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsAnglesOpen(false)}>✕</button>
             </div>
