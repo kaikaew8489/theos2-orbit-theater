@@ -741,6 +741,25 @@ const create3DLabel = (name, catnr) => {
   return sprite.clone();
 };
 
+// 📍 ฟันธง: สร้าง Component สำหรับป้ายความถี่ (f-label) แบบฝัง CSS ป้องกันบั๊ก!
+const FreqLabel = ({ linkType, freq, active }) => {
+  let color = '#fff';
+  let shadow = 'none';
+  let labelText = '';
+
+  if (linkType === 'tm') { color = 'var(--cyan)'; shadow = 'rgba(0,234,255,0.4)'; labelText = 'S-BAND TM (DOWN)'; }
+  else if (linkType === 'tm_up') { color = 'var(--gold)'; shadow = 'rgba(255,204,0,0.4)'; labelText = 'S-BAND TC (UP)'; }
+  else if (linkType === 'downlink') { color = 'var(--green)'; shadow = 'rgba(0,255,102,0.4)'; labelText = 'DOWNLINK'; }
+
+  if (!active) return null;
+
+  return (
+    <div style={{ position: 'absolute', pointerEvents: 'none', border: `2px solid ${color}`, borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 10, 20, 0.85)', backdropFilter: 'blur(4px)', color: color, boxShadow: `0 0 10px ${shadow}`, transform: 'translate(-50%, -50%)' }}>
+      {freq}<br /><span style={{ fontSize: 'max(10px, 1cqmin)', color: '#fff' }}>{labelText}</span>
+    </div>
+  );
+};
+
 // ==========================================
 // 4. MAIN APP
 // ==========================================
@@ -1982,6 +2001,11 @@ useEffect(() => {
     }
   };
 
+  // 📍 ฟันธง: สั่งกระตุกฟังก์ชันโหลด TLE อัตโนมัติ 1 ครั้ง ทันทีที่เปิดแอปหรือกด F5
+  useEffect(() => {
+    handleAutoUpdateTle();
+  }, []);
+
   const thaiTime = new Date(currentDate.getTime() + 7 * 3600000);
   const formatTime = (d) => `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`;
 
@@ -2668,37 +2692,51 @@ return (
             objectsData={allSatObjects}
             objectLat="lat" objectLng="lng" objectAltitude="altitude"
             
-            /* 📍 ฟันธง: ประกอบร่างดาวเทียม 3D พร้อมป้ายชื่อ 3D ไว้ใน Group เดียวกัน! */
-            objectThreeObject={(d) => {
-              const group = new THREE.Group();
+           /* 📍 ฟันธง: ประกอบร่างดาวเทียม 3D พร้อมป้ายชื่อ 3D ไว้ใน Group เดียวกัน! */
+           objectThreeObject={(d) => {
+            const group = new THREE.Group();
 
-              // 1. วาดตัวดาวเทียม
-              if (d.catnr === '58016') {
-                if (!window.theos2TextureCache) {
-                  window.theos2TextureCache = new THREE.TextureLoader().load('/textures/THEOS-2.webp', (texture) => {
-                    texture.minFilter = THREE.LinearFilter;
-                    texture.magFilter = THREE.LinearFilter;
-                  });
-                }
-                const material = new THREE.SpriteMaterial({ map: window.theos2TextureCache, color: 0xffffff, transparent: true, depthWrite: false });
-                const satSprite = new THREE.Sprite(material);
-                const size = d.isTarget ? 14 : 5; 
-                satSprite.scale.set(size * 1.8, size, 1);
-                group.add(satSprite);
-              } else {
-                group.add(createSatelliteModel(d.isTarget));
+            // 1. วาดตัวดาวเทียม
+            if (d.catnr === '58016') {
+              if (!window.theos2TextureCache) {
+                window.theos2TextureCache = new THREE.TextureLoader().load('/textures/THEOS-2.webp', (texture) => {
+                  texture.minFilter = THREE.LinearFilter;
+                  texture.magFilter = THREE.LinearFilter;
+                });
               }
+              const material = new THREE.SpriteMaterial({ map: window.theos2TextureCache, color: 0xffffff, transparent: true, depthWrite: false });
+              const satSprite = new THREE.Sprite(material);
+              const size = d.isTarget ? 14 : 5; 
+              satSprite.scale.set(size * 1.8, size, 1);
+              group.add(satSprite);
+            } else if (d.catnr === '33396') {
+              // 📍 ฟันธง: โหลดภาพ THEOS.webp มาใช้แทนโมเดลกล่อง 3D!
+              if (!window.theosTextureCache) {
+                window.theosTextureCache = new THREE.TextureLoader().load('/textures/THEOS.webp', (texture) => {
+                  texture.minFilter = THREE.LinearFilter;
+                  texture.magFilter = THREE.LinearFilter;
+                });
+              }
+              const material = new THREE.SpriteMaterial({ map: window.theosTextureCache, color: 0xffffff, transparent: true, depthWrite: false });
+              const satSprite = new THREE.Sprite(material);
+              // ตั้งไซส์ให้ THEOS-1 สมมาตร และเล็กกว่า THEOS-2 เล็กน้อย (12 vs 14)
+              const size = d.isTarget ? 12 : 4.5; 
+              satSprite.scale.set(size * 1.5, size, 1); 
+              group.add(satSprite);
+            } else {
+              group.add(createSatelliteModel(d.isTarget));
+            }
 
-             // 2. 📍 นำป้ายชื่อ 3D มาแปะด้านบนดาวเทียม (เฉพาะเป้าหมายที่ถูกล็อก)
-             if (d.isTarget) {
-              const labelSprite = create3DLabel(d.name, d.catnr);
-              /* 📍 ฟันธง: ดึงป้ายชื่อ THEOS-2 ลงมา (จาก 10.5 เหลือ 7.5) ให้แนบชิดหลังคาดาวเทียม สมมาตรเป๊ะ 100%! */
-              labelSprite.position.y = d.catnr === '58016' ? 7.5 : 4; 
-              group.add(labelSprite);
-           }
+           // 2. 📍 นำป้ายชื่อ 3D มาแปะด้านบนดาวเทียม (เฉพาะเป้าหมายที่ถูกล็อก)
+           if (d.isTarget) {
+            const labelSprite = create3DLabel(d.name, d.catnr);
+            // 📍 ฟันธง: ปรับระยะป้ายชื่อให้ลอยอยู่เหนือหลังคาดาวเทียมแต่ละรุ่นให้เป๊ะที่สุด!
+            labelSprite.position.y = d.catnr === '58016' ? 7.5 : (d.catnr === '33396' ? 6.5 : 4); 
+            group.add(labelSprite);
+         }
 
-              return group;
-            }}
+         return group;
+      }}
             
             /* 📍 ฟันธง: ปิด Auto-Tween สังหารอาการ Rubber-banding เวลาเร่งซิม 800X */
             objectsTransitionDuration={0}
@@ -4699,7 +4737,7 @@ return (
         .conn-dot { position: absolute; width: max(8px, 1cqmin); height: max(8px, 1cqmin); background: var(--green); border-radius: 50%; box-shadow: 0 0 10px var(--green); z-index: 15; transform: translate(-50%, -50%); }
       `}</style>
 
-      {(() => {
+{(() => {
         let satSpecs = { tcFreq: '2050.00 MHz', tcRange: '2025 - 2120 MHz', tcRate: '16 kbps', tmFreq: '2225.00 MHz', tmRange: '2200 - 2300 MHz', tmRate: '1.5 Mbps', xBandFreq: '8150.00 MHz', xBandRange: '8000 - 8400 MHz', xBandRate: '250.0 Mbps' };
         if (selectedCatnr === '33396') satSpecs = { tcFreq: '2036.00 MHz', tcRange: '2036.00 MHz (Fixed)', tcRate: '4 kbps', tmFreq: '2211.00 MHz', tmRange: '2211.00 MHz (Fixed)', tmRate: '400 kSps', xBandFreq: '8140.00 MHz', xBandRange: '8080 - 8200 MHz', xBandRate: 'BW: 120 MHz (60 MSps)' };
         else if (selectedCatnr === '58016') satSpecs = { tcFreq: '2066.56 MHz', tcRange: '2025 - 2120 MHz', tcRate: '32 kbps', tmFreq: '2244.228 MHz', tmRange: '2200 - 2300 MHz', tmRate: '117.6 kSps', xBandFreq: '8150.00 MHz', xBandRange: '7995 - 8305 MHz', xBandRate: 'BW: 310 MHz (155 MSps)' };
@@ -4707,57 +4745,13 @@ return (
         
         return (
           <>
-           <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
+            <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
               
-           {/* 📍 ฟันธง 2: เส้นสัญญาณจากดาวเทียม 2 เส้น (S-Band ซ้าย และ X-Band ขวา) */}
-        <line x1="50%" y1="12%" x2="calc(50% - 9cqmin)" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} />
-        <line x1="50%" y1="12%" x2="calc(50% + 9cqmin)" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
+              {/* 📍 ฟันธง: ดาวเทียมเหลือแค่ 2 เส้น (เหลือง TC, เขียว Downlink) ไม่มีเลเซอร์เหมือนรูปที่ 2 */}
+              <line x1="50%" y1="12%" x2="calc(50% - 9cqmin)" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} />
+              <line x1="50%" y1="12%" x2="calc(50% + 9cqmin)" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
 
-        {/* 〰️ SINE WAVES วิ่งขึ้นลงระหว่างดาวเทียม */}
-        {linkActive && (
-          <g>
-            {/* 1. TC (Gold) วิ่งขึ้นไปหาดาวเทียม (Uplink) */}
-            <g style={{ transform: 'translateX(-1cqmin)' }}>
-              <svg overflow="visible" className="pkt-tc">
-                <g transform="rotate(-71)">
-                  <path d="M -30,0 Q -22.5,-15 -15,0 Q -7.5,15 0,0 Q 7.5,-15 15,0 Q 22.5,15 30,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
-                    <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
-                  </path>
-                </g>
-                <animate attributeName="x" from="calc(50% - 9cqmin)" to="50%" dur="3s" repeatCount="indefinite" />
-                <animate attributeName="y" from="55%" to="12%" dur="3s" repeatCount="indefinite" />
-              </svg>
-            </g>
-            
-            {/* 2. TM (Cyan) วิ่งลงมาจากดาวเทียม (Downlink) */}
-            <g style={{ transform: 'translateX(1cqmin)' }}>
-              <svg overflow="visible" className="pkt-tm">
-                <g transform="rotate(109)">
-                  <path d="M -30,0 Q -22.5,-15 -15,0 Q -7.5,15 0,0 Q 7.5,-15 15,0 Q 22.5,15 30,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
-                    <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
-                  </path>
-                </g>
-                <animate attributeName="x" from="50%" to="calc(50% - 9cqmin)" dur="3.5s" repeatCount="indefinite" />
-                <animate attributeName="y" from="12%" to="55%" dur="3.5s" repeatCount="indefinite" />
-              </svg>
-            </g>
-
-            {/* 3. X-BAND Payload (Green) วิ่งลงมาจากดาวเทียม (Downlink) */}
-            <g>
-              <svg overflow="visible" className="pkt-pl">
-                <g transform="rotate(71)">
-                  <path d="M -40,0 Q -30,-20 -20,0 Q -10,20 0,0 Q 10,-20 20,0 Q 30,20 40,0" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round">
-                    <animateTransform attributeName="transform" type="scale" values="0.8; 1.3; 0.8" dur="1s" repeatCount="indefinite" />
-                  </path>
-                </g>
-                <animate attributeName="x" from="50%" to="calc(50% + 9cqmin)" dur="2.5s" repeatCount="indefinite" />
-                <animate attributeName="y" from="12%" to="55%" dur="2.5s" repeatCount="indefinite" />
-              </svg>
-            </g>
-          </g>
-        )}
-      
-              {/* TM (สีฟ้า) ภาคพื้นดิน */}
+              {/* 📍 ฟันธง: หดเส้นสีฟ้าและเหลืองภาคพื้นดินกลับมาแคบเท่าเดิม (3cqmin) */}
               <line x1="10%" y1="55%" x2="calc(50% - 9cqmin)" y2="55%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateY(-3cqmin)' }} />
               <line x1="10%" y1="55%" x2="10%" y2="85%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateX(-3cqmin)' }} />
               <line x1="10%" y1="85%" x2="10%" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateX(3cqmin)' }} />
@@ -4767,15 +4761,18 @@ return (
               <line x1="10%" y1="85%" x2="35%" y2="85%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} />
               <line x1="90%" y1="85%" x2="65%" y2="85%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
               
+              {/* 📍 ฟันธง: สามเหลี่ยม HPA ใหญ่สะใจ และตัวหนังสือห่างออกไป! */}
               <g style={{ transform: 'translateY(3cqmin)' }}>
                 <svg x="21%" y="55%" style={{ overflow: 'visible' }}>
-                  <polygon points="-45,-30 -45,30 38,0" fill="#020617" stroke="var(--gold)" strokeWidth="4" style={{ filter: linkActive ? 'drop-shadow(0 0 15px var(--gold))' : 'none' }} />
-                  <text x="-3" y="55" fill="var(--gold)" fontSize="max(18px, 1.8cqmin)" fontFamily="Orbitron" fontWeight="900" textAnchor="middle" style={{ textShadow: '0 0 12px #000', letterSpacing: '2px' }}>HPA</text>
+                  <polygon points="-75,-45 -75,45 60,0" fill="#020617" stroke="var(--gold)" strokeWidth="4" style={{ filter: linkActive ? 'drop-shadow(0 0 15px var(--gold))' : 'none' }} />
+                  <text x="-7" y="85" fill="var(--gold)" fontSize="max(20px, 2.2cqmin)" fontFamily="Orbitron" fontWeight="900" textAnchor="middle" style={{ textShadow: '0 0 12px #000', letterSpacing: '2px' }}>HPA</text>
                 </svg>
               </g>
 
-             {linkActive && (
-                <g style={{ fontFamily: 'Orbitron', fontWeight: '900' }}>
+              {/* 📍 SINE WAVES และรหัสดิจิตอล! */}
+              {linkActive && (
+                <g>
+                  {/* SINE WAVES ภาคพื้นดิน */}
                   <g style={{ transform: 'translateY(-3cqmin)' }}>
                     <svg overflow="visible" className="pkt-tm">
                       <g transform="rotate(180)">
@@ -4783,8 +4780,8 @@ return (
                           <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
                         </path>
                       </g>
-                      <animate attributeName="x" from="calc(50% - 9cqmin)" to="10%" dur="6s" repeatCount="indefinite" />
-                      <animate attributeName="y" from="55%" to="55%" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="x" from="calc(50% - 9cqmin)" to="10%" dur="4s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="55%" dur="4s" repeatCount="indefinite" />
                     </svg>
                   </g>
                   <g style={{ transform: 'translateX(-3cqmin)' }}>
@@ -4794,29 +4791,21 @@ return (
                           <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
                         </path>
                       </g>
-                      <animate attributeName="x" from="10%" to="10%" dur="5s" repeatCount="indefinite" />
-                      <animate attributeName="y" from="55%" to="85%" dur="5s" repeatCount="indefinite" />
+                      <animate attributeName="x" from="10%" to="10%" dur="3s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="85%" dur="3s" repeatCount="indefinite" />
                     </svg>
                   </g>
-                  <g>
-                    <text className="pkt-tm" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: 'max(16px, 1.8cqmin)', letterSpacing: '4px' }}>
-                      0 1 1 0 1 0 0 1
+
+                 {/* 📍 คืนชีพรหัสดิจิตอล ฝั่งซ้าย! */}
+                 <g>
+                    {/* 📍 ฟันธง: ขยายขนาดฟอนต์, ทำให้เป็นตัวหนา (fontWeight), และเปลี่ยนสีเป็นทองเข้ม (#b59410) */}
+                    <text className="pkt-tm" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: 'max(18px, 2cqmin)', fontWeight: 900, color: '#b59410', letterSpacing: '4px' }}>
+                      0 - 1 - 1 - 0 - 1 - 0 - 0 - 1
                       <animate attributeName="x" from="10%" to="35%" dur="4s" repeatCount="indefinite" />
                       <animate attributeName="y" from="85%" to="85%" dur="4s" repeatCount="indefinite" />
                     </text>
                   </g>
 
-                  <g style={{ transform: 'translateX(3cqmin)' }}>
-                    <svg overflow="visible" className="pkt-tc">
-                      <g transform="rotate(-90)">
-                        <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
-                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
-                        </path>
-                      </g>
-                      <animate attributeName="x" from="10%" to="10%" dur="5s" repeatCount="indefinite" />
-                      <animate attributeName="y" from="85%" to="55%" dur="5s" repeatCount="indefinite" />
-                    </svg>
-                  </g>
                   <g style={{ transform: 'translateY(3cqmin)' }}>
                     <svg overflow="visible" className="pkt-tc">
                       <g transform="rotate(0)">
@@ -4824,8 +4813,19 @@ return (
                           <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
                         </path>
                       </g>
-                      <animate attributeName="x" from="10%" to="calc(50% - 9cqmin)" dur="6s" repeatCount="indefinite" />
-                      <animate attributeName="y" from="55%" to="55%" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="x" from="10%" to="calc(50% - 9cqmin)" dur="4s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="55%" dur="4s" repeatCount="indefinite" />
+                    </svg>
+                  </g>
+                  <g style={{ transform: 'translateX(3cqmin)' }}>
+                    <svg overflow="visible" className="pkt-tc">
+                      <g transform="rotate(-90)">
+                        <path d="M -75,0 Q -62.5,-15 -50,0 Q -37.5,35 -25,0 Q -12.5,-55 0,0 Q 12.5,55 25,0 Q 37.5,-35 50,0 Q 62.5,15 75,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="10%" to="10%" dur="3s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="85%" to="55%" dur="3s" repeatCount="indefinite" />
                     </svg>
                   </g>
 
@@ -4836,8 +4836,8 @@ return (
                           <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
                         </path>
                       </g>
-                      <animate attributeName="x" from="calc(50% + 9cqmin)" to="90%" dur="6s" repeatCount="indefinite" />
-                      <animate attributeName="y" from="55%" to="55%" dur="6s" repeatCount="indefinite" />
+                      <animate attributeName="x" from="calc(50% + 9cqmin)" to="90%" dur="4s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="55%" dur="4s" repeatCount="indefinite" />
                     </svg>
                   </g>
                   <g>
@@ -4847,51 +4847,91 @@ return (
                           <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
                         </path>
                       </g>
-                      <animate attributeName="x" from="90%" to="90%" dur="5s" repeatCount="indefinite" />
-                      <animate attributeName="y" from="55%" to="85%" dur="5s" repeatCount="indefinite" />
+                      <animate attributeName="x" from="90%" to="90%" dur="3s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="85%" dur="3s" repeatCount="indefinite" />
                     </svg>
                   </g>
-                  <g>
-                    <text className="pkt-pl" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: 'max(16px, 1.8cqmin)', letterSpacing: '4px' }}>
-                      1 0 0 1 1 0 1 0
+
+                {/* 📍 คืนชีพรหัสดิจิตอล ฝั่งขวา! */}
+                <g>
+                    {/* 📍 ฟันธง: ขยายขนาดฟอนต์, ทำให้เป็นตัวหนา (fontWeight), และเปลี่ยนสีเป็นทองเข้ม (#b59410) */}
+                    <text className="pkt-pl" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: 'max(18px, 2cqmin)', fontWeight: 900, color: '#b59410', letterSpacing: '4px' }}>
+                      1 - 0 - 0 - 1 - 1 - 0 - 1 - 0
                       <animate attributeName="x" from="90%" to="65%" dur="4s" repeatCount="indefinite" />
                       <animate attributeName="y" from="85%" to="85%" dur="4s" repeatCount="indefinite" />
                     </text>
+                  </g>
+
+                  {/* 📍 SINE WAVES อวกาศ (วิ่งทะแยงมุม 2 เส้นเป๊ะๆ) */}
+                  <g style={{ transform: 'translateX(-1cqmin)' }}>
+                    <svg overflow="visible" className="pkt-tc">
+                      <g transform="rotate(-71)">
+                        <path d="M -30,0 Q -22.5,-15 -15,0 Q -7.5,15 0,0 Q 7.5,-15 15,0 Q 22.5,15 30,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="calc(50% - 9cqmin)" to="50%" dur="3s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="55%" to="12%" dur="3s" repeatCount="indefinite" />
+                    </svg>
+                  </g>
+
+                  {/* ✅ จุดที่ 3: กู้ชีพ Sine Wave สีฟ้า (TM) จากดาวเทียม */}
+                  <g style={{ transform: 'translateX(0)' }}>
+                    {/* หมุนคลื่นให้หันหน้าลง (rotate(109)) สวนทางกับ rotate(-71) */}
+                    <svg overflow="visible" className="pkt-tm">
+                      <g transform="rotate(109)">
+                        <path d="M -30,0 Q -22.5,-15 -15,0 Q -7.5,15 0,0 Q 7.5,-15 15,0 Q 22.5,15 30,0" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.2; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      {/* วิ่งจากดาวเทียม (50%) ลงมาหาเสาอากาศ (calc(50% - 9cqmin)) */}
+                      <animate attributeName="x" from="50%" to="calc(50% - 9cqmin)" dur="3s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="12%" to="55%" dur="3s" repeatCount="indefinite" />
+                    </svg>
+                  </g>
+
+                  <g style={{ transform: 'translateX(1cqmin)' }}>
+                    <svg overflow="visible" className="pkt-pl">
+                      <g transform="rotate(71)">
+                        <path d="M -40,0 Q -30,-20 -20,0 Q -10,20 0,0 Q 10,-20 20,0 Q 30,20 40,0" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="scale" values="0.8; 1.3; 0.8" dur="1s" repeatCount="indefinite" />
+                        </path>
+                      </g>
+                      <animate attributeName="x" from="50%" to="calc(50% + 9cqmin)" dur="2.5s" repeatCount="indefinite" />
+                      <animate attributeName="y" from="12%" to="55%" dur="2.5s" repeatCount="indefinite" />
+                    </svg>
                   </g>
                 </g>
               )}
             </svg>
 
-            {/* 📍 ฟันธง: คืนชีพป้ายกำกับความถี่ f-label ทั้งหมดที่หายไป! (ฝัง CSS ลงไปโดยตรง ป้องกันบั๊ก 100%) */}
+            {/* 📍 ป้ายความถี่ f-labels */}
             {linkActive && (
               <>
-                {/* S-BAND TM (DOWN) */}
-                <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid var(--cyan)', borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 10, 20, 0.85)', backdropFilter: 'blur(4px)', left: '31%', top: 'calc(55% - 6cqmin)', color: 'var(--cyan)', boxShadow: '0 0 10px rgba(0,234,255,0.4)', transform: 'translate(-50%, calc(-100% - max(8px, 0.8cqmin)))' }}>
+                <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid var(--cyan)', borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 10, 20, 0.85)', backdropFilter: 'blur(4px)', left: '31%', top: 'calc(55% - 3cqmin)', color: 'var(--cyan)', boxShadow: '0 0 10px rgba(0,234,255,0.4)', transform: 'translate(-50%, calc(-100% - max(8px, 0.8cqmin)))' }}>
                   {satSpecs.tmFreq}<br/><span style={{fontSize:'max(10px, 1cqmin)', color:'#fff'}}>S-BAND TM (DOWN)</span>
                 </div>
-                
-                {/* S-BAND TC (UP) */}
-                <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid var(--gold)', borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(20, 10, 0, 0.85)', backdropFilter: 'blur(4px)', left: '31%', top: 'calc(55% + 6cqmin)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.4)', transform: 'translate(-50%, max(15px, 1.5cqmin))' }}>
+                <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid var(--gold)', borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(20, 10, 0, 0.85)', backdropFilter: 'blur(4px)', left: '31%', top: 'calc(55% + 3cqmin)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.4)', transform: 'translate(-50%, max(15px, 1.5cqmin))' }}>
                   {satSpecs.tcFreq}<br/><span style={{fontSize:'max(10px, 1cqmin)', color:'#fff'}}>S-BAND TC (UP)</span>
                 </div>
-                
-                {/* DOWNLINK */}
-                <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid var(--green)', borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 20, 10, 0.85)', backdropFilter: 'blur(4px)', left: 'calc(50% + 9cqmin)', top: '35.5%', color: 'var(--green)', boxShadow: '0 0 10px rgba(0,255,102,0.4)', transform: 'translate(max(20px, 2cqmin), -50%)' }}>
-                  {satSpecs.xBandFreq}<br/><span style={{fontSize:'max(10px, 1cqmin)', color:'#fff'}}>DOWNLINK</span>
+
+               {/* 📍 ฟันธง: ย้าย 8150.00MHz มาแทน RF SIGNAL ตัดกรอบเดิมทิ้ง และปรับเป็นสีเขียว (Green) */}
+               <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid var(--green)', borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 10, 20, 0.85)', backdropFilter: 'blur(4px)', left: '72%', top: '55%', color: 'var(--green)', boxShadow: '0 0 10px rgba(0,255,102,0.4)', transform: 'translate(-50%, calc(-100% - max(12px, 1.2cqmin)))' }}>
+                  {satSpecs.xBandFreq}<br/><span style={{fontSize:'max(10px, 1cqmin)', color:'#fff'}}>X-BAND DOWNLINK</span>
                 </div>
-                
-                {/* RF SIGNAL */}
-                <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid var(--green)', borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 20, 10, 0.85)', backdropFilter: 'blur(4px)', left: '72%', top: '55%', color: 'var(--green)', transform: 'translate(-50%, calc(-100% - max(12px, 1.2cqmin)))' }}>RF SIGNAL</div>
-                
-                {/* IF 720 MHz */}
+
                 <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid #00aaff', borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 10, 20, 0.85)', backdropFilter: 'blur(4px)', left: '90%', top: '70%', color: '#00aaff', transform: 'translate(max(20px, 2cqmin), -50%)', boxShadow: '0 0 10px rgba(0,170,255,0.4)' }}>IF 720 MHz</div>
                 
-                {/* IF 70 MHz */}
-                <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid #ffffff', borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(4px)', left: 'calc(10% - 3cqmin)', top: '70%', color: '#ffffff', boxShadow: '0 0 15px rgba(255,255,255,0.4)', transform: 'translate(calc(-100% - max(12px, 1.2cqmin)), -50%)' }}>IF 70MHz</div>
+               {/* IF 720 MHz (เปลี่ยนสีตัวหนังสือจากฟ้า #00aaff เป็นขาว #ffffff) */}
+               <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid #00aaff', borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 10, 20, 0.85)', backdropFilter: 'blur(4px)', left: '90%', top: '70%', color: '#ffffff', transform: 'translate(max(20px, 2cqmin), -50%)', boxShadow: '0 0 10px rgba(0,170,255,0.4)' }}>IF 720 MHz</div>
+                
+                {/* 📍 ฟันธง: ย้ายกรอบ IF 70MHz ไปไว้ด้านนอกสุดซ้ายมือเป๊ะๆ! */}
+                {/* 📍 ฟันธง: เปลี่ยนกรอบเป็นสีส้มเหมือน UP/DOWN (#FF6600) และตัวหนังสือสีขาว */}
+                <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid #FF6600', borderRadius: '4px', padding: 'max(8px, 0.8cqmin) max(15px, 1.5cqmin)', fontFamily: '"Orbitron", sans-serif', fontSize: 'max(13px, 1.5cqmin)', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1.5px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(4px)', left: 'calc(10% - 3cqmin)', top: '70%', color: '#ffffff', boxShadow: '0 0 15px rgba(255,102,0,0.4)', transform: 'translate(calc(-100% - max(12px, 1.2cqmin)), -50%)' }}>IF 70 MHz</div>
               </>
             )}
 
-            {/* 📍 ฟันธง: คืนชีพกรอบ LINK STATUS ฝั่งซ้ายบน! (เพิ่ม zIndex: 10006 ให้ลอยข้ามทุกอย่าง) */}
+            {/* กรอบ LINK STATUS */}
             <div style={{ position: 'absolute', top: 'max(20px, 2.5cqmin)', left: 'max(20px, 2.5cqmin)', width: 'clamp(180px, 22cqw, 350px)', background: 'rgba(0, 20, 30, 0.85)', border: '2px solid var(--cyan)', borderRadius: '8px', padding: 'clamp(12px, 1.5cqmin, 30px) clamp(15px, 2cqmin, 40px)', boxShadow: '0 0 max(20px, 2cqmin) rgba(0, 234, 255, 0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0, 234, 255, 0.15)', zIndex: 10006, backdropFilter: 'blur(5px)' }}>
               <div style={{ color: 'var(--cyan)', fontSize: 'clamp(14px, 1.8cqmin, 28px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(0,234,255,0.3)', paddingBottom: 'max(6px, 0.6cqmin)', marginBottom: 'max(10px, 1cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', textAlign: 'center', whiteSpace: 'nowrap' }}>LINK STATUS</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(8px, 1.2cqmin, 18px)' }}>
@@ -4910,232 +4950,222 @@ return (
               </div>
             </div>
 
-   {/* 📍 3. SATELLITE NODE (ย่อไซส์ดาวเทียม THEOS ให้สมมาตร ไม่ล้นจอ) */}
-   <div style={{ position: 'absolute', left: '50%', top: '10%', zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transform: 'translate(-50%, -50%)' }}>
-        {selectedCatnr === '58016' ? (
-          <img 
-            src="/textures/THEOS-2.webp" 
-            className={linkActive ? 'anim-wobble' : ''} 
-            alt="THEOS-2" 
-            style={{ width: 'max(260px, 25cqmin)', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 20px rgba(0,0,0,0.8))' }} 
-          />
-        ) : selectedCatnr === '33396' ? (
-          /* 📍 ฟันธง: ย่อขนาด THEOS ลงจาก 360px เหลือ 180px ให้สมมาตรพอดีคำ! */
-          <img 
-            src="/textures/THEOS.webp" 
-            className={linkActive ? 'anim-wobble' : ''} 
-            alt="THEOS" 
-            style={{ width: 'max(180px, 18cqmin)', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 15px 15px rgba(0,0,0,0.8))' }} 
-          />
-        ) : (
-          <div className={linkActive ? 'anim-wobble' : ''} style={{ position: 'relative', width: 'max(160px, 18cqmin)', height: 'max(160px, 18cqmin)', display: 'flex', justifyContent: 'center', alignItems: 'center', filter: linkActive ? 'drop-shadow(0 0 25px var(--cyan))' : 'drop-shadow(0 0 10px rgba(0,234,255,0.3))', zIndex: 2 }}>
-             <img src="https://api.iconify.design/solar:satellite-bold-duotone.svg?color=%2300eaff" alt="Sat" style={{ width: '100%', height: '100%' }} />
-             {linkActive && <div style={{ position: 'absolute', width: '30%', height: '30%', background: 'var(--cyan)', borderRadius: '50%', filter: 'blur(10px)', animation: 'pulse 1.5s infinite' }}></div>}
-          </div>
-        )}
-      </div>
-
-      {/* ======================================================================= */}
-      {/* 🚀 คืนชีพ NODE ทั้งหมดที่หายไปตรงนี้! ห้ามลบเด็ดขาด! */}
-      {/* ======================================================================= */}
-
-      {/* 📍 4. SRC S-BAND ANTENNA SYSTEM */}
-      <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: 'calc(50% - 9cqmin)', top: '55%', zIndex: 20, width: '15cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--cyan)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,234,255,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,234,255,0.3)' : '' }}>
-        <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300eaff" className="n-icon" alt="Antenna" />
-        <div className="n-title" style={{ fontSize: 'max(22px, 2.5cqmin)', letterSpacing: '2px' }}>{GROUND_STATION.id}</div>
-        <div className="n-sub" style={{ fontSize: 'max(14px, 1.6cqmin)' }}>S-BAND ANTENNA</div>
-        {linkActive && (<>
-          <div className="conn-dot" style={{ top: 'calc(50% - 3cqmin)', left: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-          <div className="conn-dot" style={{ top: 'calc(50% + 3cqmin)', left: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
-        </>)}
-      </div>
-
-      {/* 📍 5. SRC X-BAND ANTENNA SYSTEM */}
-      <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: 'calc(50% + 9cqmin)', top: '55%', zIndex: 20, width: '15cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--green)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,255,102,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,255,102,0.3)' : '' }}>
-        <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300ff66" className="n-icon" alt="Antenna" />
-        <div className="n-title" style={{ fontSize: 'max(22px, 2.5cqmin)', letterSpacing: '2px' }}>{GROUND_STATION.id}</div>
-        <div className="n-sub" style={{ fontSize: 'max(14px, 1.6cqmin)' }}>X-BAND ANTENNA</div>
-        {linkActive && (<>
-          <div className="conn-dot" style={{ top: '50%', left: '100%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
-        </>)}
-      </div>
-
-      {/* 📍 6. S-BAND UP/DOWN CONVERTER NODE */}
-      <div className="flow-node" style={{ left: '10%', top: '55%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? '#FF6600' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,102,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,102,0,0.3)' : '' }}>
-        <img src="https://api.iconify.design/mdi:swap-vertical-bold.svg?color=%23FF6600" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px #FF6600)' : '' }} alt="Converter" />
-        <div className="n-title" style={{ color: linkActive ? '#FF6600' : '#fff' }}>UP/DOWN</div>
-        <div className="n-sub">S-BAND CONVERTER</div>
-        {linkActive && (<>
-          <div className="conn-dot" style={{ top: 'calc(50% - 3cqmin)', left: '100%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-          <div className="conn-dot" style={{ top: 'calc(50% + 3cqmin)', left: '100%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
-          <div className="conn-dot" style={{ left: 'calc(50% - 3cqmin)', top: '100%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-          <div className="conn-dot" style={{ left: 'calc(50% + 3cqmin)', top: '100%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
-        </>)}
-      </div>
-
-      {/* 📍 7. X-BAND DOWNCONVERTER NODE */}
-      <div className="flow-node" style={{ left: '90%', top: '55%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? '#00aaff' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,170,255,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,170,255,0.3)' : '' }}>
-        <img src="https://api.iconify.design/mdi:radio-tower.svg?color=%2300aaff" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px #00aaff)' : '' }} alt="Tuner" />
-        <div className="n-title" style={{ color: linkActive ? '#00aaff' : '#fff' }}>X-BAND</div>
-        <div className="n-sub">DOWNCONVERTER</div>
-        {linkActive && (<>
-          <div className="conn-dot" style={{ top: '50%', left: '0%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
-          <div className="conn-dot" style={{ top: '100%', left: '50%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
-        </>)}
-      </div>
-
-      {/* 📍 8. TT&C BASEBAND SYSTEM NODE */}
-      <div className="flow-node" style={{ left: '10%', top: '85%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--gold)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,204,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,204,0,0.3)' : '' }}>
-        <img src="https://api.iconify.design/mdi:router-wireless.svg?color=%23ffcc00" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px var(--gold))' : '' }} alt="TTC" />
-        <div className="n-title" style={{ color: linkActive ? 'var(--gold)' : '#fff' }}>TT&C</div>
-        <div className="n-sub">BASEBAND SYSTEM</div>
-        {linkActive && (<>
-          <div className="conn-dot" style={{ left: 'calc(50% - 3cqmin)', top: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-          <div className="conn-dot" style={{ left: 'calc(50% + 3cqmin)', top: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
-          <div className="conn-dot" style={{ left: '100%', top: '50%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
-        </>)}
-      </div>
-
-      {/* 📍 9. BASEBAND DEMODULATOR NODE */}
-      <div className="flow-node" style={{ left: '90%', top: '85%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--red)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,51,51,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,51,51,0.3)' : '' }}>
-        <img src="https://api.iconify.design/mdi:server-network.svg?color=%23ff3333" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px var(--red))' : '' }} alt="Baseband" />
-        <div className="n-title" style={{ color: linkActive ? 'var(--red)' : '#fff' }}>BASEBAND</div>
-        <div className="n-sub">DEMODULATOR</div>
-        {linkActive && (<>
-          <div className="conn-dot" style={{ top: '0%', left: '50%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
-          <div className="conn-dot" style={{ top: '50%', left: '0%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
-        </>)}
-      </div>
-
-      {/* 📍 10. TT&C MINI-HUD NODE */}
-      <div className={`flow-node ${linkActive ? 'active' : ''}`} 
-           style={{ left: '36%', top: '85%', zIndex: 20, width: 'max(280px, 28cqmin)', height: 'max(160px, 16cqmin)', padding: 'max(6px, 0.6cqmin)', borderColor: linkActive ? 'var(--gold)' : 'rgba(255,204,0,0.3)', background: '#020617', flexDirection: 'column', gap: 'max(6px, 0.6cqmin)', cursor: 'pointer', boxShadow: linkActive ? '0 0 max(25px, 2.5cqmin) rgba(255,204,0,0.4), inset 0 0 max(15px, 1.5cqmin) rgba(255,204,0,0.2)' : '' }} 
-           onClick={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 'max(4px, 0.4cqmin)' }}>
-          <span style={{ color: '#fff', fontSize: 'max(11px, 1.2cqmin)', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
-            <span style={{ color: linkActive ? 'var(--gold)' : 'var(--red)', textShadow: linkActive ? '0 0 8px var(--gold)' : 'none', animation: linkActive ? 'pulse 1s infinite' : 'none' }}>●</span> TT&C
-          </span>
-          <span style={{ color: '#000', background: linkActive ? 'var(--cyan)' : 'rgba(255,255,255,0.3)', fontSize: 'max(9px, 1cqmin)', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 8px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--cyan)' : 'none' }}>70 MHz IF</span>
-        </div>
-        <div style={{ display: 'flex', width: '100%', flex: 1, gap: 'max(6px, 0.6cqmin)', minHeight: 0 }}>
-          <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justify: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
-            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
-            <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
-            <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
-            {linkActive && ['50%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
-              <div key={`bpsk-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
-                <div style={{ width: '3px', height: '3px', background: 'var(--cyan)', borderRadius: '50%', boxShadow: '0 0 5px var(--cyan)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
-                <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(0,234,255,0.6)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
-              </div>
-            )))}
-          </div>
-          <div style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
-            <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '10% 20%' }}></div>
-            <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '90%', overflow: 'visible' }} preserveAspectRatio="none" viewBox="0 0 100 100">
-              {linkActive ? (
-                <>
-                  <path d="M0,95 L5,93 L10,96 L15,94 L20,95 L25,93 L30,95 L35,92 L40,95 L45,94 L50,96 L55,93 L60,95 L65,94 L70,95 L75,92 L80,96 L85,93 L90,95 L95,92 L100,95" fill="none" stroke="rgba(0,234,255,0.4)" strokeWidth="1">
-                    <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1.5; 0 1; 0 0" dur="0.1s" repeatCount="indefinite" />
-                  </path>
-                  <path d="M0,95 L46,95 L49,15 C50,10 50,10 51,15 L54,95 L100,95" fill="none" stroke="var(--cyan)" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 3px var(--cyan))', transformOrigin: 'bottom' }}>
-                    <animateTransform attributeName="transform" type="scale" values="1 0.95; 1 1.05; 1 0.97; 1 1" dur="0.12s" repeatCount="indefinite" />
-                  </path>
-                </>
+            {/* 📍 ฟันธง: ดาวเทียม (ลบเงาดำทิ้งทั้งหมด!) */}
+            <div style={{ position: 'absolute', left: '50%', top: '10%', zIndex: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', transform: 'translate(-50%, -50%)' }}>
+              {selectedCatnr === '58016' ? (
+                <img src="/textures/THEOS-2.webp" className={linkActive ? 'anim-wobble' : ''} alt="THEOS-2" style={{ width: 'max(360px, 35cqmin)', height: 'auto', objectFit: 'contain', zIndex: 2 }} />
+              ) : selectedCatnr === '33396' ? (
+                <img src="/textures/THEOS.webp" className={linkActive ? 'anim-wobble' : ''} alt="THEOS" style={{ width: 'max(180px, 18cqmin)', height: 'auto', objectFit: 'contain', zIndex: 2 }} />
               ) : (
-                <path d="M0,95 L10,94 L20,96 L30,94 L40,95 L50,93 L60,96 L70,94 L80,95 L90,93 L100,95" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1">
-                  <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1; 0 0.5; 0 0" dur="0.2s" repeatCount="indefinite" />
-                </path>
+                <div className={linkActive ? 'anim-wobble' : ''} style={{ position: 'relative', width: 'max(160px, 18cqmin)', height: 'max(160px, 18cqmin)', display: 'flex', justifyContent: 'center', alignItems: 'center', filter: linkActive ? 'drop-shadow(0 0 25px var(--cyan))' : 'drop-shadow(0 0 10px rgba(0,234,255,0.3))', zIndex: 2 }}>
+                   <img src="https://api.iconify.design/solar:satellite-bold-duotone.svg?color=%2300eaff" alt="Sat" style={{ width: '100%', height: '100%' }} />
+                   {linkActive && <div style={{ position: 'absolute', width: '30%', height: '30%', background: 'var(--cyan)', borderRadius: '50%', filter: 'blur(10px)', animation: 'pulse 1.5s infinite' }}></div>}
+                </div>
               )}
-            </svg>
-          </div>
-        </div>
-      </div>
+            </div>
 
-      {/* 📍 11. ANALYZER MINI-HUD NODE */}
-      <div className={`flow-node ${linkActive ? 'active' : ''}`} 
-           style={{ left: '64%', top: '85%', zIndex: 20, width: 'max(280px, 28cqmin)', height: 'max(160px, 16cqmin)', padding: 'max(8px, 0.8cqmin)', borderColor: linkActive ? 'var(--green)' : 'rgba(0,234,255,0.3)', background: '#020617', flexDirection: 'column', gap: 'max(8px, 0.8cqmin)', cursor: 'pointer', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,255,102,0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0,255,102,0.2)' : '' }} 
-           onClick={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 'max(4px, 0.4cqmin)' }}>
-          <span style={{ color: '#fff', fontSize: 'max(11px, 1.2cqmin)', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
-            <span style={{ color: linkActive ? 'var(--green)' : 'var(--red)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none', animation: linkActive ? 'pulse 1s infinite' : 'none' }}>●</span> BASEBAND
-          </span>
-          <span style={{ color: '#000', background: linkActive ? 'var(--gold)' : 'rgba(255,255,255,0.3)', fontSize: 'max(9px, 1cqmin)', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 8px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--gold)' : 'none' }}>720 MHz</span>
-        </div>
-        <div style={{ display: 'flex', width: '100%', flex: 1, gap: 'max(6px, 0.6cqmin)', minHeight: 0 }}>
-          <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justify: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
-            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
-            <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
-            <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
-            {linkActive && ['20%', '80%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
-              <div key={`c-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
-                <div style={{ width: '3px', height: '3px', background: 'var(--red)', borderRadius: '50%', boxShadow: '0 0 5px var(--red)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
-                <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
+            {/* 📍 4. SRC S-BAND ANTENNA SYSTEM */}
+            <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: 'calc(50% - 9cqmin)', top: '55%', zIndex: 20, width: '15cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--cyan)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,234,255,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,234,255,0.3)' : '' }}>
+              <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300eaff" className="n-icon" alt="Antenna" />
+              <div className="n-title" style={{ fontSize: 'max(22px, 2.5cqmin)', letterSpacing: '2px' }}>{GROUND_STATION.id}</div>
+              <div className="n-sub" style={{ fontSize: 'max(14px, 1.6cqmin)' }}>S-BAND ANTENNA</div>
+              {linkActive && (<>
+                {/* 📍 ปรับจุดไข่ปลากลับมาเป็น 3cqmin */}
+                <div className="conn-dot" style={{ top: 'calc(50% - 3cqmin)', left: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                <div className="conn-dot" style={{ top: 'calc(50% + 3cqmin)', left: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+              </>)}
+            </div>
+
+            {/* 📍 5. SRC X-BAND ANTENNA SYSTEM */}
+            <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: 'calc(50% + 9cqmin)', top: '55%', zIndex: 20, width: '15cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--green)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,255,102,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,255,102,0.3)' : '' }}>
+              <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300ff66" className="n-icon" alt="Antenna" />
+              <div className="n-title" style={{ fontSize: 'max(22px, 2.5cqmin)', letterSpacing: '2px' }}>{GROUND_STATION.id}</div>
+              <div className="n-sub" style={{ fontSize: 'max(14px, 1.6cqmin)' }}>X-BAND ANTENNA</div>
+              {linkActive && (<>
+                <div className="conn-dot" style={{ top: '50%', left: '100%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+              </>)}
+            </div>
+
+            {/* 📍 6. S-BAND UP/DOWN CONVERTER NODE */}
+            <div className="flow-node" style={{ left: '10%', top: '55%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? '#FF6600' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,102,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,102,0,0.3)' : '' }}>
+              <img src="https://api.iconify.design/mdi:swap-vertical-bold.svg?color=%23FF6600" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px #FF6600)' : '' }} alt="Converter" />
+              <div className="n-title" style={{ color: linkActive ? '#FF6600' : '#fff' }}>UP/DOWN</div>
+              <div className="n-sub">S-BAND CONVERTER</div>
+              {linkActive && (<>
+                {/* 📍 ปรับจุดไข่ปลากลับมาเป็น 3cqmin */}
+                <div className="conn-dot" style={{ top: 'calc(50% - 3cqmin)', left: '100%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                <div className="conn-dot" style={{ top: 'calc(50% + 3cqmin)', left: '100%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                <div className="conn-dot" style={{ left: 'calc(50% - 3cqmin)', top: '100%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                <div className="conn-dot" style={{ left: 'calc(50% + 3cqmin)', top: '100%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+              </>)}
+            </div>
+
+            {/* 📍 7. X-BAND DOWNCONVERTER NODE */}
+            <div className="flow-node" style={{ left: '90%', top: '55%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? '#00aaff' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,170,255,0.5), inset 0 0 max(20px, 2cqmin) rgba(0,170,255,0.3)' : '' }}>
+              <img src="https://api.iconify.design/mdi:radio-tower.svg?color=%2300aaff" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px #00aaff)' : '' }} alt="Tuner" />
+              <div className="n-title" style={{ color: linkActive ? '#00aaff' : '#fff' }}>X-BAND</div>
+              <div className="n-sub">DOWNCONVERTER</div>
+              {linkActive && (<>
+                <div className="conn-dot" style={{ top: '50%', left: '0%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+                <div className="conn-dot" style={{ top: '100%', left: '50%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+              </>)}
+            </div>
+
+            {/* 📍 8. TT&C BASEBAND SYSTEM NODE */}
+            <div className="flow-node" style={{ left: '10%', top: '85%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--gold)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,204,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,204,0,0.3)' : '' }}>
+              <img src="https://api.iconify.design/mdi:router-wireless.svg?color=%23ffcc00" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px var(--gold))' : '' }} alt="TTC" />
+              <div className="n-title" style={{ color: linkActive ? 'var(--gold)' : '#fff' }}>TT&C</div>
+              <div className="n-sub">BASEBAND SYSTEM</div>
+              {linkActive && (<>
+                {/* 📍 ปรับจุดไข่ปลากลับมาเป็น 3cqmin */}
+                <div className="conn-dot" style={{ left: 'calc(50% - 3cqmin)', top: '0%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+                <div className="conn-dot" style={{ left: 'calc(50% + 3cqmin)', top: '0%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }}></div>
+                <div className="conn-dot" style={{ left: '100%', top: '50%', background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }}></div>
+              </>)}
+            </div>
+
+            {/* 📍 9. BASEBAND DEMODULATOR NODE */}
+            <div className="flow-node" style={{ left: '90%', top: '85%', zIndex: 20, width: '16cqmin', aspectRatio: '4/3', borderColor: linkActive ? 'var(--red)' : '', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(255,51,51,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,51,51,0.3)' : '' }}>
+              <img src="https://api.iconify.design/mdi:server-network.svg?color=%23ff3333" className="n-icon" style={{ filter: linkActive ? 'drop-shadow(0 0 10px var(--red))' : '' }} alt="Baseband" />
+              <div className="n-title" style={{ color: linkActive ? 'var(--red)' : '#fff' }}>BASEBAND</div>
+              <div className="n-sub">DEMODULATOR</div>
+              {linkActive && (<>
+                <div className="conn-dot" style={{ top: '0%', left: '50%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+                <div className="conn-dot" style={{ top: '50%', left: '0%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }}></div>
+              </>)}
+            </div>
+
+            {/* 📍 10. TT&C MINI-HUD NODE */}
+            <div className={`flow-node ${linkActive ? 'active' : ''}`} 
+                 style={{ left: '36%', top: '85%', zIndex: 20, width: 'max(280px, 28cqmin)', height: 'max(160px, 16cqmin)', padding: 'max(6px, 0.6cqmin)', borderColor: linkActive ? 'var(--gold)' : 'rgba(255,204,0,0.3)', background: '#020617', flexDirection: 'column', gap: 'max(6px, 0.6cqmin)', cursor: 'pointer', boxShadow: linkActive ? '0 0 max(25px, 2.5cqmin) rgba(255,204,0,0.4), inset 0 0 max(15px, 1.5cqmin) rgba(255,204,0,0.2)' : '' }} 
+                 onClick={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 'max(4px, 0.4cqmin)' }}>
+                <span style={{ color: '#fff', fontSize: 'max(11px, 1.2cqmin)', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
+                  <span style={{ color: linkActive ? 'var(--gold)' : 'var(--red)', textShadow: linkActive ? '0 0 8px var(--gold)' : 'none', animation: linkActive ? 'pulse 1s infinite' : 'none' }}>●</span> TT&C
+                </span>
+                <span style={{ color: '#000', background: linkActive ? 'var(--cyan)' : 'rgba(255,255,255,0.3)', fontSize: 'max(9px, 1cqmin)', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 8px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--cyan)' : 'none' }}>70 MHz IF</span>
               </div>
-            )))}
-          </div>
-          <div style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
-            <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '10% 20%' }}></div>
-            <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '90%', overflow: 'visible' }} preserveAspectRatio="none" viewBox="0 0 100 100">
-              {linkActive ? (
-                <>
-                  <path d="M0,95 L5,93 L10,96 L15,94 L20,95 L25,93 L30,95 L35,92 L40,95 L45,94 L50,96 L55,93 L60,95 L65,94 L70,95 L75,92 L80,96 L85,93 L90,95 L95,92 L100,95" fill="none" stroke="rgba(255,204,0,0.4)" strokeWidth="1">
-                    <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1.5; 0 1; 0 0" dur="0.1s" repeatCount="indefinite" />
-                  </path>
-                  <path d="M0,95 L30,95 C38,95 42,15 50,15 C58,15 62,95 70,95 L100,95" fill="none" stroke="var(--gold)" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 3px var(--gold))', transformOrigin: 'bottom' }}>
-                    <animateTransform attributeName="transform" type="scale" values="1 0.95; 1 1.05; 1 0.97; 1 1" dur="0.12s" repeatCount="indefinite" />
-                  </path>
-                </>
-              ) : (
-                <path d="M0,95 L10,94 L20,96 L30,94 L40,95 L50,93 L60,96 L70,94 L80,95 L90,93 L100,95" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1">
-                  <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1; 0 0.5; 0 0" dur="0.2s" repeatCount="indefinite" />
-                </path>
-              )}
-            </svg>
-          </div>
-        </div>
-      </div>
+              <div style={{ display: 'flex', width: '100%', flex: 1, gap: 'max(6px, 0.6cqmin)', minHeight: 0 }}>
+                <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justify: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                  <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
+                  <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
+                  {linkActive && ['50%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
+                    <div key={`bpsk-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
+                      <div style={{ width: '3px', height: '3px', background: 'var(--cyan)', borderRadius: '50%', boxShadow: '0 0 5px var(--cyan)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
+                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(0,234,255,0.6)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
+                    </div>
+                  )))}
+                </div>
+                <div style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                  <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '10% 20%' }}></div>
+                  <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '90%', overflow: 'visible' }} preserveAspectRatio="none" viewBox="0 0 100 100">
+                    {linkActive ? (
+                      <>
+                        <path d="M0,95 L5,93 L10,96 L15,94 L20,95 L25,93 L30,95 L35,92 L40,95 L45,94 L50,96 L55,93 L60,95 L65,94 L70,95 L75,92 L80,96 L85,93 L90,95 L95,92 L100,95" fill="none" stroke="rgba(0,234,255,0.4)" strokeWidth="1">
+                          <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1.5; 0 1; 0 0" dur="0.1s" repeatCount="indefinite" />
+                        </path>
+                        <path d="M0,95 L46,95 L49,15 C50,10 50,10 51,15 L54,95 L100,95" fill="none" stroke="var(--cyan)" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 3px var(--cyan))', transformOrigin: 'bottom' }}>
+                          <animateTransform attributeName="transform" type="scale" values="1 0.95; 1 1.05; 1 0.97; 1 1" dur="0.12s" repeatCount="indefinite" />
+                        </path>
+                      </>
+                    ) : (
+                      <path d="M0,95 L10,94 L20,96 L30,94 L40,95 L50,93 L60,96 L70,94 L80,95 L90,93 L100,95" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1">
+                        <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1; 0 0.5; 0 0" dur="0.2s" repeatCount="indefinite" />
+                      </path>
+                    )}
+                  </svg>
+                </div>
+              </div>
+            </div>
 
-           {/* 📍 4. ฟันธง: ย่อขนาดกรอบ TECHNICAL SPECIFICATIONS ให้สมส่วนและคลาสสิก */}
-      <div className="bot-panel" style={{ position: 'absolute', top: 'max(20px, 2.5cqmin)', right: 'max(20px, 2.5cqmin)', left: 'auto', width: 'max-content', display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)', borderRadius: '8px', padding: 'clamp(15px, 2cqmin, 30px) clamp(25px, 3cqmin, 45px)', zIndex: 10, backdropFilter: 'blur(5px)' }}>
-        <div style={{ color: '#FF4500', fontSize: 'clamp(18px, 2.5cqmin, 30px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(8px, 1cqmin)', marginBottom: 'max(12px, 1.5cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 15px #FF4500', textAlign: 'center', whiteSpace: 'nowrap' }}>
-          TECHNICAL SPECIFICATIONS
-        </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', textAlign: 'center' }}>
-          <thead>
-            <tr style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(12px, 1.5cqmin, 20px)', borderBottom: '1px dashed rgba(255,255,255,0.3)', letterSpacing: '1px' }}>
-              <th style={{ padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>LINK TYPE</th>
-              <th style={{ padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>CENTER FREQ</th>
-              <th style={{ padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>OPERATIONAL RANGE</th>
-              <th style={{ padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>DATA RATE / BW</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              <td style={{ textAlign: 'left', color: 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(14px, 1.8cqmin, 24px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>TC (UP)</td>
-              <td style={{ textAlign: 'left', color: '#fff', fontWeight: '900', fontSize: 'clamp(16px, 2.2cqmin, 28px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tcFreq}</td>
-              <td style={{ textAlign: 'left', color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(13px, 1.6cqmin, 22px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tcRange}</td>
-              <td style={{ textAlign: 'left', color: '#fff', fontWeight: 'bold', fontSize: 'clamp(13px, 1.6cqmin, 22px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tcRate}</td>
-            </tr>
-            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              <td style={{ textAlign: 'left', color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'clamp(14px, 1.8cqmin, 24px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>TM (DOWN)</td>
-              <td style={{ textAlign: 'left', color: '#fff', fontWeight: '900', fontSize: 'clamp(16px, 2.2cqmin, 28px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tmFreq}</td>
-              <td style={{ textAlign: 'left', color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(13px, 1.6cqmin, 22px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tmRange}</td>
-              <td style={{ textAlign: 'left', color: '#fff', fontWeight: 'bold', fontSize: 'clamp(13px, 1.6cqmin, 22px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tmRate}</td>
-            </tr>
-            <tr>
-              <td style={{ textAlign: 'left', color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(14px, 1.8cqmin, 24px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>DOWNLINK</td>
-              <td style={{ textAlign: 'left', color: '#fff', fontWeight: '900', fontSize: 'clamp(16px, 2.2cqmin, 28px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.xBandFreq}</td>
-              <td style={{ textAlign: 'left', color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(13px, 1.6cqmin, 22px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.xBandRange}</td>
-              <td style={{ textAlign: 'left', color: '#fff', fontWeight: 'bold', fontSize: 'clamp(13px, 1.6cqmin, 22px)', padding: 'max(6px, 0.8cqmin) max(12px, 1.5cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.xBandRate}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+            {/* 11. ANALYZER MINI-HUD NODE */}
+            <div className={`flow-node ${linkActive ? 'active' : ''}`} 
+                 style={{ left: '64%', top: '85%', zIndex: 20, width: 'max(280px, 28cqmin)', height: 'max(160px, 16cqmin)', padding: 'max(8px, 0.8cqmin)', borderColor: linkActive ? 'var(--green)' : 'rgba(0,234,255,0.3)', background: '#020617', flexDirection: 'column', gap: 'max(8px, 0.8cqmin)', cursor: 'pointer', boxShadow: linkActive ? '0 0 max(30px, 3cqmin) rgba(0,255,102,0.4), inset 0 0 max(15px, 1.5cqmin) rgba(0,255,102,0.2)' : '' }} 
+                 onClick={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 'max(4px, 0.4cqmin)' }}>
+                <span style={{ color: '#fff', fontSize: 'max(11px, 1.2cqmin)', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
+                  <span style={{ color: linkActive ? 'var(--green)' : 'var(--red)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none', animation: linkActive ? 'pulse 1s infinite' : 'none' }}>●</span> BASEBAND
+                </span>
+                <span style={{ color: '#000', background: linkActive ? 'var(--gold)' : 'rgba(255,255,255,0.3)', fontSize: 'max(9px, 1cqmin)', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 8px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--gold)' : 'none' }}>720 MHz</span>
+              </div>
+              <div style={{ display: 'flex', width: '100%', flex: 1, gap: 'max(6px, 0.6cqmin)', minHeight: 0 }}>
+                <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justify: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                  <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
+                  <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
+                  {linkActive && ['20%', '80%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
+                    <div key={`c-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
+                      <div style={{ width: '3px', height: '3px', background: 'var(--red)', borderRadius: '50%', boxShadow: '0 0 5px var(--red)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
+                      <div style={{ width: 'max(10px, 1.2cqmin)', height: 'max(10px, 1.2cqmin)', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: 'calc(-5px - 0.6cqmin)', left: 'calc(-5px - 0.6cqmin)', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
+                    </div>
+                  )))}
+                </div>
+                <div style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                  <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '10% 20%' }}></div>
+                  <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '90%', overflow: 'visible' }} preserveAspectRatio="none" viewBox="0 0 100 100">
+                    {linkActive ? (
+                      <>
+                        <path d="M0,95 L5,93 L10,96 L15,94 L20,95 L25,93 L30,95 L35,92 L40,95 L45,94 L50,96 L55,93 L60,95 L65,94 L70,95 L75,92 L80,96 L85,93 L90,95 L95,92 L100,95" fill="none" stroke="rgba(255,204,0,0.4)" strokeWidth="1">
+                          <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1.5; 0 1; 0 0" dur="0.1s" repeatCount="indefinite" />
+                        </path>
+                        <path d="M0,95 L30,95 C38,95 42,15 50,15 C58,15 62,95 70,95 L100,95" fill="none" stroke="var(--gold)" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 3px var(--gold))', transformOrigin: 'bottom' }}>
+                          <animateTransform attributeName="transform" type="scale" values="1 0.95; 1 1.05; 1 0.97; 1 1" dur="0.12s" repeatCount="indefinite" />
+                        </path>
+                      </>
+                    ) : (
+                      <path d="M0,95 L10,94 L20,96 L30,94 L40,95 L50,93 L60,96 L70,94 L80,95 L90,93 L100,95" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1">
+                        <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1; 0 0.5; 0 0" dur="0.2s" repeatCount="indefinite" />
+                      </path>
+                    )}
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+          {/* 📍 กรอบ TECHNICAL SPECIFICATIONS (ขยายฟอนต์ให้ใหญ่ขึ้น อ่านง่ายสบายตา ไม่ปวดตา!) */}
+          <div className="bot-panel" style={{ position: 'absolute', top: 'max(20px, 2.5cqmin)', right: 'max(20px, 2.5cqmin)', left: 'auto', width: 'max-content', display: 'flex', flexDirection: 'column', border: '2px solid #FF4500', boxShadow: '0 0 max(25px, 2.5cqmin) rgba(255,69,0,0.5), inset 0 0 max(20px, 2cqmin) rgba(255,69,0,0.2)', background: 'rgba(15, 5, 0, 0.95)', borderRadius: '8px', padding: 'clamp(15px, 2cqmin, 30px) clamp(25px, 3cqmin, 45px)', zIndex: 10, backdropFilter: 'blur(5px)' }}>
+              <div style={{ color: '#FF4500', fontSize: 'clamp(18px, 2.5cqmin, 32px)', fontFamily: 'Orbitron', borderBottom: '2px solid rgba(255,69,0,0.4)', paddingBottom: 'max(10px, 1.2cqmin)', marginBottom: 'max(15px, 1.8cqmin)', fontWeight: '900', letterSpacing: '2px', textShadow: '0 0 15px #FF4500', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                TECHNICAL SPECIFICATIONS
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', textAlign: 'center' }}>
+                <thead>
+                  <tr style={{ color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(13px, 1.6cqmin, 20px)', borderBottom: '1px dashed rgba(255,255,255,0.3)', letterSpacing: '1px' }}>
+                    <th style={{ padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>LINK TYPE</th>
+                    <th style={{ padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>CENTER FREQ</th>
+                    <th style={{ padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>OPERATIONAL RANGE</th>
+                    <th style={{ padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>DATA RATE / BW</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <td style={{ textAlign: 'left', color: 'var(--gold)', fontWeight: 'bold', fontSize: 'clamp(15px, 1.8cqmin, 24px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', whiteSpace: 'nowrap' }}>TC (UP)</td>
+                    <td style={{ textAlign: 'left', color: '#fff', fontWeight: '900', fontSize: 'clamp(18px, 2.2cqmin, 28px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tcFreq}</td>
+                    <td style={{ textAlign: 'left', color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(14px, 1.6cqmin, 22px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tcRange}</td>
+                    <td style={{ textAlign: 'left', color: '#fff', fontWeight: 'bold', fontSize: 'clamp(14px, 1.6cqmin, 22px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tcRate}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <td style={{ textAlign: 'left', color: 'var(--cyan)', fontWeight: 'bold', fontSize: 'clamp(15px, 1.8cqmin, 24px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', whiteSpace: 'nowrap' }}>TM (DOWN)</td>
+                    <td style={{ textAlign: 'left', color: '#fff', fontWeight: '900', fontSize: 'clamp(18px, 2.2cqmin, 28px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.tmFreq}</td>
+                    <td style={{ textAlign: 'left', color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(14px, 1.6cqmin, 22px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tmRange}</td>
+                    <td style={{ textAlign: 'left', color: '#fff', fontWeight: 'bold', fontSize: 'clamp(14px, 1.6cqmin, 22px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.tmRate}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ textAlign: 'left', color: 'var(--green)', fontWeight: 'bold', fontSize: 'clamp(15px, 1.8cqmin, 24px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', whiteSpace: 'nowrap' }}>DOWNLINK</td>
+                    <td style={{ textAlign: 'left', color: '#fff', fontWeight: '900', fontSize: 'clamp(18px, 2.2cqmin, 28px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', textShadow: '0 0 5px rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{satSpecs.xBandFreq}</td>
+                    <td style={{ textAlign: 'left', color: 'rgba(255,255,255,0.85)', fontWeight: 'bold', fontSize: 'clamp(14px, 1.6cqmin, 22px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.xBandRange}</td>
+                    <td style={{ textAlign: 'left', color: '#fff', fontWeight: 'bold', fontSize: 'clamp(14px, 1.6cqmin, 22px)', padding: 'max(8px, 1cqmin) max(15px, 2cqmin)', whiteSpace: 'nowrap' }}>{satSpecs.xBandRate}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </>
         );
       })()}
+
+
     </div>
   </div>
 )}
