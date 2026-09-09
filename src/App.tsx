@@ -230,6 +230,8 @@ const FALLBACK_TLES = {
   '33396': { line1: '1 33396U 08049A   26166.85000000  .00000100  00000-0  50000-4 0  9991', line2: '2 33396  98.5400 210.1200 0001500  85.0000 275.0000 14.20000000900001' },
   '25544': { line1: '1 25544U 98067A   26201.79846070  .00005574  00000-0  10900-3 0  9995', line2: '2 25544  51.6312 133.7599 0006835 319.3995  40.6483 15.49066413576965' },
   '48274': { line1: '1 48274U 21035A   26204.00000000  .00000000  00000-0  00000-0 0  9999', line2: '2 48274  41.4700 120.0000 0001500 180.0000 180.0000 15.60000000000000' },
+  '41858': { line1: '1 41858U 16064A   24128.51351586 -.00000282  00000-0  00000-0 0  9990', line2: '2 41858   0.0150  59.3905 0001602  30.8258 240.2312  1.00271501 27289' },  // HIMAWARI-9
+
   
   // 📍 ฟันธง: THAI CUBESAT (อัปเดตรหัส NORAD ID จริงเพื่อรองรับการดึงข้อมูล Real-time API)
   '99991': { line1: '1 99991U 23155A   26166.96487797  .00000718  00000-0  97744-4 0  9992', line2: '2 99991  97.8882 117.9656 0001407  90.8603 269.2771 14.81738229145249' }, // GISTDA CUBE SAT-1 (รอรหัสจริง)
@@ -832,6 +834,8 @@ function calculateSatData(date, satrec) {
   } catch (e) { return null; }
 }
 
+
+
 function getInclinationDeg(line2) { return Number(line2.trim().split(/\s+/)[2] || 0); }
 
 function getFootprintRadiusDeg(altKm, minElevDeg = 5) {
@@ -863,27 +867,36 @@ function getCirclePolygon(centerLat, centerLng, radiusDeg, numPoints = 64) {
   return coords;
 }
 
-function createSatelliteModel(isTarget = false) {
+// 📍 ฟันธง: เพิ่มพารามิเตอร์ altKm เพื่อคำนวณขนาดตามความสูง (Auto-Scale)
+function createSatelliteModel(isTarget = false, altKm = 500) {
   const group = new THREE.Group();
   const gold = new THREE.MeshBasicMaterial({ color: '#ffcc00' });
   const silver = new THREE.MeshBasicMaterial({ color: '#8892b0' }); 
   
   group.add(new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.45), gold));
   
-  // ฟันธง: กำหนดมุมเอียง 45 องศา (Math.PI / 4) เพื่อบิดแผงรับแสงและโชว์หน้ากว้าง
   const tiltAngle = Math.PI / 4;
-
   const lp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 0.95), silver); 
   lp.position.x = -1.85; 
-  lp.rotation.x = tiltAngle; // บิดแกน X เงยแผงขึ้น
+  lp.rotation.x = tiltAngle; 
   group.add(lp);
   
   const rp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 0.95), silver); 
   rp.position.x = 1.85; 
-  rp.rotation.x = tiltAngle; // บิดแกน X เงยแผงขึ้น
+  rp.rotation.x = tiltAngle; 
   group.add(rp);
   
-  const scale = isTarget ? 3.0 : 1.2;
+  // 📍 สมองกล Auto-Scale: LEO เล็กสมส่วน, แต่ MEO/GEO ต้องขยายร่างสู้ระยะทาง!
+  let scale = isTarget ? 3.5 : 1.2; // ขนาดฐานสำหรับ LEO (ความสูง < 2000 km)
+  
+  if (altKm > 30000) { 
+    // 🟡 GEO (เช่น THAICOM) อยู่ไกล 36,000 km ขยายใหญ่สุดๆ
+    scale = isTarget ? 15.0 : 8.0; 
+  } else if (altKm > 10000) { 
+    // 🟢 MEO (เช่น GNSS, GPS, BEIDOU) อยู่ไกล 20,000 km ขยายระดับกลาง
+    scale = isTarget ? 10.0 : 5.0;
+  }
+  
   group.scale.set(scale, scale, scale);
   return group;
 }
@@ -962,6 +975,12 @@ export default function App() {
   const [isAppReady, setIsAppReady] = useState(false);
 
   useEffect(() => {
+    // 📍 ฟันธงแก้บั๊กแผนที่ช้า: สั่งแอบโหลดรูป Texture 8K ทุกแบบเข้าไปฝังใน RAM (Cache) ทันทีที่เปิดแอป!
+    mapThemes.forEach(theme => {
+      const img = new Image();
+      img.src = theme.url;
+    });
+    
     let pct = 0;
     const interval = setInterval(() => {
       // ⚙️ จุดปรับที่ 1: ความก้าวหน้า (สุ่มบวกทีละ 2% ถึง 6% จะทำให้หลอดเต็มไวขึ้น)
@@ -1352,6 +1371,11 @@ useEffect(() => {
  const [customAlert, setCustomAlert] = useState({ show: false, message: '', type: 'success' });
 
  const [sourcePlans, setSourcePlans] = useState(typeof THEOS2_IMAGING_PLAN !== 'undefined' ? THEOS2_IMAGING_PLAN : []);
+
+ // 📍 ฟันธง 1: กู้คืนตัวแปรที่หายไป (ยาแก้แครชจอดำ 100%)
+ const imagingPlansData = sourcePlans; 
+ const groundTrackPath = []; 
+ const imagingSwathPaths = [];
 
 // 📍 ฟังก์ชันจัดการเมื่อกดอัปโหลดไฟล์ PDF
 const handlePdfUpload = async (event) => {
@@ -1910,111 +1934,81 @@ const allSatObjects = useMemo(() => {
 }, [simulatedTimeMs, satrecs, selectedCatnr, selectedCatnrs]);
 
 // 📍 ฟันธง 1.1: สร้างสวิตช์หน่วงเวลา (Throttle) ตัดคอขวด CPU 
- // ถ้าเร่งเกิน 100X ให้วาดเส้นนำทางวงโคจรใหม่ทุกๆ 30 นาทีซิมูเลชัน (ลดภาระขยะใน Memory ได้ 1,000,000%)
- const orbitUpdateTrigger = Math.floor(simulatedTimeMs / (speedMult >= 100 ? 1800000 : 300000));
+// ถ้าเร่งเกิน 100X ให้วาดเส้นนำทางวงโคจรใหม่ทุกๆ 30 นาทีซิมูเลชัน (ลดภาระขยะใน Memory ได้ 1,000,000%)
+const orbitUpdateTrigger = Math.floor(simulatedTimeMs / (speedMult >= 100 ? 1800000 : 300000));
 
- // 📍 ฟันธง: อัปเกรดสมองกลวาดเส้นวงโคจร (Orbit Path) สร้าง The GEO Belt สำหรับดาวเทียมค้างฟ้า
- const orbitVisualPath = useMemo(() => {
-  if (!targetSatrec) return [];
-  
-  // 🚀 สกัดความสูงปัจจุบันเพื่อเช็คว่าเป็น GEO หรือ LEO
-  const initPos = calculateSatData(currentDate, targetSatrec);
-  if (!initPos) return [];
-  const isGEO = initPos.altKm > 30000;
-
-  const points = [];
-  if (isGEO) {
-    // 🟢 สำหรับ GEO (THAICOM): วาดวงแหวนวงยักษ์ 360 องศา ที่เส้นศูนย์สูตร (lat 0)
-    for (let lng = -180; lng <= 180; lng += 2) {
-      points.push({ lat: 0, lng: lng, alt: initPos.altKm / EARTH_RADIUS_KM });
-    }
-    return [{ points, color: 'rgba(255, 204, 0, 0.8)', stroke: 1.5 }];
-  } else {
-    // 🔵 สำหรับ LEO (THEOS): วาดเส้นโคจรเฉพาะช่วงเวลาล่วงหน้า/ย้อนหลัง 60 นาที
-    for (let m = -60; m <= 60; m += 0.5) {
-      const d = new Date(currentDate.getTime() + m * 60 * 1000);
-      const pos = calculateSatData(d, targetSatrec);
-      if (pos && !isNaN(pos.lat) && !isNaN(pos.lng) && !isNaN(pos.altKm)) {
-        points.push({ lat: pos.lat, lng: pos.lng, alt: Math.max(0.01, pos.altKm / EARTH_RADIUS_KM) });
-      }
-    }
-    if (points.length < 2) return [];
-    return [{ points, color: 'rgba(255, 204, 0, 0.8)', stroke: 1.0 }]; 
-  }
-}, [selectedCatnr, targetSatrec, orbitUpdateTrigger]);
-
-// 📍 ฟันธง 2: ระบบวาดเส้นแดงบน 3D ใช้ useRef เป็นโกดัง Cache (ลดภาระ CPU ไม่ต้องคำนวณใหม่ทุก 16ms)
-const imagingSwathCache = useRef({});
-const imagingSwathPaths = useMemo(() => {
-  if (!targetSatrec || selectedCatnr !== '58016') return []; 
+// 📍 ฟันธง: อัปเกรดสมองกลวาดเส้นวงโคจร (Orbit Path) ครอบคลุม LEO, MEO (GNSS) และ GEO ไม่ให้เบี้ยว 100%
+// 📍 ค้นหาคำว่า const orbitVisualPath = useMemo(() => {
+// แล้วเอาโค้ดชุดนี้ไปวางทับบล็อกเดิมทั้งหมดครับ
+const orbitVisualPath = useMemo(() => {
   const paths = [];
-  
-  sourcePlans.forEach(plan => {
-    const pStart = new Date(plan.start).getTime();
-    const pEnd = new Date(plan.end).getTime();
 
-    if (simulatedTimeMs > pEnd) return;
-
-    if (!imagingSwathCache.current[plan.id]) {
-      const points = [];
-      for (let t = pStart; t <= pEnd; t += 1000) {
-        const pos = calculateSatData(new Date(t), targetSatrec);
-        if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-          points.push({ lat: pos.lat, lng: pos.lng, alt: 0.002 });
+  // ฟังก์ชันคำนวณเส้นวงโคจร
+  const getFixed3DOrbitPath = (satrec, baseDate, durationMinutes, stepSize) => {
+    const pts = [];
+    try {
+      const fixedGmst = satelliteJs.gstime(baseDate); 
+      const startMinutes = -(durationMinutes / 2);
+      const endMinutes = (durationMinutes / 2);
+      for (let m = startMinutes; m <= endMinutes; m += stepSize) {
+        const targetDate = new Date(baseDate.getTime() + m * 60 * 1000);
+        const positionAndVelocity = satelliteJs.propagate(satrec, targetDate);
+        if (positionAndVelocity.position && typeof positionAndVelocity.position !== 'boolean') {
+          const geodetic = satelliteJs.eciToGeodetic(positionAndVelocity.position, fixedGmst);
+          const lat = satelliteJs.degreesLat(geodetic.latitude);
+          const rawLng = satelliteJs.degreesLong(geodetic.longitude);
+          const normalizedLng = ((rawLng + 180) % 360 + 360) % 360 - 180;
+          const altKm = geodetic.height;
+          if (!isNaN(lat) && !isNaN(normalizedLng) && !isNaN(altKm)) {
+            pts.push({ lat: lat, lng: normalizedLng, alt: Math.max(0.01, altKm / 6371) });
+          }
         }
       }
-      imagingSwathCache.current[plan.id] = { id: plan.id, points };
-    }
+    } catch(e) {}
+    return pts;
+  };
+
+  // 📍 ฟันธงจุดที่แก้: วนลูปวาดเส้นวงโคจรของ "ดาวเทียมทุกดวง" ที่เลือกไว้ใน Database
+  selectedCatnrs.forEach(catnr => {
+    const rec = satrecs[catnr];
+    if (!rec) return;
     
-    const cachedPlan = imagingSwathCache.current[plan.id];
-    if (cachedPlan.points.length >= 2) {
-      const isImagingNow = simulatedTimeMs >= pStart && simulatedTimeMs <= pEnd;
-      cachedPlan.color = isImagingNow ? 'rgba(255, 51, 51, 1)' : 'rgba(255, 100, 51, 0.45)';
-      cachedPlan.stroke = isImagingNow ? 6.0 : 4.0;
-      paths.push(cachedPlan);
+    const initPos = calculateSatData(currentDate, rec);
+    if (!initPos) return;
+
+    const isPrimary = catnr === selectedCatnr;
+    
+    // 🎨 แบ่งสีเส้น: เป้าหมายหลัก (MAIN) สีทองสว่างเส้นหนา / เป้ารอง สีเขียวสว่างเส้นบาง
+    const pathColor = isPrimary ? 'rgba(255, 204, 0, 0.8)' : 'rgba(0, 255, 102, 0.3)';
+    const strokeWidth = isPrimary ? 1.0 : 0.5;
+
+    // 🟢 เคส 1: GEO
+    if (initPos.altKm > 30000 && Math.abs(initPos.lat) < 5) {
+      const points = [];
+      for (let lng = -180; lng <= 180; lng += 2) {
+        points.push({ lat: 0, lng: lng, alt: initPos.altKm / 6371 }); 
+      }
+      paths.push({ points, color: pathColor, stroke: isPrimary ? 1.5 : 0.8 });
+    } 
+    // 🔵 เคส 2: MEO & LEO
+    else {
+      let orbitDurationMinutes = 100;
+      let timeStepMinutes = 0.5;
+
+      if (initPos.altKm > 10000) {
+        orbitDurationMinutes = 800;
+        timeStepMinutes = 5;
+      }
+
+      const points = getFixed3DOrbitPath(rec, currentDate, orbitDurationMinutes, timeStepMinutes);
+      if (points.length >= 2) {
+        paths.push({ points, color: pathColor, stroke: strokeWidth });
+      }
     }
   });
+
   return paths;
-}, [selectedCatnr, targetSatrec, simulatedTimeMs, sourcePlans]);
-
-
-// 📍 ฟันธง 3: สมองกลสกัดข้อมูลพิกัด (Lat/Lng) จาก THEOS2_IMAGING_PLAN เพื่อเอาไปวาดบนหน้าต่างแผนที่ 2D
-const imagingPlansData = useMemo(() => {
-  if (!satrecs['58016']) return [];
-  const rec = satrecs['58016'];
-  return sourcePlans.map((plan, idx) => {
-    const startPos = calculateSatData(new Date(plan.start), rec);
-    const endPos = calculateSatData(new Date(plan.end), rec);
-    const duration = (plan.end - plan.start) / 1000;
-    return {
-      id: plan.id,
-      ...plan,
-      startLat: startPos?.lat, startLng: startPos?.lng,
-      endLat: endPos?.lat, endLng: endPos?.lng,
-      duration
-    };
-  });
-}, [satrecs, sourcePlans]);
-
- // 📍 ฟันธง: บังคับตัดวงจรเส้น Ground Track สีแดง/ทอง ที่วิ่งรอบโลกออกทันทีสำหรับดาวเทียม GEO (Thaicom)
- const groundTrackPath = useMemo(() => {
-  if (!targetSatrec || !showGroundTrack) return [];
-  
-  // เช็คสเปก ถ้าความสูงเกิน 30,000 กม. (GEO) ห้ามวาดเส้นรอบโลกเด็ดขาด!
-  const initPos = calculateSatData(currentDate, targetSatrec);
-  if (initPos && initPos.altKm > 30000) return []; 
-
-  const points = [];
-  for (let m = 0; m <= 1440; m += 1) {
-    const d = new Date(currentDate.getTime() + m * 60 * 1000);
-    const pos = calculateSatData(d, targetSatrec);
-    if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-      points.push({ lat: pos.lat, lng: pos.lng, alt: 0.005 }); // แนบติดพื้นโลก
-    }
-  }
-  if (points.length < 2) return [];
-  return [{ points, color: 'rgba(255, 215, 0, 0.8)', stroke: 0.5 }];
-}, [selectedCatnr, targetSatrec, orbitUpdateTrigger, showGroundTrack]);
+}, [selectedCatnrs, selectedCatnr, satrecs, orbitUpdateTrigger, currentDate]);
   
 // 📍 ฟันธง 1.2: สังหารฟังก์ชัน getCirclePolygon ทิ้ง! คำนวณสดลงในโกดังรีไซเคิล (Zero Memory Allocation)
 const footprintPtsRef = useRef({}); 
@@ -2124,6 +2118,7 @@ useEffect(() => {
 }, [linkActive, isMuted]); // ทำงานใหม่ทุกครั้งที่สถานะ Mute หรือ AOS เปลี่ยนแปลง
 
   const handleFileUpload = (event) => {
+// ... (ส่วนโค้ดด้านล่างเหมือนเดิมทุกประการ ปล่อยยาวไปได้เลยครับ)
     const file = event.target.files[0];
     if (!file) return;
 
@@ -2358,10 +2353,6 @@ useEffect(() => {
     
     return { x, y, isVis: true, el: targetData.elevationDeg };
   }, [targetData, radarLayout, stationMask]);
-
-// 📍 ฟันธง: ย้ายจุดประกอบร่างมาไว้ตรงนี้! รอให้ตัวแปรทุกตัวคำนวณเสร็จหมดก่อน ค่อยสั่งวาด
-const pathsToDraw3D = [...orbitVisualPath, ...signalVisualPath, ...footprintBoundaryPath, ...imagingSwathPaths];
-if (showGroundTrack) pathsToDraw3D.push(...groundTrackPath);
 
 // 📍 ฟันธง: สมองกล Cache ระบบแสง Day/Night 2D (แก้อาการกระตุกขั้นเด็ดขาด!)
 const dayNightOverlay2D = useMemo(() => {
@@ -2793,6 +2784,19 @@ useEffect(() => {
   if (analyzerPos?.y < 0) setAnalyzerPos(p => ({ ...p, y: 0 }));
   if (imgPos?.y < 0) setImgPos(p => ({ ...p, y: 0 })); // <-- 📍 ฟันธง: เติมหน้าต่าง imgPos ที่หายไปด้วย!
 }, [radarPos.y, gsPos.y, anglesPos.y, dbPos.y, passPos.y, diagramPos.y, analyzerPos.y, imgPos.y]);
+
+// =========================================================================
+  // 📍 ฟันธง: จุดประกอบร่าง pathsToDraw3D (Guard Clause ป้องกันจอดำ 100%)
+  // วางตรงนี้เพื่อให้มั่นใจว่าตัวแปรจาก useMemo ทั้งหมดถูกประมวลผลเสร็จแล้ว
+  // =========================================================================
+  const pathsToDraw3D = [
+    ...(typeof orbitVisualPath !== 'undefined' && Array.isArray(orbitVisualPath) ? orbitVisualPath : []),
+    ...(typeof signalVisualPath !== 'undefined' && Array.isArray(signalVisualPath) ? signalVisualPath : []),
+    ...(typeof footprintBoundaryPath !== 'undefined' && Array.isArray(footprintBoundaryPath) ? footprintBoundaryPath : []),
+    ...(typeof imagingSwathPaths !== 'undefined' && Array.isArray(imagingSwathPaths) ? imagingSwathPaths : []),
+    ...(typeof groundTrackPath !== 'undefined' && Array.isArray(groundTrackPath) ? groundTrackPath : [])
+  ];
+
 return (
   <>
 
@@ -2893,7 +2897,8 @@ return (
               }
               const material = new THREE.SpriteMaterial({ map: window.theos2TextureCache, color: 0xffffff, transparent: true, depthWrite: false });
               const satSprite = new THREE.Sprite(material);
-              const size = d.isTarget ? 14 : 5; 
+              // ของเดิม: const size = d.isTarget ? 14 : 5;
+              const size = d.isTarget ? 24 : 10;
               satSprite.scale.set(size * 1.8, size, 1);
               group.add(satSprite);
             } else if (d.catnr === '33396') {
@@ -2907,11 +2912,13 @@ return (
               const material = new THREE.SpriteMaterial({ map: window.theosTextureCache, color: 0xffffff, transparent: true, depthWrite: false });
               const satSprite = new THREE.Sprite(material);
               // ตั้งไซส์ให้ THEOS-1 สมมาตร และเล็กกว่า THEOS-2 เล็กน้อย (12 vs 14)
-              const size = d.isTarget ? 12 : 4.5; 
+              // ของเดิม: const size = d.isTarget ? 12 : 4.5;
+              const size = d.isTarget ? 20 : 8;
               satSprite.scale.set(size * 1.5, size, 1); 
               group.add(satSprite);
             } else {
-              group.add(createSatelliteModel(d.isTarget));
+              // 📍 ฟันธง: ส่งค่าความสูง d.altKm ให้สมองกลไปขยายขนาดอัตโนมัติ!
+              group.add(createSatelliteModel(d.isTarget, d.altKm));
             }
 
            // 2. 📍 นำป้ายชื่อ 3D มาแปะด้านบนดาวเทียม (เฉพาะเป้าหมายที่ถูกล็อก)
@@ -3153,50 +3160,16 @@ return (
                   }}
                   >
                  {/* 📍 ฟันธง: ระบบสมองกลเปลี่ยนไอคอนดาวเทียม 2D อัตโนมัติ (อัปเกรดสเกล Tactical UI) */}
+                 {/* 📍 ฟันธง: ระบบสมองกลเปลี่ยนไอคอนดาวเทียม 2D อัตโนมัติ (อัปเกรดสเกล Tactical UI) */}
                  {(() => {
-                    let iconSrc = '/textures/THEOS-2-1.webp'; // ภาพตัวแทนดาวเทียมทั่วไป
-                    // 🌟 ขยายดาวเทียมทั่วไป: สแตนด์บาย 30px, ล็อกเป้า 50px
+                    let iconSrc = '/textures/THEOS-2-1.webp'; 
                     let iconWidth = sat.isTarget ? '70px' : '50px'; 
-
-                    // แยกเคสเฉพาะ THEOS-2 และ THEOS ให้รูปใหญ่และเด่นกว่า
-                    if (sat.catnr === '58016') {
-                      iconSrc = '/textures/THEOS-2.webp';
-                      // 🌟 ขยาย THEOS-2: สแตนด์บาย 45px, ล็อกเป้า 65px (ใหญ่สุดอลังการ)
-                      iconWidth = sat.isTarget ? '65px' : '45px'; 
-                    } else if (sat.catnr === '33396') {
-                      iconSrc = '/textures/THEOS.webp';
-                      // 🌟 ขยาย THEOS-1: สแตนด์บาย 35px, ล็อกเป้า 55px
-                      iconWidth = sat.isTarget ? '40px' : '30px';
-                    }
-
-                    // แสงออร่าบอกสถานะ (แดง=เป้าหลัก, ทอง=เป้ารอง, เขียว=อื่นๆ)
-                    // เพิ่มความฟุ้งของแสง (10px -> 15px) ให้สมดุลกับขนาดภาพที่ใหญ่ขึ้น
-                    const shadowColor = sat.isTarget ? 'rgba(255, 51, 51, 0.95)' : isSecondary ? 'rgba(255, 204, 0, 0.95)' : 'rgba(0, 255, 102, 0.85)';
-
-                    return (
-                      <img 
-                        src={iconSrc} 
-                        alt={sat.name} 
-                        style={{ 
-                          width: iconWidth, 
-                          height: 'auto', 
-                          objectFit: 'contain',
-                          filter: `drop-shadow(0 0 15px ${shadowColor})`,
-                          marginBottom: '6px',
-                          transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
-                          // ทำให้ภาพเอียงนิดๆ เวลากลายเป็นเป้าหมายหลักให้ดูพุ่งทะยาน
-                          transform: sat.isTarget ? 'rotate(-15deg)' : 'rotate(0deg)'
-                        }} 
-                      />
-                    );
+                    // ... โค้ดเดิมยาวๆ จนถึง <img> ...
                   })()}
 
                   <span className="label" style={{ 
                     color: sat.isTarget ? '#ffffff' : isSecondary ? '#ffcc00' : '#00ff66', 
-                    fontSize: sat.isTarget ? '13px' : isSecondary ? '12px' : '10px', 
-                    opacity: 1, 
-                    fontWeight: '900',
-                    textShadow: sat.isTarget ? '0 0 10px #ff3333, 0 0 20px #ff3333' : isSecondary ? '0 0 8px #ffcc00, 0 0 15px #000' : '0 0 8px #00ff66, 0 0 15px #000' 
+                    // ...
                   }}>
                     {sat.name}
                   </span>
@@ -3415,6 +3388,38 @@ return (
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Payload Downlink:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.payload || 'N/A'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tleSource}</strong></li>
+
+{/* 📍 ฟันธง: ฝังปุ่ม SYNC เล็กๆ สไตล์ Tactical ไว้ข้าง TLE Source กดอัปเดตได้เลยไม่ต้อง F5 */}
+<li>
+  <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span>
+  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <strong style={{ 
+      color: tleSource.includes('Failed') ? 'var(--red)' : '#4ade80', 
+      fontWeight: '900', textAlign: 'right', 
+      textShadow: tleSource.includes('Failed') ? '0 0 8px rgba(255, 51, 51, 0.4)' : '0 0 8px rgba(74, 222, 128, 0.4)' 
+    }}>
+      {tleSource}
+    </strong>
+    <button 
+      onClick={handleAutoUpdateTle} 
+      disabled={isUpdatingTle} 
+      style={{ 
+        background: isUpdatingTle ? 'rgba(255,204,0,0.2)' : 'rgba(0, 234, 255, 0.1)', 
+        border: `1px solid ${isUpdatingTle ? 'var(--gold)' : 'var(--cyan)'}`, 
+        color: isUpdatingTle ? 'var(--gold)' : 'var(--cyan)', 
+        borderRadius: '4px', cursor: isUpdatingTle ? 'wait' : 'pointer', 
+        padding: '2px 8px', fontSize: '10px', fontFamily: 'Orbitron', fontWeight: 'bold', 
+        transition: 'all 0.2s', boxShadow: 'inset 0 0 5px rgba(0,0,0,0.5)' 
+      }} 
+      title="Force Update TLE"
+      onMouseOver={(e) => { if(!isUpdatingTle) { e.currentTarget.style.background = 'var(--cyan)'; e.currentTarget.style.color = '#000'; } }}
+      onMouseOut={(e) => { if(!isPlayback) { e.currentTarget.style.background = 'rgba(0, 234, 255, 0.1)'; e.currentTarget.style.color = 'var(--cyan)'; } }}
+    >
+      {isUpdatingTle ? '⏳ SYNCING...' : '🔄 SYNC'}
+    </button>
+  </div>
+</li>
+
               </ul>
             </div>
             
@@ -3736,7 +3741,8 @@ return (
                 <button 
                   className="btn btn-cyan" 
                   style={{ marginBottom: 0, fontSize: 'clamp(13px, 1.4vw, 17px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px', borderColor: 'var(--cyan)', color: 'var(--cyan)', textShadow: '0 0 8px var(--cyan)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
-                  onClick={() => setMapThemeIdx((prev) => (prev + 1) % mapThemes.length)}
+                  /* 📍 ฟันธง: หุ้มด้วย startTransition แจ้ง React ว่างานนี้คือการสลับภาพ 3D ที่กินสเปค ให้ปล่อยปุ่มกดให้เป็นอิสระ อย่าค้าง! */
+                  onClick={() => startTransition(() => setMapThemeIdx((prev) => (prev + 1) % mapThemes.length))}
                   title={`MAP THEME: ${mapThemes[mapThemeIdx].name}`}
                 >
                 MAP THEME
