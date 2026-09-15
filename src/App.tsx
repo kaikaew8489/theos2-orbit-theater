@@ -230,8 +230,6 @@ const FALLBACK_TLES = {
   '33396': { line1: '1 33396U 08049A   26166.85000000  .00000100  00000-0  50000-4 0  9991', line2: '2 33396  98.5400 210.1200 0001500  85.0000 275.0000 14.20000000900001' },
   '25544': { line1: '1 25544U 98067A   26201.79846070  .00005574  00000-0  10900-3 0  9995', line2: '2 25544  51.6312 133.7599 0006835 319.3995  40.6483 15.49066413576965' },
   '48274': { line1: '1 48274U 21035A   26204.00000000  .00000000  00000-0  00000-0 0  9999', line2: '2 48274  41.4700 120.0000 0001500 180.0000 180.0000 15.60000000000000' },
-  '41858': { line1: '1 41858U 16064A   24128.51351586 -.00000282  00000-0  00000-0 0  9990', line2: '2 41858   0.0150  59.3905 0001602  30.8258 240.2312  1.00271501 27289' },  // HIMAWARI-9
-
   
   // 📍 ฟันธง: THAI CUBESAT (อัปเดตรหัส NORAD ID จริงเพื่อรองรับการดึงข้อมูล Real-time API)
   '99991': { line1: '1 99991U 23155A   26166.96487797  .00000718  00000-0  97744-4 0  9992', line2: '2 99991  97.8882 117.9656 0001407  90.8603 269.2771 14.81738229145249' }, // GISTDA CUBE SAT-1 (รอรหัสจริง)
@@ -834,8 +832,6 @@ function calculateSatData(date, satrec) {
   } catch (e) { return null; }
 }
 
-
-
 function getInclinationDeg(line2) { return Number(line2.trim().split(/\s+/)[2] || 0); }
 
 function getFootprintRadiusDeg(altKm, minElevDeg = 5) {
@@ -867,36 +863,27 @@ function getCirclePolygon(centerLat, centerLng, radiusDeg, numPoints = 64) {
   return coords;
 }
 
-// 📍 ฟันธง: เพิ่มพารามิเตอร์ altKm เพื่อคำนวณขนาดตามความสูง (Auto-Scale)
-function createSatelliteModel(isTarget = false, altKm = 500) {
+function createSatelliteModel(isTarget = false) {
   const group = new THREE.Group();
   const gold = new THREE.MeshBasicMaterial({ color: '#ffcc00' });
   const silver = new THREE.MeshBasicMaterial({ color: '#8892b0' }); 
   
   group.add(new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.45), gold));
   
+  // ฟันธง: กำหนดมุมเอียง 45 องศา (Math.PI / 4) เพื่อบิดแผงรับแสงและโชว์หน้ากว้าง
   const tiltAngle = Math.PI / 4;
+
   const lp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 0.95), silver); 
   lp.position.x = -1.85; 
-  lp.rotation.x = tiltAngle; 
+  lp.rotation.x = tiltAngle; // บิดแกน X เงยแผงขึ้น
   group.add(lp);
   
   const rp = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.06, 0.95), silver); 
   rp.position.x = 1.85; 
-  rp.rotation.x = tiltAngle; 
+  rp.rotation.x = tiltAngle; // บิดแกน X เงยแผงขึ้น
   group.add(rp);
   
-  // 📍 สมองกล Auto-Scale: LEO เล็กสมส่วน, แต่ MEO/GEO ต้องขยายร่างสู้ระยะทาง!
-  let scale = isTarget ? 3.5 : 1.2; // ขนาดฐานสำหรับ LEO (ความสูง < 2000 km)
-  
-  if (altKm > 30000) { 
-    // 🟡 GEO (เช่น THAICOM) อยู่ไกล 36,000 km ขยายใหญ่สุดๆ
-    scale = isTarget ? 15.0 : 8.0; 
-  } else if (altKm > 10000) { 
-    // 🟢 MEO (เช่น GNSS, GPS, BEIDOU) อยู่ไกล 20,000 km ขยายระดับกลาง
-    scale = isTarget ? 10.0 : 5.0;
-  }
-  
+  const scale = isTarget ? 3.0 : 1.2;
   group.scale.set(scale, scale, scale);
   return group;
 }
@@ -965,6 +952,1240 @@ const FreqLabel = ({ linkType, freq, active }) => {
   );
 };
 
+
+// =========================================================================
+// GISTDA ANTENNA BRIDGE v1.4
+// READ-ONLY SIDECAR / NON-REGRESSION
+// =========================================================================
+
+const ANTENNA_URL =
+  'https://gistda-antenna-mission-simulator.vercel.app/';
+
+const ANTENNA_ORIGIN =
+  new URL(ANTENNA_URL).origin;
+
+const ANTENNA_BRIDGE_PROTOCOL =
+  'gistda-antenna-bridge/v1';
+
+const ANTENNA_BRIDGE_SOURCE =
+  'SAT-ORBIT';
+
+const ANTENNA_RECEIVER_SOURCE =
+  'ANTENNA-SIM';
+
+const createEmptyPassCache = () => ({
+  horizonAos: null,
+  horizonLos: null,
+  simAos: null,
+  simLos: null,
+  maxEl: null,
+  passId: null
+});
+
+const sendAntennaBridgeMessage = (windowRef, payload) => {
+  if (!windowRef || windowRef.closed) return false;
+
+  try {
+    windowRef.postMessage(payload, ANTENNA_ORIGIN);
+    return true;
+  } catch (error) {
+    console.warn('[AntennaBridge] postMessage failed:', error);
+    return false;
+  }
+};
+
+const useAntennaBridge = (bridgeData) => {
+
+  const [bridgeStatus, setBridgeStatus] =
+    useState('OFF');
+  // OFF | OPENING | LINKED | LOST
+
+  const receiverWinRef = useRef(null);
+  const sessionIdRef = useRef(null);
+  const sequenceRef = useRef(0);
+  const lastAckAtRef = useRef(0);
+
+  const dataRef = useRef(bridgeData);
+
+  const passCacheRef =
+    useRef(createEmptyPassCache());
+
+
+  // -----------------------------------------------------------------------
+  // 1. KEEP LATEST MASTER STATE
+  // Read only. Never mutate SAT-ORBIT state.
+  // -----------------------------------------------------------------------
+
+  useEffect(() => {
+    dataRef.current = bridgeData;
+  }, [bridgeData]);
+
+
+  // -----------------------------------------------------------------------
+  // 2. DETERMINE CURRENT / NEXT PASS
+  // -----------------------------------------------------------------------
+
+  const currentBridgePass = useMemo(() => {
+
+    if (
+      !bridgeData.targetSatrec ||
+      !Array.isArray(bridgeData.passSchedule) ||
+      bridgeData.passSchedule.length === 0 ||
+      !Number.isFinite(bridgeData.simTimeMs)
+    ) {
+      return null;
+    }
+
+    return (
+      bridgeData.passSchedule.find(
+        (pass) =>
+          Number.isFinite(pass?.aosTime) &&
+          Number.isFinite(pass?.losTime) &&
+          pass.losTime >= bridgeData.simTimeMs
+      ) || null
+    );
+
+  }, [
+    bridgeData.targetSatrec,
+    bridgeData.passSchedule,
+    bridgeData.simTimeMs
+  ]);
+
+
+  const currentBridgePassKey =
+    currentBridgePass
+      ? [
+          bridgeData.selectedCatnr,
+          bridgeData.activeStation?.id,
+          currentBridgePass.aosTime,
+          currentBridgePass.losTime,
+          bridgeData.stationMask
+        ].join('|')
+      : null;
+
+
+  // -----------------------------------------------------------------------
+  // 3. PRECISION PASS BOUNDARY
+  //
+  // Horizon AOS/LOS = 0 deg
+  // SIM AOS/LOS     = selected Station Mask (0/3/5)
+  //
+  // Directional bracket + Binary Search <= 1 second
+  // -----------------------------------------------------------------------
+
+  useEffect(() => {
+
+    const resetCache = () => {
+      passCacheRef.current =
+        createEmptyPassCache();
+    };
+
+    const d = bridgeData;
+
+    if (
+      !d.targetSatrec ||
+      !currentBridgePass ||
+      !d.activeStation ||
+      !Number.isFinite(d.activeStation.lat) ||
+      !Number.isFinite(d.activeStation.lng) ||
+      !Number.isFinite(d.activeStation.alt) ||
+      !Number.isFinite(d.stationMask)
+    ) {
+      resetCache();
+      return;
+    }
+
+    if (
+      passCacheRef.current.passId ===
+      currentBridgePassKey
+    ) {
+      return;
+    }
+
+
+    const observer = {
+      latitude:
+        (d.activeStation.lat * Math.PI) / 180,
+
+      longitude:
+        (d.activeStation.lng * Math.PI) / 180,
+
+      height:
+        d.activeStation.alt / 1000
+    };
+
+
+    const getElevation = (timeMs) => {
+
+      if (!Number.isFinite(timeMs)) {
+        return null;
+      }
+
+      try {
+
+        const date = new Date(timeMs);
+
+        const pv =
+          satelliteJs.propagate(
+            d.targetSatrec,
+            date
+          );
+
+        if (
+          !pv ||
+          !pv.position ||
+          typeof pv.position === 'boolean'
+        ) {
+          return null;
+        }
+
+        const gmst =
+          satelliteJs.gstime(date);
+
+        const ecf =
+          satelliteJs.eciToEcf(
+            pv.position,
+            gmst
+          );
+
+        const look =
+          satelliteJs.ecfToLookAngles(
+            observer,
+            ecf
+          );
+
+        if (
+          !look ||
+          !Number.isFinite(look.elevation)
+        ) {
+          return null;
+        }
+
+        return (
+          look.elevation * 180 / Math.PI
+        );
+
+      } catch (error) {
+
+        return null;
+
+      }
+    };
+
+
+    // ---------------------------------------------------------------------
+    // DIRECTIONAL CROSSING SEARCH
+    //
+    // AOS:
+    // BELOW -> ABOVE
+    //
+    // LOS:
+    // ABOVE -> BELOW
+    //
+    // Search step 30 sec
+    // Maximum search span ~40 minutes
+    // ---------------------------------------------------------------------
+
+    const findCrossing = (
+      baseMs,
+      threshold,
+      isAos
+    ) => {
+
+      if (
+        !Number.isFinite(baseMs) ||
+        !Number.isFinite(threshold)
+      ) {
+        return null;
+      }
+
+      const STEP_MS = 30000;
+      const MAX_STEPS = 80;
+
+      const baseEl =
+        getElevation(baseMs);
+
+      if (baseEl === null) {
+        return null;
+      }
+
+      let left = null;
+      let right = null;
+
+
+      // ================================================================
+      // AOS : BELOW -> ABOVE
+      // ================================================================
+
+      if (isAos) {
+
+        // Base already above threshold:
+        // search BACKWARD until below.
+        if (baseEl >= threshold) {
+
+          right = baseMs;
+          let cursor = baseMs;
+
+          for (
+            let i = 0;
+            i < MAX_STEPS;
+            i++
+          ) {
+
+            const candidate =
+              cursor - STEP_MS;
+
+            const candidateEl =
+              getElevation(candidate);
+
+            if (candidateEl === null) {
+              return null;
+            }
+
+            if (candidateEl < threshold) {
+              left = candidate;
+              break;
+            }
+
+            right = candidate;
+            cursor = candidate;
+          }
+
+        }
+
+        // Base still below threshold:
+        // search FORWARD until above.
+        else {
+
+          left = baseMs;
+          let cursor = baseMs;
+
+          for (
+            let i = 0;
+            i < MAX_STEPS;
+            i++
+          ) {
+
+            const candidate =
+              cursor + STEP_MS;
+
+            const candidateEl =
+              getElevation(candidate);
+
+            if (candidateEl === null) {
+              return null;
+            }
+
+            if (candidateEl >= threshold) {
+              right = candidate;
+              break;
+            }
+
+            left = candidate;
+            cursor = candidate;
+          }
+
+        }
+
+      }
+
+
+      // ================================================================
+      // LOS : ABOVE -> BELOW
+      // ================================================================
+
+      else {
+
+        // Base still above threshold:
+        // search FORWARD until below.
+        if (baseEl >= threshold) {
+
+          left = baseMs;
+          let cursor = baseMs;
+
+          for (
+            let i = 0;
+            i < MAX_STEPS;
+            i++
+          ) {
+
+            const candidate =
+              cursor + STEP_MS;
+
+            const candidateEl =
+              getElevation(candidate);
+
+            if (candidateEl === null) {
+              return null;
+            }
+
+            if (candidateEl < threshold) {
+              right = candidate;
+              break;
+            }
+
+            left = candidate;
+            cursor = candidate;
+          }
+
+        }
+
+        // Base already below threshold:
+        // search BACKWARD until above.
+        else {
+
+          right = baseMs;
+          let cursor = baseMs;
+
+          for (
+            let i = 0;
+            i < MAX_STEPS;
+            i++
+          ) {
+
+            const candidate =
+              cursor - STEP_MS;
+
+            const candidateEl =
+              getElevation(candidate);
+
+            if (candidateEl === null) {
+              return null;
+            }
+
+            if (candidateEl >= threshold) {
+              left = candidate;
+              break;
+            }
+
+            right = candidate;
+            cursor = candidate;
+          }
+
+        }
+
+      }
+
+
+      if (
+        left === null ||
+        right === null
+      ) {
+        return null;
+      }
+
+
+      let elLeft =
+        getElevation(left);
+
+      let elRight =
+        getElevation(right);
+
+
+      if (
+        elLeft === null ||
+        elRight === null
+      ) {
+        return null;
+      }
+
+
+      // Verify directional bracket.
+
+      if (isAos) {
+
+        if (
+          !(
+            elLeft < threshold &&
+            elRight >= threshold
+          )
+        ) {
+          return null;
+        }
+
+      } else {
+
+        if (
+          !(
+            elLeft >= threshold &&
+            elRight < threshold
+          )
+        ) {
+          return null;
+        }
+
+      }
+
+
+      // -----------------------------------------------------------------
+      // BINARY SEARCH <= 1 SECOND
+      // -----------------------------------------------------------------
+
+      while (
+        right - left > 1000
+      ) {
+
+        const mid =
+          Math.floor(
+            (left + right) / 2
+          );
+
+        const elMid =
+          getElevation(mid);
+
+        if (elMid === null) {
+          return null;
+        }
+
+
+        if (isAos) {
+
+          if (elMid >= threshold) {
+            right = mid;
+          } else {
+            left = mid;
+          }
+
+        } else {
+
+          if (elMid >= threshold) {
+            left = mid;
+          } else {
+            right = mid;
+          }
+
+        }
+
+      }
+
+
+      return new Date(
+        isAos ? right : left
+      ).toISOString();
+    };
+
+
+    // ---------------------------------------------------------------------
+    // BUILD PRECISION PASS CACHE
+    // ---------------------------------------------------------------------
+
+    const horizonAos =
+      findCrossing(
+        currentBridgePass.aosTime,
+        0,
+        true
+      );
+
+    const horizonLos =
+      findCrossing(
+        currentBridgePass.losTime,
+        0,
+        false
+      );
+
+    const simAos =
+      findCrossing(
+        currentBridgePass.aosTime,
+        d.stationMask,
+        true
+      );
+
+    const simLos =
+      findCrossing(
+        currentBridgePass.losTime,
+        d.stationMask,
+        false
+      );
+
+
+    passCacheRef.current = {
+
+      horizonAos,
+      horizonLos,
+
+      simAos,
+      simLos,
+
+      maxEl:
+        Number.isFinite(
+          currentBridgePass.maxEl
+        )
+          ? Number(
+              currentBridgePass.maxEl
+                .toFixed(2)
+            )
+          : null,
+
+      passId:
+        currentBridgePassKey
+    };
+
+
+  }, [
+    currentBridgePass,
+    currentBridgePassKey,
+    bridgeData.targetSatrec,
+    bridgeData.activeStation,
+    bridgeData.stationMask
+  ]);
+
+
+  // -----------------------------------------------------------------------
+  // 4. SECURE MESSAGE RECEIVER
+  // -----------------------------------------------------------------------
+
+  useEffect(() => {
+
+    const handleMessage = (event) => {
+
+      if (
+        !event.data ||
+        typeof event.data !== 'object'
+      ) {
+        return;
+      }
+
+
+      if (
+        event.origin !== ANTENNA_ORIGIN
+      ) {
+        return;
+      }
+
+
+      if (
+        event.source !==
+        receiverWinRef.current
+      ) {
+        return;
+      }
+
+
+      const {
+        type,
+        protocol,
+        sessionId,
+        source
+      } = event.data;
+
+
+      if (
+        protocol !==
+        ANTENNA_BRIDGE_PROTOCOL
+      ) {
+        return;
+      }
+
+
+      if (
+        sessionId !==
+        sessionIdRef.current
+      ) {
+        return;
+      }
+
+
+      if (
+        source !==
+        ANTENNA_RECEIVER_SOURCE
+      ) {
+        return;
+      }
+
+
+      // READY may only transition:
+      // OPENING -> LINKED
+
+      if (
+        type === 'ANTENNA_READY'
+      ) {
+
+        lastAckAtRef.current =
+          performance.now();
+
+        setBridgeStatus(
+          (prev) =>
+            prev === 'OPENING'
+              ? 'LINKED'
+              : prev
+        );
+
+        return;
+      }
+
+
+      if (
+        type === 'ANTENNA_PONG' ||
+        type === 'RECEIVER_STATUS'
+      ) {
+
+        lastAckAtRef.current =
+          performance.now();
+
+      }
+
+    };
+
+
+    window.addEventListener(
+      'message',
+      handleMessage
+    );
+
+
+    return () => {
+
+      window.removeEventListener(
+        'message',
+        handleMessage
+      );
+
+    };
+
+  }, []);
+
+
+  // -----------------------------------------------------------------------
+  // 5. HELLO / TX / PING / WATCHDOG
+  // -----------------------------------------------------------------------
+
+  useEffect(() => {
+
+    if (
+      bridgeStatus === 'OFF' ||
+      bridgeStatus === 'LOST'
+    ) {
+      return;
+    }
+
+
+    let helloTimer = null;
+    let txTimer = null;
+    let pingTimer = null;
+    let watchdogTimer = null;
+    let handshakeTimeout = null;
+
+
+    // ================================================================
+    // OPENING / HANDSHAKE
+    // ================================================================
+
+    if (
+      bridgeStatus === 'OPENING'
+    ) {
+
+      const currentSession =
+        sessionIdRef.current;
+
+
+      const sendHello = () => {
+
+        sendAntennaBridgeMessage(
+          receiverWinRef.current,
+          {
+            protocol:
+              ANTENNA_BRIDGE_PROTOCOL,
+
+            type:
+              'BRIDGE_HELLO',
+
+            source:
+              ANTENNA_BRIDGE_SOURCE,
+
+            sessionId:
+              currentSession
+          }
+        );
+
+      };
+
+
+      // Send immediately.
+      sendHello();
+
+
+      // Continue every 500 ms.
+      helloTimer =
+        setInterval(
+          sendHello,
+          500
+        );
+
+
+      handshakeTimeout =
+        setTimeout(
+          () => {
+
+            if (
+              sessionIdRef.current !==
+              currentSession
+            ) {
+              return;
+            }
+
+
+            setBridgeStatus(
+              (prev) =>
+                prev === 'OPENING'
+                  ? 'LOST'
+                  : prev
+            );
+
+          },
+          8000
+        );
+
+    }
+
+
+    // ================================================================
+    // LINKED
+    // ================================================================
+
+    if (
+      bridgeStatus === 'LINKED'
+    ) {
+
+      const sendPing = () => {
+
+        sendAntennaBridgeMessage(
+          receiverWinRef.current,
+          {
+            protocol:
+              ANTENNA_BRIDGE_PROTOCOL,
+
+            type:
+              'BRIDGE_PING',
+
+            source:
+              ANTENNA_BRIDGE_SOURCE,
+
+            sessionId:
+              sessionIdRef.current
+          }
+        );
+
+      };
+
+
+      // Send one immediately.
+      sendPing();
+
+
+      pingTimer =
+        setInterval(
+          sendPing,
+          1000
+        );
+
+
+      watchdogTimer =
+        setInterval(
+          () => {
+
+            if (
+              performance.now() -
+                lastAckAtRef.current >
+              2500
+            ) {
+
+              setBridgeStatus(
+                'LOST'
+              );
+
+            }
+
+          },
+          1000
+        );
+
+
+      // -------------------------------------------------------------
+      // POINTING STATE @ 25 Hz
+      // -------------------------------------------------------------
+
+      txTimer =
+        setInterval(
+          () => {
+
+            const d =
+              dataRef.current;
+
+
+            if (
+              !receiverWinRef.current ||
+              receiverWinRef.current.closed
+            ) {
+
+              setBridgeStatus(
+                'LOST'
+              );
+
+              return;
+            }
+
+
+            if (
+              !d ||
+              !d.targetData ||
+              !d.activeStation ||
+              !Number.isFinite(
+                d.simTimeMs
+              ) ||
+              !Number.isFinite(
+                d.targetData.azimuthDeg
+              ) ||
+              !Number.isFinite(
+                d.targetData.elevationDeg
+              ) ||
+              !Number.isFinite(
+                d.stationMask
+              )
+            ) {
+              return;
+            }
+
+
+            const az =
+              (
+                (
+                  d.targetData.azimuthDeg %
+                    360
+                ) +
+                360
+              ) % 360;
+
+
+            const el =
+              d.targetData.elevationDeg;
+
+
+            const payload = {
+
+              protocol:
+                ANTENNA_BRIDGE_PROTOCOL,
+
+              type:
+                'POINTING_STATE',
+
+              source:
+                ANTENNA_BRIDGE_SOURCE,
+
+              sessionId:
+                sessionIdRef.current,
+
+              sequence:
+                sequenceRef.current++,
+
+              target:
+                d.selectedCatnr != null
+                  ? String(
+                      d.selectedCatnr
+                    )
+                  : null,
+
+              name:
+                d.targetConfig
+                  ?.displayName ||
+                'UNKNOWN',
+
+              simTimeUtc:
+                new Date(
+                  d.simTimeMs
+                ).toISOString(),
+
+              isPlaying:
+                Boolean(d.isPlaying),
+
+              simRate:
+                d.isPlaying &&
+                Number.isFinite(
+                  d.speedMult
+                )
+                  ? d.speedMult
+                  : 0,
+
+              azimuth:
+                Number(
+                  az.toFixed(2)
+                ),
+
+              elevation:
+                Number(
+                  el.toFixed(2)
+                ),
+
+              isAboveHorizon:
+                el >= 0,
+
+              isWithinStationMask:
+                el >= d.stationMask,
+
+              isTracking:
+                el >= d.stationMask,
+
+              phase:
+                null,
+
+              altitudeKm:
+                Number.isFinite(
+                  d.targetData.altKm
+                )
+                  ? Number(
+                      d.targetData.altKm
+                        .toFixed(2)
+                    )
+                  : null,
+
+              slantRangeKm:
+                Number.isFinite(
+                  d.targetData.rangeKm
+                )
+                  ? Number(
+                      d.targetData.rangeKm
+                        .toFixed(2)
+                    )
+                  : null,
+
+              satLat:
+                Number.isFinite(
+                  d.targetData.lat
+                )
+                  ? Number(
+                      d.targetData.lat
+                        .toFixed(4)
+                    )
+                  : null,
+
+              satLon:
+                Number.isFinite(
+                  d.targetData.lng
+                )
+                  ? Number(
+                      d.targetData.lng
+                        .toFixed(4)
+                    )
+                  : null,
+
+              station: {
+
+                id:
+                  d.activeStation.id,
+
+                name:
+                  d.activeStation.name,
+
+                lat:
+                  d.activeStation.lat,
+
+                lon:
+                  d.activeStation.lng,
+
+                altM:
+                  d.activeStation.alt
+              },
+
+              stationMaskDeg:
+                d.stationMask,
+
+              horizonAosUtc:
+                passCacheRef.current
+                  .horizonAos,
+
+              horizonLosUtc:
+                passCacheRef.current
+                  .horizonLos,
+
+              simAosUtc:
+                passCacheRef.current
+                  .simAos,
+
+              simLosUtc:
+                passCacheRef.current
+                  .simLos,
+
+              maxElevation:
+                passCacheRef.current
+                  .maxEl
+            };
+
+
+            sendAntennaBridgeMessage(
+              receiverWinRef.current,
+              payload
+            );
+
+          },
+          40
+        );
+
+    }
+
+
+    // -----------------------------------------------------------------
+    // CLEANUP ALL TIMERS
+    // -----------------------------------------------------------------
+
+    return () => {
+
+      if (helloTimer) {
+        clearInterval(helloTimer);
+      }
+
+      if (txTimer) {
+        clearInterval(txTimer);
+      }
+
+      if (pingTimer) {
+        clearInterval(pingTimer);
+      }
+
+      if (watchdogTimer) {
+        clearInterval(
+          watchdogTimer
+        );
+      }
+
+      if (handshakeTimeout) {
+        clearTimeout(
+          handshakeTimeout
+        );
+      }
+
+    };
+
+  }, [bridgeStatus]);
+
+
+  // -----------------------------------------------------------------------
+  // 6. CONNECT
+  // -----------------------------------------------------------------------
+
+  const connectAntenna = () => {
+
+    const newSessionId =
+      globalThis.crypto
+        ?.randomUUID?.() ||
+      `${Date.now()}-${Math.random()
+        .toString(16)
+        .slice(2)}`;
+
+
+    sessionIdRef.current =
+      newSessionId;
+
+    sequenceRef.current = 0;
+
+    lastAckAtRef.current = 0;
+
+
+    // Must happen directly from user click
+    // so popup blocker permits it.
+
+    const receiverWindow =
+      window.open(
+        ANTENNA_URL,
+        'AntennaSim'
+      );
+
+
+    receiverWinRef.current =
+      receiverWindow;
+
+
+    if (!receiverWindow) {
+
+      setBridgeStatus('LOST');
+      return;
+
+    }
+
+
+    setBridgeStatus('OPENING');
+  };
+
+
+  // -----------------------------------------------------------------------
+  // 7. DISCONNECT
+  // -----------------------------------------------------------------------
+
+  const disconnectAntenna = () => {
+
+    const currentSession =
+      sessionIdRef.current;
+
+
+    if (currentSession) {
+
+      sendAntennaBridgeMessage(
+        receiverWinRef.current,
+        {
+          protocol:
+            ANTENNA_BRIDGE_PROTOCOL,
+
+          type:
+            'BRIDGE_DISCONNECT',
+
+          source:
+            ANTENNA_BRIDGE_SOURCE,
+
+          sessionId:
+            currentSession
+        }
+      );
+
+    }
+
+
+    sessionIdRef.current = null;
+    sequenceRef.current = 0;
+    lastAckAtRef.current = 0;
+
+    receiverWinRef.current = null;
+
+    setBridgeStatus('OFF');
+  };
+
+
+  return {
+    bridgeStatus,
+    connectAntenna,
+    disconnectAntenna
+  };
+};
+
+// =========================================================================
+// END GISTDA ANTENNA BRIDGE v1.4
+// =========================================================================
+
+
+// =========================================================================
+// ASSET STABILITY GUARD v1
+// One-shot fallback for runtime images. Prevents recursive onError loops.
+// =========================================================================
+const handleRuntimeImageError = (event, fallbackSrc = null) => {
+  const img = event?.currentTarget;
+  if (!img) return;
+
+  const fallbackUrl = fallbackSrc
+    ? new URL(fallbackSrc, window.location.href).href
+    : null;
+
+  // Retry only once, and never retry the same broken URL recursively.
+  if (
+    fallbackUrl &&
+    img.src !== fallbackUrl &&
+    img.dataset.gistdaFallbackApplied !== '1'
+  ) {
+    img.dataset.gistdaFallbackApplied = '1';
+    img.src = fallbackUrl;
+    return;
+  }
+
+  // Keep layout stable if both primary and fallback are unavailable.
+  img.style.visibility = 'hidden';
+};
+
 // ==========================================
 // 4. MAIN APP
 // ==========================================
@@ -974,13 +2195,75 @@ export default function App() {
   const [loadingPct, setLoadingPct] = useState(0);
   const [isAppReady, setIsAppReady] = useState(false);
 
+ // 📍 OK17.2 ASSET RESIDENCY FIX: keep compressed bytes inside this page for the
+  // full App lifetime. Unlike a normal <img> preload, Blob URLs can be decoded again
+  // without re-requesting /textures/* from the WebContainer/Vite dev server after a
+  // long idle session or browser memory-pressure eviction.
+  const runtimeAssetUrlsRef = useRef({});
+  const runtimeAssetBlobsRef = useRef({});
+  const [runtimeAssetRevision, setRuntimeAssetRevision] = useState(0);
+
+  const runtimeAsset = (src) => runtimeAssetUrlsRef.current[src] || src;
+
   useEffect(() => {
-    // 📍 ฟันธงแก้บั๊กแผนที่ช้า: สั่งแอบโหลดรูป Texture 8K ทุกแบบเข้าไปฝังใน RAM (Cache) ทันทีที่เปิดแอป!
-    mapThemes.forEach(theme => {
-      const img = new Image();
-      img.src = theme.url;
-    });
-    
+    let cancelled = false;
+    const createdUrls = [];
+    const criticalAssets = [
+      '/textures/Blue_marble_depth.webp',
+      '/textures/8k_earth_daymap.webp',
+      '/textures/Earth_nightmap.webp',
+      '/textures/Blue_Marble_BG.webp',
+      '/textures/Flat_earth_Largest.webp',
+      '/textures/THEOS-2.webp',
+      '/textures/THEOS.webp',
+      '/textures/THEOS-2-1.webp'
+    ];
+
+    const fetchResidentBlob = async (src) => {
+      // The first request normally succeeds while the WebContainer preview is awake.
+      // Retry briefly so a transient dev-server/HMR refresh cannot leave a hole.
+      let lastError = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const response = await fetch(src, { cache: 'force-cache' });
+          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+          return await response.blob();
+        } catch (error) {
+          lastError = error;
+          if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 350 * (attempt + 1)));
+        }
+      }
+      throw lastError || new Error(`Unable to pin ${src}`);
+    };
+
+    (async () => {
+      const results = await Promise.allSettled(
+        criticalAssets.map(async (src) => {
+          const blob = await fetchResidentBlob(src);
+          if (cancelled) return;
+          const objectUrl = URL.createObjectURL(blob);
+          runtimeAssetBlobsRef.current[src] = blob;
+          runtimeAssetUrlsRef.current[src] = objectUrl;
+          createdUrls.push(objectUrl);
+        })
+      );
+
+      if (!cancelled) {
+        const failed = results.filter(r => r.status === 'rejected').length;
+        if (failed) console.warn(`[AssetResidency] ${failed} critical asset(s) could not be pinned; direct URL fallback remains active.`);
+        setRuntimeAssetRevision(v => v + 1);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      createdUrls.forEach(url => URL.revokeObjectURL(url));
+      runtimeAssetUrlsRef.current = {};
+      runtimeAssetBlobsRef.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
     let pct = 0;
     const interval = setInterval(() => {
       // ⚙️ จุดปรับที่ 1: ความก้าวหน้า (สุ่มบวกทีละ 2% ถึง 6% จะทำให้หลอดเต็มไวขึ้น)
@@ -1206,7 +2489,8 @@ useEffect(() => {
     
     // 📍 ฟันธง: ดึงค่า days ที่ผู้ใช้เลือกมาคำนวณทั้งย้อนหลัง (อดีต) และล่วงหน้า (อนาคต)
     const lookBackMs = days * 24 * 60 * 60 * 1000; 
-    const stepMs = 10000; 
+    /* 📍 ฟันธง: ขยายสเตปการค้นหาเป็น 1 นาที (60000ms) ลดภาระ CPU ลง 6 เท่า! */
+    const stepMs = 60000; 
 
     const startTime = Math.floor((now.getTime() - lookBackMs) / stepMs) * stepMs;
     const maxTime = startTime + (days * 2 * 24 * 60 * 60 * 1000); // ย้อนหลัง + ล่วงหน้า
@@ -1368,14 +2652,75 @@ useEffect(() => {
  // 📍 ฟันธง: สมองกลควบคุมหน้าต่าง IMAGING PLAN VIEWER
  const [isImgOpen, setIsImgOpen] = useState(false);
 
+ const [isImgListOpen, setIsImgListOpen] = useState(true);
+
  const [customAlert, setCustomAlert] = useState({ show: false, message: '', type: 'success' });
 
  const [sourcePlans, setSourcePlans] = useState(typeof THEOS2_IMAGING_PLAN !== 'undefined' ? THEOS2_IMAGING_PLAN : []);
 
- // 📍 ฟันธง 1: กู้คืนตัวแปรที่หายไป (ยาแก้แครชจอดำ 100%)
- const imagingPlansData = sourcePlans; 
- const groundTrackPath = []; 
- const imagingSwathPaths = [];
+// 📍 ฟันธง: ฟังก์ชันอ่านไฟล์ Mission Plan (รองรับการอัปโหลด PDF และ JSON พร้อมกัน)
+const handleMissionPlanUpload = async (e) => {
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
+
+  let newImagingPlans = [];
+  let pdfFile = null;
+
+  for (const file of files) {
+    if (file.name.endsWith('.pdf')) {
+      pdfFile = file; 
+    } else if (file.name.endsWith('.json') || file.name.endsWith('.geojson')) {
+      
+      const text = await file.text();
+      try {
+        const geoData = JSON.parse(text);
+        if (geoData.features) {
+          newImagingPlans = geoData.features.map((feat, index) => {
+            const props = feat.properties;
+            const coords = feat.geometry.coordinates[0]; 
+            const startLng = coords[0][0];
+            const startLat = coords[0][1];
+            const endLng = coords[2][0]; 
+            const endLat = coords[2][1];
+
+            const startTime = new Date(props.acqStart).getTime();
+            const endTime = new Date(props.acqEnd).getTime();    
+
+            return {
+              id: props.id || `plan-${index}`,
+              start: props.acqStart,
+              end: endTime,
+              duration: (endTime - startTime) / 1000,
+              startLat: startLat,
+              startLng: startLng,
+              endLat: endLat,
+              endLng: endLng
+            };
+          });
+          
+          newImagingPlans.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+        }
+      } catch (error) {
+        console.error("❌ Error parsing GeoJSON:", error);
+        if (typeof setCustomAlert === 'function') {
+          setCustomAlert({ show: true, message: "⚠️ ไฟล์ JSON ข้อมูลพิกัดผิดพลาด!", type: 'error' });
+        }
+      }
+    }
+  }
+
+  if (newImagingPlans.length > 0) {
+    setImagingPlansData(newImagingPlans); 
+  }
+
+  if (pdfFile) {
+    // โยนไฟล์ PDF ให้ระบบเดิมของคุณอ่านตารางเวลา (ถ้าฟังก์ชันเดิมชื่ออื่น ให้เปลี่ยนชื่อตามนั้นครับ)
+    if (typeof handlePdfUpload === 'function') {
+       handlePdfUpload({ target: { files: [pdfFile] } }); 
+    }
+  }
+};
+
 
 // 📍 ฟังก์ชันจัดการเมื่อกดอัปโหลดไฟล์ PDF
 const handlePdfUpload = async (event) => {
@@ -1737,7 +3082,7 @@ useEffect(() => {
 
       const material = new THREE.ShaderMaterial({
         uniforms: {
-          tNight: { value: new THREE.TextureLoader().load('/textures/Earth_nightmap.webp') },
+          tNight: { value: new THREE.TextureLoader().load(runtimeAsset('/textures/Earth_nightmap.webp')) },
           sunDirection: { value: new THREE.Vector3(1, 0, 0) }
         },
         vertexShader: `
@@ -1814,6 +3159,28 @@ const targetData = useMemo(() => {
 
 const targetConfig = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr) || SATELLITE_OPTIONS[0];
 const linkActive = targetData && targetData.elevationDeg >= stationMask;
+
+// =========================================================================
+// 📍 GISTDA ANTENNA BRIDGE v1.4 - MOUNT POINT
+// =========================================================================
+
+const bridgeState = useAntennaBridge({
+  simTimeMs: simulatedTimeMs,
+  isPlaying: isPlaying,
+  speedMult: speedMult,
+
+  targetData: targetData,
+  targetConfig: targetConfig,
+  targetSatrec: targetSatrec,
+
+  selectedCatnr: selectedCatnr,
+  passSchedule: passSchedule,
+
+  stationMask: stationMask,
+  activeStation: activeStation
+});
+
+// =========================================================================
 
 // 📍 ระบบดักเวลา Pass ถัดไป
 const nextPassTimestamp = useMemo(() => {
@@ -1934,16 +3301,14 @@ const allSatObjects = useMemo(() => {
 }, [simulatedTimeMs, satrecs, selectedCatnr, selectedCatnrs]);
 
 // 📍 ฟันธง 1.1: สร้างสวิตช์หน่วงเวลา (Throttle) ตัดคอขวด CPU 
-// ถ้าเร่งเกิน 100X ให้วาดเส้นนำทางวงโคจรใหม่ทุกๆ 30 นาทีซิมูเลชัน (ลดภาระขยะใน Memory ได้ 1,000,000%)
-const orbitUpdateTrigger = Math.floor(simulatedTimeMs / (speedMult >= 100 ? 1800000 : 300000));
+ // ถ้าเร่งเกิน 100X ให้วาดเส้นนำทางวงโคจรใหม่ทุกๆ 30 นาทีซิมูเลชัน (ลดภาระขยะใน Memory ได้ 1,000,000%)
+ const orbitUpdateTrigger = Math.floor(simulatedTimeMs / (speedMult >= 100 ? 1800000 : 300000));
 
-// 📍 ฟันธง: อัปเกรดสมองกลวาดเส้นวงโคจร (Orbit Path) ครอบคลุม LEO, MEO (GNSS) และ GEO ไม่ให้เบี้ยว 100%
-// 📍 ค้นหาคำว่า const orbitVisualPath = useMemo(() => {
-// แล้วเอาโค้ดชุดนี้ไปวางทับบล็อกเดิมทั้งหมดครับ
-const orbitVisualPath = useMemo(() => {
+ // 📍 ฟันธง: อัปเกรดสมองกลวาดเส้นวงโคจร (Orbit Path) กลับมาวาดครบทุกดวงที่เลือก (ทั้ง LEO, MEO, GEO)
+ const orbitVisualPath = useMemo(() => {
   const paths = [];
 
-  // ฟังก์ชันคำนวณเส้นวงโคจร
+  // ฟังก์ชันคำนวณเส้นวงโคจรไม่ให้เบี้ยว
   const getFixed3DOrbitPath = (satrec, baseDate, durationMinutes, stepSize) => {
     const pts = [];
     try {
@@ -1968,7 +3333,7 @@ const orbitVisualPath = useMemo(() => {
     return pts;
   };
 
-  // 📍 ฟันธงจุดที่แก้: วนลูปวาดเส้นวงโคจรของ "ดาวเทียมทุกดวง" ที่เลือกไว้ใน Database
+  // 📍 วนลูปวาดเส้นวงโคจรของ "ดาวเทียมทุกดวง" ที่เลือกไว้ใน Database
   selectedCatnrs.forEach(catnr => {
     const rec = satrecs[catnr];
     if (!rec) return;
@@ -1978,11 +3343,11 @@ const orbitVisualPath = useMemo(() => {
 
     const isPrimary = catnr === selectedCatnr;
     
-    // 🎨 แบ่งสีเส้น: เป้าหมายหลัก (MAIN) สีทองสว่างเส้นหนา / เป้ารอง สีเขียวสว่างเส้นบาง
-    const pathColor = isPrimary ? 'rgba(255, 204, 0, 0.8)' : 'rgba(0, 255, 102, 0.3)';
-    const strokeWidth = isPrimary ? 1.0 : 0.5;
+    // 🎨 ฟันธง: แบ่งสีเส้นเป้าหลักสีทองทึบ (1.0) / เป้ารองสีเขียวสว่างขึ้น (0.75) และเพิ่มความหนาเส้น
+    const pathColor = isPrimary ? 'rgba(255, 204, 0, 1.0)' : 'rgba(0, 255, 102, 0.75)';
+    const strokeWidth = isPrimary ? 1.5 : 0.8;
 
-    // 🟢 เคส 1: GEO
+    // 🟢 เคส 1: GEO (THAICOM)
     if (initPos.altKm > 30000 && Math.abs(initPos.lat) < 5) {
       const points = [];
       for (let lng = -180; lng <= 180; lng += 2) {
@@ -1990,7 +3355,7 @@ const orbitVisualPath = useMemo(() => {
       }
       paths.push({ points, color: pathColor, stroke: isPrimary ? 1.5 : 0.8 });
     } 
-    // 🔵 เคส 2: MEO & LEO
+    // 🔵 เคส 2: MEO & LEO (GNSS, THEOS)
     else {
       let orbitDurationMinutes = 100;
       let timeStepMinutes = 0.5;
@@ -2008,7 +3373,62 @@ const orbitVisualPath = useMemo(() => {
   });
 
   return paths;
-}, [selectedCatnrs, selectedCatnr, satrecs, orbitUpdateTrigger, currentDate]);
+  /* 📍 ฟันธง: ลบ currentDate ทิ้ง! เพื่อไม่ให้มันคำนวณเส้นวงโคจรใหม่ทุกๆ 40ms ลดภาระ CPU มหาศาล! */
+  }, [selectedCatnrs, selectedCatnr, satrecs, orbitUpdateTrigger]);
+
+
+// 📍 ฟันธง 2: ระบบวาดเส้นแดงบน 3D ใช้ useRef เป็นโกดัง Cache (ลดภาระ CPU ไม่ต้องคำนวณใหม่ทุก 16ms)
+const imagingSwathCache = useRef({});
+const imagingSwathPaths = useMemo(() => {
+  if (!targetSatrec || selectedCatnr !== '58016') return []; 
+  const paths = [];
+  
+  sourcePlans.forEach(plan => {
+    const pStart = new Date(plan.start).getTime();
+    const pEnd = new Date(plan.end).getTime();
+
+    if (simulatedTimeMs > pEnd) return;
+
+    if (!imagingSwathCache.current[plan.id]) {
+      const points = [];
+      for (let t = pStart; t <= pEnd; t += 1000) {
+        const pos = calculateSatData(new Date(t), targetSatrec);
+        if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+          points.push({ lat: pos.lat, lng: pos.lng, alt: 0.002 });
+        }
+      }
+      imagingSwathCache.current[plan.id] = { id: plan.id, points };
+    }
+    
+    const cachedPlan = imagingSwathCache.current[plan.id];
+    if (cachedPlan.points.length >= 2) {
+      const isImagingNow = simulatedTimeMs >= pStart && simulatedTimeMs <= pEnd;
+      cachedPlan.color = isImagingNow ? 'rgba(255, 51, 51, 1)' : 'rgba(255, 100, 51, 0.45)';
+      cachedPlan.stroke = isImagingNow ? 6.0 : 4.0;
+      paths.push(cachedPlan);
+    }
+  });
+  return paths;
+}, [selectedCatnr, targetSatrec, simulatedTimeMs, sourcePlans]);
+
+
+// 📍 ฟันธง 3: สมองกลสกัดข้อมูลพิกัด (Lat/Lng) จาก THEOS2_IMAGING_PLAN เพื่อเอาไปวาดบนหน้าต่างแผนที่ 2D
+const imagingPlansData = useMemo(() => {
+  if (!satrecs['58016']) return [];
+  const rec = satrecs['58016'];
+  return sourcePlans.map((plan, idx) => {
+    const startPos = calculateSatData(new Date(plan.start), rec);
+    const endPos = calculateSatData(new Date(plan.end), rec);
+    const duration = (plan.end - plan.start) / 1000;
+    return {
+      id: plan.id,
+      ...plan,
+      startLat: startPos?.lat, startLng: startPos?.lng,
+      endLat: endPos?.lat, endLng: endPos?.lng,
+      duration
+    };
+  });
+}, [satrecs, sourcePlans]);
   
 // 📍 ฟันธง 1.2: สังหารฟังก์ชัน getCirclePolygon ทิ้ง! คำนวณสดลงในโกดังรีไซเคิล (Zero Memory Allocation)
 const footprintPtsRef = useRef({}); 
@@ -2118,7 +3538,6 @@ useEffect(() => {
 }, [linkActive, isMuted]); // ทำงานใหม่ทุกครั้งที่สถานะ Mute หรือ AOS เปลี่ยนแปลง
 
   const handleFileUpload = (event) => {
-// ... (ส่วนโค้ดด้านล่างเหมือนเดิมทุกประการ ปล่อยยาวไปได้เลยครับ)
     const file = event.target.files[0];
     if (!file) return;
 
@@ -2354,6 +3773,77 @@ useEffect(() => {
     return { x, y, isVis: true, el: targetData.elevationDeg };
   }, [targetData, radarLayout, stationMask]);
 
+ // =========================================================================
+  // 📍 ฟันธง: กู้คืนสมองกล Ground Track สีเหลืองทอง 24 ชั่วโมงของคุณกลับมา! 
+  // (ของเดิมที่คุณทำไว้ถูกต้องตามหลักวิศวกรรม 100% อยู่แล้วครับ)
+  // =========================================================================
+  const groundTrackPath = useMemo(() => {
+    if (!targetSatrec || !showGroundTrack) return [];
+    
+    // เช็คสเปก ถ้าความสูงเกิน 30,000 กม. (GEO) ห้ามวาดเส้นรอบโลกเด็ดขาด!
+    const initPos = calculateSatData(currentDate, targetSatrec);
+    if (initPos && initPos.altKm > 30000) return []; 
+
+    const points = [];
+    
+    // 🌟 ฟันธง: ใช้ลูป 1440 นาที (24 ชั่วโมง) แบบออริจินัลของคุณ เพื่อวาดเส้น Sine Wave ทำนายล่วงหน้าให้เต็มแผนที่
+    for (let m = 0; m <= 1440; m += 1.5) {
+      const d = new Date(currentDate.getTime() + m * 60 * 1000);
+      const pos = calculateSatData(d, targetSatrec);
+      
+      if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+        // 📍 ปรับแค่ alt เป็น 0.01 เพื่อไม่ให้เส้นจมหายไปในภูเขา 3D (Bump Map)
+        points.push({ lat: pos.lat, lng: pos.lng, alt: 0.01 }); 
+      }
+    }
+    
+    if (points.length < 2) return [];
+    
+    return [{ 
+      points: points, 
+      color: 'rgba(255, 215, 0, 0.8)', // 🟡 กลับมาใช้สีเหลืองทองตามเดิมเป๊ะ
+      stroke: 0.5 // ความหนาเส้นแบบเดิมของคุณ
+    }];
+  }, [selectedCatnr, targetSatrec, orbitUpdateTrigger, showGroundTrack]);
+
+
+// =========================================================================
+  // 📍 ฟันธง: สมองกลคำนวณเส้นนำทาง 2D (1 รอบวงโคจร = 100 นาที) เฉพาะดวง MAIN
+  // ป้องกันไอดาวเทียมลอยเคว้งคว้างบนแผนที่ 2D โดยไม่มีทิศทาง
+  // =========================================================================
+  const guideTrack2DPath = useMemo(() => {
+    if (!targetSatrec) return [];
+    const initPos = calculateSatData(currentDate, targetSatrec);
+    if (!initPos || initPos.altKm > 30000) return []; // ไม่วาดให้ GEO
+
+    const pts = [];
+    // วาด 1 รอบวงโคจร (-50 นาที ถึง +50 นาที)
+    for (let m = -50; m <= 50; m += 2) { 
+      const d = new Date(currentDate.getTime() + m * 60 * 1000);
+      const pv = satelliteJs.propagate(targetSatrec, d);
+      if (pv.position && typeof pv.position !== 'boolean') {
+        const geo = satelliteJs.eciToGeodetic(pv.position, satelliteJs.gstime(d));
+        const lat = satelliteJs.degreesLat(geo.latitude);
+        let lng = satelliteJs.degreesLong(geo.longitude);
+        lng = ((lng + 180) % 360 + 360) % 360 - 180;
+        if (!isNaN(lat) && !isNaN(lng)) pts.push({ lat, lng });
+      }
+    }
+    return pts;
+  }, [targetSatrec, orbitUpdateTrigger]);
+
+
+  // =========================================================================
+  // 📍 ส่วนที่ 2: จุดประกอบร่าง pathsToDraw3D (Guard Clause ป้องกันจอดำ 100%)
+  // =========================================================================
+  const pathsToDraw3D = [
+    ...(typeof orbitVisualPath !== 'undefined' && Array.isArray(orbitVisualPath) ? orbitVisualPath : []),
+    ...(typeof signalVisualPath !== 'undefined' && Array.isArray(signalVisualPath) ? signalVisualPath : []),
+    ...(typeof footprintBoundaryPath !== 'undefined' && Array.isArray(footprintBoundaryPath) ? footprintBoundaryPath : []),
+    ...(typeof imagingSwathPaths !== 'undefined' && Array.isArray(imagingSwathPaths) ? imagingSwathPaths : []),
+    ...(typeof groundTrackPath !== 'undefined' && Array.isArray(groundTrackPath) ? groundTrackPath : [])
+  ];
+
 // 📍 ฟันธง: สมองกล Cache ระบบแสง Day/Night 2D (แก้อาการกระตุกขั้นเด็ดขาด!)
 const dayNightOverlay2D = useMemo(() => {
   if (!realtimeSun) return null;
@@ -2398,7 +3888,7 @@ const dayNightOverlay2D = useMemo(() => {
         </mask>
       </defs>
       <polygon points={nightPolygon} fill="rgba(0, 0, 0, 1.0)" filter="url(#terminator-blur)" />
-      <image href="/textures/Earth_nightmap.webp" x="0" y="0" width="100" height="100" preserveAspectRatio="none" mask="url(#night-mask)" filter="url(#city-glow)" style={{ mixBlendMode: 'screen' }} />
+      <image href={runtimeAsset('/textures/Earth_nightmap.webp')} x="0" y="0" width="100" height="100" preserveAspectRatio="none" mask="url(#night-mask)" filter="url(#city-glow)" style={{ mixBlendMode: 'screen' }} />
     </svg>
   );
 }, [realtimeSun, currentSunPos]); // <- หัวใจสำคัญ! สั่งให้คำนวณใหม่เฉพาะตอนดวงอาทิตย์ขยับเท่านั้น
@@ -2784,19 +4274,6 @@ useEffect(() => {
   if (analyzerPos?.y < 0) setAnalyzerPos(p => ({ ...p, y: 0 }));
   if (imgPos?.y < 0) setImgPos(p => ({ ...p, y: 0 })); // <-- 📍 ฟันธง: เติมหน้าต่าง imgPos ที่หายไปด้วย!
 }, [radarPos.y, gsPos.y, anglesPos.y, dbPos.y, passPos.y, diagramPos.y, analyzerPos.y, imgPos.y]);
-
-// =========================================================================
-  // 📍 ฟันธง: จุดประกอบร่าง pathsToDraw3D (Guard Clause ป้องกันจอดำ 100%)
-  // วางตรงนี้เพื่อให้มั่นใจว่าตัวแปรจาก useMemo ทั้งหมดถูกประมวลผลเสร็จแล้ว
-  // =========================================================================
-  const pathsToDraw3D = [
-    ...(typeof orbitVisualPath !== 'undefined' && Array.isArray(orbitVisualPath) ? orbitVisualPath : []),
-    ...(typeof signalVisualPath !== 'undefined' && Array.isArray(signalVisualPath) ? signalVisualPath : []),
-    ...(typeof footprintBoundaryPath !== 'undefined' && Array.isArray(footprintBoundaryPath) ? footprintBoundaryPath : []),
-    ...(typeof imagingSwathPaths !== 'undefined' && Array.isArray(imagingSwathPaths) ? imagingSwathPaths : []),
-    ...(typeof groundTrackPath !== 'undefined' && Array.isArray(groundTrackPath) ? groundTrackPath : [])
-  ];
-
 return (
   <>
 
@@ -2869,7 +4346,7 @@ return (
         <Globe
             ref={globeRef} width={size.width} height={size.height}
             backgroundColor="#000000"
-            globeImageUrl={mapThemes[mapThemeIdx].url}
+            globeImageUrl={runtimeAsset(mapThemes[mapThemeIdx].url)}
 
             bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
             backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
@@ -2885,50 +4362,79 @@ return (
             
            /* 📍 ฟันธง: ประกอบร่างดาวเทียม 3D พร้อมป้ายชื่อ 3D ไว้ใน Group เดียวกัน! */
            objectThreeObject={(d) => {
+            // 📍 STABILITY FIX: allSatObjects reuses the same data objects, so reuse the
+            // complete THREE object too. This prevents repeated Group/Material/Sprite
+            // allocation during the 25 Hz master-clock render cycle.
+            const altitudeTier = d.altKm > 30000 ? 'GEO' : (d.altKm > 10000 ? 'MEO' : 'LEO');
+            const threeCacheKey = `${d.catnr}|${d.isTarget ? 'TARGET' : 'SECONDARY'}|${altitudeTier}|A${runtimeAssetRevision}`;
+
+            if (d.__gistdaThreeObject && d.__gistdaThreeObjectKey === threeCacheKey) {
+              return d.__gistdaThreeObject;
+            }
+
             const group = new THREE.Group();
 
             // 1. วาดตัวดาวเทียม
             if (d.catnr === '58016') {
               if (!window.theos2TextureCache) {
-                window.theos2TextureCache = new THREE.TextureLoader().load('/textures/THEOS-2.webp', (texture) => {
+                window.theos2TextureCache = new THREE.TextureLoader().load(runtimeAsset('/textures/THEOS-2.webp'), (texture) => {
                   texture.minFilter = THREE.LinearFilter;
                   texture.magFilter = THREE.LinearFilter;
                 });
               }
               const material = new THREE.SpriteMaterial({ map: window.theos2TextureCache, color: 0xffffff, transparent: true, depthWrite: false });
               const satSprite = new THREE.Sprite(material);
-              // ของเดิม: const size = d.isTarget ? 14 : 5;
-              const size = d.isTarget ? 24 : 10;
+              // 🌟 ฟันธง: สเกล THEOS-2 ให้สมมาตรพอดี ไม่ล้นจอ 
+              const size = d.isTarget ? 20 : 8; 
               satSprite.scale.set(size * 1.8, size, 1);
               group.add(satSprite);
             } else if (d.catnr === '33396') {
-              // 📍 ฟันธง: โหลดภาพ THEOS.webp มาใช้แทนโมเดลกล่อง 3D!
               if (!window.theosTextureCache) {
-                window.theosTextureCache = new THREE.TextureLoader().load('/textures/THEOS.webp', (texture) => {
+                window.theosTextureCache = new THREE.TextureLoader().load(runtimeAsset('/textures/THEOS.webp'), (texture) => {
                   texture.minFilter = THREE.LinearFilter;
                   texture.magFilter = THREE.LinearFilter;
                 });
               }
               const material = new THREE.SpriteMaterial({ map: window.theosTextureCache, color: 0xffffff, transparent: true, depthWrite: false });
               const satSprite = new THREE.Sprite(material);
-              // ตั้งไซส์ให้ THEOS-1 สมมาตร และเล็กกว่า THEOS-2 เล็กน้อย (12 vs 14)
-              // ของเดิม: const size = d.isTarget ? 12 : 4.5;
-              const size = d.isTarget ? 20 : 8;
+              // 🌟 ฟันธง: สเกล THEOS-1 ให้สมดุลกับ THEOS-2
+              const size = d.isTarget ? 18 : 7; 
               satSprite.scale.set(size * 1.5, size, 1); 
               group.add(satSprite);
             } else {
-              // 📍 ฟันธง: ส่งค่าความสูง d.altKm ให้สมองกลไปขยายขนาดอัตโนมัติ!
-              group.add(createSatelliteModel(d.isTarget, d.altKm));
+              // 📍 ฟันธง: ใช้ THEOS-2-1.webp แทนกล่อง 3D ทั้งหมด
+              if (!window.defaultSatTextureCache) {
+                window.defaultSatTextureCache = new THREE.TextureLoader().load(runtimeAsset('/textures/THEOS-2-1.webp'), (texture) => {
+                  texture.minFilter = THREE.LinearFilter;
+                  texture.magFilter = THREE.LinearFilter;
+                });
+              }
+              const material = new THREE.SpriteMaterial({ map: window.defaultSatTextureCache, color: 0xffffff, transparent: true, depthWrite: false });
+              const satSprite = new THREE.Sprite(material);
+              
+              // 📍 🌟 สมองกล Auto-Scale ที่คำนวณสมดุลระยะสายตาแล้ว 100% 🌟
+              let baseSize = d.isTarget ? 14 : 5; // LEO (เช่น Starlink/ทั่วไป) อยู่ใกล้โลก
+              
+              if (d.altKm > 30000) {
+                baseSize = d.isTarget ? 65 : 28; // GEO (เช่น THAICOM) อยู่ไกลมาก ต้องขยายใหญ่สุดเพื่อสู้ระยะทาง
+              } else if (d.altKm > 10000) {
+                baseSize = d.isTarget ? 40 : 18; // MEO (เช่น GNSS) อยู่ระยะกลาง ขยายขนาดกลางๆ
+              }
+              
+              satSprite.scale.set(baseSize * 1.5, baseSize, 1); 
+              group.add(satSprite);
             }
 
            // 2. 📍 นำป้ายชื่อ 3D มาแปะด้านบนดาวเทียม (เฉพาะเป้าหมายที่ถูกล็อก)
            if (d.isTarget) {
             const labelSprite = create3DLabel(d.name, d.catnr);
-            // 📍 ฟันธง: ปรับระยะป้ายชื่อให้ลอยอยู่เหนือหลังคาดาวเทียมแต่ละรุ่นให้เป๊ะที่สุด!
-            labelSprite.position.y = d.catnr === '58016' ? 7.5 : (d.catnr === '33396' ? 6.5 : 4); 
+            // 📍 ฟันธง: ปรับระยะป้ายชื่อให้ขยับสูง-ต่ำ ตามขนาดของดาวเทียมแบบไดนามิก! (แก้บั๊กป้ายชื่อจมเข้าไปในตัวดาวเทียม)
+            labelSprite.position.y = d.catnr === '58016' ? 10 : (d.catnr === '33396' ? 9 : (d.altKm > 30000 ? 35 : (d.altKm > 10000 ? 22 : 8))); 
             group.add(labelSprite);
          }
 
+         d.__gistdaThreeObject = group;
+         d.__gistdaThreeObjectKey = threeCacheKey;
          return group;
       }}
             
@@ -3051,7 +4557,7 @@ return (
                 transition: 'transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), filter 0.5s ease-in-out',
                 /* 📍 ฟันธง: ดึงรูป 8K จาก Public/textures และทำตารางกริดตาข่าย 20px */
                 /* 📍 ฟันธง: ถอด Grid ออกให้หมด โชว์ความสวยงามของภาพแผนที่ล้วนๆ */
-              backgroundImage: `url('${mapThemes[mapThemeIdx].url}')`,
+              backgroundImage: `url('${runtimeAsset(mapThemes[mapThemeIdx].url)}')`,
               backgroundSize: '100% 100%', /* บังคับภาพให้กางเต็มจอพอดี */
                 backgroundPosition: 'center',
                 filter: mapThemes[mapThemeIdx].filter
@@ -3060,76 +4566,99 @@ return (
              {/* 📍 ดึงภาพ Cache แสงเงามาโชว์ (ภาพสวยเหมือนเดิม แต่เบาเครื่อง ลื่นปรึ๊ด 100%) */}
              {dayNightOverlay2D}
 
-              <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="map-svg">
-                {orbitVisualPath.map((pathObj, i) => {
-                  const segments = [];
-                  let currentPoints = [];
-                  pathObj.points.forEach((p, idx) => {
-                    if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
-                      segments.push(currentPoints);
-                      currentPoints = [];
-                    }
-                    currentPoints.push(`${(p.lng + 180) / 360 * 100},${(90 - p.lat) / 180 * 100}`);
-                  });
-                  if (currentPoints.length > 0) segments.push(currentPoints);
-                  return segments.map((seg, j) => (
-                    <polyline key={`orb-${i}-${j}`} points={seg.join(' ')} fill="none" stroke="rgba(255, 204, 0, 0.5)" strokeWidth="0.2" strokeDasharray="0.5 0.5" />
-                  ));
-                })}
 
-                {showGroundTrack && groundTrackPath.map((pathObj, i) => {
-                  const segments = [];
-                  let currentPoints = [];
-                  pathObj.points.forEach((p, idx) => {
-                    if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
-                      segments.push(currentPoints);
-                      currentPoints = [];
-                    }
-                    currentPoints.push(`${(p.lng + 180) / 360 * 100},${(90 - p.lat) / 180 * 100}`);
-                  });
-                  if (currentPoints.length > 0) segments.push(currentPoints);
-                  return segments.map((seg, j) => (
-                    <polyline key={`gt-${i}-${j}`} points={seg.join(' ')} fill="none" stroke={pathObj.color} strokeWidth="0.15" />
-                  ));
-                })}
-                
-                {linkActive && targetData && !isNaN(targetData.lat) && !isNaN(targetData.lng) && (
-                  <line
-                    x1={`${(GROUND_STATION.lng + 180) / 360 * 100}`} y1={`${(90 - GROUND_STATION.lat) / 180 * 100}`}
-                    x2={`${(targetData.lng + 180) / 360 * 100}`} y2={`${(90 - targetData.lat) / 180 * 100}`}
-                    stroke="rgba(0, 234, 255, 0.8)" strokeWidth="0.3"
-                  />
-                )}
+             <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="map-svg">
 
-                  {allSatObjects.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
-                  const isPrimary = sat.catnr === selectedCatnr;
-                  const radiusDeg = getFootprintRadiusDeg(sat.altKm, stationMask);
-                  if (isNaN(radiusDeg)) return null;
-                  
-                  const latRad = (sat.lat * Math.PI) / 180;
-                  const cosLat = Math.max(Math.abs(Math.cos(latRad)), 0.05); 
-                  const rxDeg = Math.min(radiusDeg / cosLat, 180); 
-                  
-                  const cx = (sat.lng + 180) / 360 * 100;
-                  const cy = (90 - sat.lat) / 180 * 100;
-                  const rx = rxDeg / 360 * 100;
-                  const ry = radiusDeg / 180 * 100;
-                  
-                  return [-100, 0, 100].map(offset => (
-                    <ellipse 
-                      key={`fp-${sat.catnr}-${offset}`}
-                      cx={`${cx + offset}`} 
-                      cy={`${cy}`} 
-                      rx={`${rx}`}
-                      ry={`${ry}`}
-                      fill={isPrimary ? "rgba(255, 51, 51, 0.15)" : "rgba(0, 234, 255, 0.1)"}
-                      stroke={isPrimary ? "rgba(255, 51, 51, 1)" : "rgba(0, 234, 255, 0.8)"}
-                      strokeWidth="0.2"
+                  {/* 📍 ฟันธง 1: เส้นนำทาง 2D (สีฟ้า) โชว์เฉพาะตอน "ปิด" Ground Track สีเหลืองเท่านั้น! */}
+                  {!showGroundTrack && orbitVisualPath.map((pathObj, i) => {
+                    if (pathObj.stroke < 1.0) return null; 
+
+                    const segments = [];
+                    let currentPoints = [];
+                    pathObj.points.forEach((p, idx) => {
+                      if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
+                        segments.push(currentPoints);
+                        currentPoints = [];
+                      }
+                      currentPoints.push(`${(p.lng + 180) / 360 * 100},${(90 - p.lat) / 180 * 100}`);
+                    });
+                    if (currentPoints.length > 0) segments.push(currentPoints);
+                    
+                    return segments.map((seg, j) => (
+                      <polyline 
+                        key={`main-guide-${i}-${j}`} 
+                        points={seg.join(' ')} 
+                        fill="none" 
+                        stroke="rgba(0, 234, 255, 0.7)" // 🔵 สีฟ้า Cyan
+                        strokeWidth="0.2"               
+                        strokeDasharray="0.5 1.5" 
+                      />
+                    ));
+                  })}
+
+                  {/* 📍 ฟันธง 2: Ground Track 24 ชม. (สีเหลืองทอง) โชว์เมื่อ "เปิด" ปุ่มเท่านั้น */}
+                  {showGroundTrack && groundTrackPath.map((pathObj, i) => {
+                    const segments = [];
+                    let currentPoints = [];
+                    pathObj.points.forEach((p, idx) => {
+                      if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
+                        segments.push(currentPoints);
+                        currentPoints = [];
+                      }
+                      currentPoints.push(`${(p.lng + 180) / 360 * 100},${(90 - p.lat) / 180 * 100}`);
+                    });
+                    if (currentPoints.length > 0) segments.push(currentPoints);
+                    return segments.map((seg, j) => (
+                      <polyline 
+                                key={`gt-${i}-${j}`} 
+                                points={seg.join(' ')} 
+                                fill="none" 
+                                /* 📍 ฟันธง: ลดความสว่างเหลือ 0.35 ให้เส้นโปร่งแสง ไม่แย่งซีนจุดหมายสำคัญ */
+                                stroke="rgba(255, 204, 0, 0.35)" 
+                                /* 📍 ฟันธง: ลบคำสั่งเส้นประทิ้งไปแล้ว มันจะกลายเป็นเส้นทึบบางๆ อัตโนมัติ */
+                                strokeWidth="0.15" 
+                              />
+                    ));
+                  })}
+
+                  {/* วาดเส้นเชื่อมโยง (Line of Sight) ระหว่างสถานีกับดาวเทียม */}
+                  {linkActive && targetData && !isNaN(targetData.lat) && !isNaN(targetData.lng) && (
+                    <line
+                      x1={`${(GROUND_STATION.lng + 180) / 360 * 100}`} y1={`${(90 - GROUND_STATION.lat) / 180 * 100}`}
+                      x2={`${(targetData.lng + 180) / 360 * 100}`} y2={`${(90 - targetData.lat) / 180 * 100}`}
+                      stroke="rgba(0, 234, 255, 0.8)" strokeWidth="0.3"
                     />
-                  ));
-                })}
-              </svg>
+                  )}
 
+                  {/* วาดรัศมีการมองเห็น (Footprint) ของดาวเทียมทุกดวงที่เลือก */}
+                  {allSatObjects.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
+                    const isPrimary = sat.catnr === selectedCatnr;
+                    const radiusDeg = getFootprintRadiusDeg(sat.altKm, stationMask);
+                    if (isNaN(radiusDeg)) return null;
+                    
+                    const latRad = (sat.lat * Math.PI) / 180;
+                    const cosLat = Math.max(Math.abs(Math.cos(latRad)), 0.05); 
+                    const rxDeg = Math.min(radiusDeg / cosLat, 180); 
+                    
+                    const cx = (sat.lng + 180) / 360 * 100;
+                    const cy = (90 - sat.lat) / 180 * 100;
+                    const rx = rxDeg / 360 * 100;
+                    const ry = radiusDeg / 180 * 100;
+                    
+                    return [-100, 0, 100].map(offset => (
+                      <ellipse 
+                        key={`fp-${sat.catnr}-${offset}`}
+                        cx={`${cx + offset}`} 
+                        cy={`${cy}`} 
+                        rx={`${rx}`}
+                        ry={`${ry}`}
+                        fill={isPrimary ? "rgba(255, 51, 51, 0.15)" : "rgba(0, 234, 255, 0.1)"}
+                        stroke={isPrimary ? "rgba(255, 51, 51, 1)" : "rgba(0, 234, 255, 0.8)"}
+                        strokeWidth="0.2"
+                      />
+                    ));
+                  })}
+                </svg>
               <div className="map-marker" style={{ left: `${(GROUND_STATION.lng + 180) / 360 * 100}%`, top: `${(90 - GROUND_STATION.lat) / 180 * 100}%`, color: '#00eaff', zIndex: 5 }}>
                 {/* 🌟 ฟันธงที่ 1: ลดขนาดอิโมจิจานรับสัญญาณจาก 24px เหลือ 16px */}
                 <span style={{ fontSize: '16px', textShadow: '0 0 15px #00eaff', marginBottom: '2px' }}>📡</span>
@@ -3160,16 +4689,51 @@ return (
                   }}
                   >
                  {/* 📍 ฟันธง: ระบบสมองกลเปลี่ยนไอคอนดาวเทียม 2D อัตโนมัติ (อัปเกรดสเกล Tactical UI) */}
-                 {/* 📍 ฟันธง: ระบบสมองกลเปลี่ยนไอคอนดาวเทียม 2D อัตโนมัติ (อัปเกรดสเกล Tactical UI) */}
                  {(() => {
-                    let iconSrc = '/textures/THEOS-2-1.webp'; 
-                    let iconWidth = sat.isTarget ? '70px' : '50px'; 
-                    // ... โค้ดเดิมยาวๆ จนถึง <img> ...
+                    // 🌟 ฟันธง 1: ใช้รูป THEOS-2-1.webp เป็นภาพตั้งต้นสำหรับดาวเทียมทุกดวง
+                    let iconSrc = runtimeAsset('/textures/THEOS-2-1.webp'); 
+                    // ขยายขนาดไอคอนดาวเทียม 2D ให้ใหญ่และมองเห็นชัดเจนขึ้น
+                    let iconWidth = sat.isTarget ? '60px' : '28px'; 
+                    
+                    if (sat.catnr === '58016') {
+                      iconSrc = runtimeAsset('/textures/THEOS-2.webp');
+                      iconWidth = sat.isTarget ? '75px' : '35px'; 
+                    } else if (sat.catnr === '33396') {
+                      iconSrc = runtimeAsset('/textures/THEOS.webp');
+                      iconWidth = sat.isTarget ? '65px' : '30px';
+                    }
+
+                    // แสงออร่าบอกสถานะ (แดง=เป้าหลัก, ทอง=เป้ารอง, เขียว=อื่นๆ)
+                    const shadowColor = sat.isTarget ? 'rgba(255, 51, 51, 0.95)' : isSecondary ? 'rgba(255, 204, 0, 0.95)' : 'rgba(0, 255, 102, 0.85)';
+
+                    return (
+                      <img 
+                        src={iconSrc} 
+                        alt={sat.name}
+                        onError={(e) => handleRuntimeImageError(
+                          e,
+                          runtimeAsset('/textures/THEOS-2-1.webp')
+                        )}
+                        style={{ 
+                          width: iconWidth, 
+                          height: 'auto', 
+
+                          objectFit: 'contain',
+                          filter: `drop-shadow(0 0 15px ${shadowColor})`,
+                          marginBottom: '6px',
+                          transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+                          transform: sat.isTarget ? 'rotate(-15deg)' : 'rotate(0deg)'
+                        }} 
+                      />
+                    );
                   })()}
 
                   <span className="label" style={{ 
                     color: sat.isTarget ? '#ffffff' : isSecondary ? '#ffcc00' : '#00ff66', 
-                    // ...
+                    fontSize: sat.isTarget ? '13px' : isSecondary ? '12px' : '10px', 
+                    opacity: 1, 
+                    fontWeight: '900',
+                    textShadow: sat.isTarget ? '0 0 10px #ff3333, 0 0 20px #ff3333' : isSecondary ? '0 0 8px #ffcc00, 0 0 15px #000' : '0 0 8px #00ff66, 0 0 15px #000' 
                   }}>
                     {sat.name}
                   </span>
@@ -3387,39 +4951,33 @@ return (
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Telemetry (TT&C):</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.telemetry || 'N/A'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Payload Downlink:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.payload || 'N/A'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tleSource}</strong></li>
-
-{/* 📍 ฟันธง: ฝังปุ่ม SYNC เล็กๆ สไตล์ Tactical ไว้ข้าง TLE Source กดอัปเดตได้เลยไม่ต้อง F5 */}
-<li>
-  <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span>
-  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-    <strong style={{ 
-      color: tleSource.includes('Failed') ? 'var(--red)' : '#4ade80', 
-      fontWeight: '900', textAlign: 'right', 
-      textShadow: tleSource.includes('Failed') ? '0 0 8px rgba(255, 51, 51, 0.4)' : '0 0 8px rgba(74, 222, 128, 0.4)' 
-    }}>
-      {tleSource}
-    </strong>
-    <button 
-      onClick={handleAutoUpdateTle} 
-      disabled={isUpdatingTle} 
-      style={{ 
-        background: isUpdatingTle ? 'rgba(255,204,0,0.2)' : 'rgba(0, 234, 255, 0.1)', 
-        border: `1px solid ${isUpdatingTle ? 'var(--gold)' : 'var(--cyan)'}`, 
-        color: isUpdatingTle ? 'var(--gold)' : 'var(--cyan)', 
-        borderRadius: '4px', cursor: isUpdatingTle ? 'wait' : 'pointer', 
-        padding: '2px 8px', fontSize: '10px', fontFamily: 'Orbitron', fontWeight: 'bold', 
-        transition: 'all 0.2s', boxShadow: 'inset 0 0 5px rgba(0,0,0,0.5)' 
-      }} 
-      title="Force Update TLE"
-      onMouseOver={(e) => { if(!isUpdatingTle) { e.currentTarget.style.background = 'var(--cyan)'; e.currentTarget.style.color = '#000'; } }}
-      onMouseOut={(e) => { if(!isPlayback) { e.currentTarget.style.background = 'rgba(0, 234, 255, 0.1)'; e.currentTarget.style.color = 'var(--cyan)'; } }}
-    >
-      {isUpdatingTle ? '⏳ SYNCING...' : '🔄 SYNC'}
-    </button>
-  </div>
-</li>
-
+                <li>
+                  <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <strong style={{ 
+                      /* 📍 ฟันธง: ถ้าอัปเดตพังให้เป็นสีแดง ถ้าสำเร็จให้เป็นสีเขียว */
+                      color: tleSource.includes('Failed') ? 'var(--red)' : 'var(--green)', 
+                      fontWeight: '900', textAlign: 'right', textShadow: 'none' 
+                    }}>
+                      {tleSource}
+                    </strong>
+                    {/* 📍 ฟันธง: กู้คืนปุ่ม SYNC TLE กลับมาแล้ว! */}
+                    <button 
+                      onClick={handleAutoUpdateTle} 
+                      disabled={isUpdatingTle}
+                      style={{ 
+                        background: 'rgba(0, 234, 255, 0.1)', border: '1px solid var(--cyan)', color: 'var(--cyan)', 
+                        padding: '2px 8px', borderRadius: '4px', cursor: isUpdatingTle ? 'wait' : 'pointer', 
+                        fontSize: '10px', fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '1px',
+                        opacity: isUpdatingTle ? 0.5 : 1, transition: 'all 0.2s', boxShadow: '0 0 5px rgba(0,234,255,0.2)'
+                      }}
+                      onMouseOver={(e) => { e.currentTarget.style.background = 'var(--cyan)'; e.currentTarget.style.color = '#000'; }}
+                      onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(0, 234, 255, 0.1)'; e.currentTarget.style.color = 'var(--cyan)'; }}
+                    >
+                      {isUpdatingTle ? 'SYNCING...' : 'SYNC TLE'}
+                    </button>
+                  </div>
+                </li>
               </ul>
             </div>
             
@@ -3741,8 +5299,7 @@ return (
                 <button 
                   className="btn btn-cyan" 
                   style={{ marginBottom: 0, fontSize: 'clamp(13px, 1.4vw, 17px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px', borderColor: 'var(--cyan)', color: 'var(--cyan)', textShadow: '0 0 8px var(--cyan)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
-                  /* 📍 ฟันธง: หุ้มด้วย startTransition แจ้ง React ว่างานนี้คือการสลับภาพ 3D ที่กินสเปค ให้ปล่อยปุ่มกดให้เป็นอิสระ อย่าค้าง! */
-                  onClick={() => startTransition(() => setMapThemeIdx((prev) => (prev + 1) % mapThemes.length))}
+                  onClick={() => setMapThemeIdx((prev) => (prev + 1) % mapThemes.length)}
                   title={`MAP THEME: ${mapThemes[mapThemeIdx].name}`}
                 >
                 MAP THEME
@@ -3821,7 +5378,148 @@ return (
                 >PASS SCHEDULE</button>
               </div>
           </div>
+          {/* 📍 ฟันธง: กล่อง ANTENNA TELEMETRY เติมเต็มความสมมาตรฝั่งขวา 100% พร้อมปุ่มวาร์ปไป Vercel App */}
+          {/* 📍 ฟันธง: ลบ marginTop: 'auto' ทิ้ง เพื่อให้กล่องเด้งขึ้นไปชิดกับปุ่มด้านบนตามระยะ Gap มาตรฐาน */}
+              <div className="panel-box" style={{ padding: '12px 15px', background: 'linear-gradient(145deg, rgba(0, 25, 15, 0.85), rgba(0, 10, 5, 0.95))', border: '1px solid var(--green)', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,255,102,0.3)', paddingBottom: '6px', gap: '4px' }}>
+                <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(12px, 1.2vw, 14px)', color: 'var(--green)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap' }}>ANTENNA TELEMETRY</span>
+                <span className={`status-badge ${linkActive ? 'live' : 'sim'}`} style={{ fontSize: 'clamp(9px, 0.9vw, 11px)', color: linkActive ? 'var(--green)' : 'var(--gold)', fontFamily: 'Orbitron', fontWeight: '900', padding: '2px 6px', background: linkActive ? 'rgba(0,255,102,0.1)' : 'rgba(255,204,0,0.1)', borderRadius: '4px', border: `1px solid ${linkActive ? 'var(--green)' : 'var(--gold)'}`, margin: 0 }}>
+                  {linkActive ? 'TRACKING' : 'STANDBY'}
+                </span>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '15px' }}>
+                
+               {/* ค่าองศาจานรับสัญญาณ (จำลองการทำงานจานจริง: นิ่งตอน Standby, หมุนตอน Tracking) */}
+               <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 'clamp(10px, 1vw, 11px)', color: 'rgba(255,255,255,0.6)', fontFamily: 'Orbitron', letterSpacing: '1px' }}>AZIMUTH</span>
+                    <strong style={{ fontSize: 'clamp(14px, 1.4vw, 18px)', color: linkActive ? 'var(--cyan)' : 'rgba(255,255,255,0.3)', fontFamily: 'Orbitron', textShadow: 'none', fontVariantNumeric: 'tabular-nums' }}>
+                      {/* 📍 ฟันธง: ถ้า linkActive (TRACKING) ให้โชว์เลขวิ่ง ถ้า STANDBY ให้โชว์มุมจอด 000.00° */}
+                      {linkActive && targetData && !isNaN(targetData.azimuthDeg) ? targetData.azimuthDeg.toFixed(2).padStart(6, '0') : '000.00'}°
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 'clamp(10px, 1vw, 11px)', color: 'rgba(255,255,255,0.6)', fontFamily: 'Orbitron', letterSpacing: '1px' }}>ELEVATION</span>
+                    <strong style={{ fontSize: 'clamp(14px, 1.4vw, 18px)', color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.3)', fontFamily: 'Orbitron', textShadow: 'none', fontVariantNumeric: 'tabular-nums' }}>
+                      {/* 📍 ฟันธง: เหมือนกันกับด้านบน */}
+                      {linkActive && targetData && !isNaN(targetData.elevationDeg) ? Math.max(0, targetData.elevationDeg).toFixed(2).padStart(5, '0') : '00.00'}°
+                    </strong>
+                  </div>
+                </div>
+                
+               {/* 📡 GISTDA Antenna Bridge Controller */}
+<button
+  onClick={() => {
 
+    if (
+      bridgeState.bridgeStatus === 'OFF' ||
+      bridgeState.bridgeStatus === 'LOST'
+    ) {
+      bridgeState.connectAntenna();
+      return;
+    }
+
+    if (
+      bridgeState.bridgeStatus === 'LINKED'
+    ) {
+      bridgeState.disconnectAntenna();
+    }
+
+  }}
+
+  disabled={
+    bridgeState.bridgeStatus === 'OPENING'
+  }
+
+  style={{
+    flex: '0 0 auto',
+
+    background:
+      bridgeState.bridgeStatus === 'LINKED'
+        ? 'linear-gradient(135deg, rgba(0,255,102,0.18) 0%, rgba(0,0,0,0.8) 100%)'
+        : bridgeState.bridgeStatus === 'LOST'
+        ? 'linear-gradient(135deg, rgba(255,51,51,0.18) 0%, rgba(0,0,0,0.8) 100%)'
+        : 'linear-gradient(135deg, rgba(0,255,102,0.15) 0%, rgba(0,0,0,0.8) 100%)',
+
+    border:
+      bridgeState.bridgeStatus === 'LOST'
+        ? '1px solid var(--red)'
+        : '1px solid var(--green)',
+
+    color:
+      bridgeState.bridgeStatus === 'LOST'
+        ? 'var(--red)'
+        : 'var(--green)',
+
+    padding: '8px 12px',
+    borderRadius: '6px',
+
+    fontFamily: 'Rajdhani',
+    fontSize: 'clamp(11px, 1.1vw, 14px)',
+    fontWeight: '900',
+    letterSpacing: '1px',
+
+    cursor:
+      bridgeState.bridgeStatus === 'OPENING'
+        ? 'wait'
+        : 'pointer',
+
+    opacity:
+      bridgeState.bridgeStatus === 'OPENING'
+        ? 0.75
+        : 1,
+
+    transition: 'all 0.3s ease',
+
+    boxShadow:
+      bridgeState.bridgeStatus === 'LINKED'
+        ? '0 0 15px rgba(0,255,102,0.35)'
+        : bridgeState.bridgeStatus === 'LOST'
+        ? '0 0 12px rgba(255,51,51,0.25)'
+        : '0 0 10px rgba(0,255,102,0.1)',
+
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: '1.2',
+    minWidth: '105px'
+  }}
+>
+
+  <span
+    style={{
+      fontSize: '18px',
+      filter: 'none',
+      textShadow: 'none'
+    }}
+  >
+    {
+      bridgeState.bridgeStatus === 'LINKED'
+        ? '✅'
+        : bridgeState.bridgeStatus === 'LOST'
+        ? '⚠️'
+        : '📡'
+    }
+  </span>
+
+  <span>
+    {
+      bridgeState.bridgeStatus === 'OFF'
+        ? '3D SIMULATOR'
+        : bridgeState.bridgeStatus === 'OPENING'
+        ? 'CONNECTING...'
+        : bridgeState.bridgeStatus === 'LINKED'
+        ? 'DISCONNECT'
+        : 'RECONNECT'
+    }
+  </span>
+
+</button>
+                
+              </div>
+            </div>
          {/* 📍 เครดิตลิขสิทธิ์และผู้พัฒนา (อัปเดตปีอัตโนมัติ และบีบพื้นที่แนวตั้งขั้นสุด) */}
          <div style={{ textAlign: 'center', marginTop: '4px', fontSize: '16px', color: 'rgba(255, 255, 255, 0.6)', fontFamily: 'Rajdhani', letterSpacing: '1px', lineHeight: '1.2', paddingBottom: '2px' }}>
              © {new Date().getFullYear()} Ground System Engineering Division:GSE <br />
@@ -4464,152 +6162,172 @@ return (
       position: 'fixed', 
       top: maximizedWins.img ? '0px' : `${imgPos.y}px`, 
       left: maximizedWins.img ? '0px' : `${imgPos.x}px`, 
-      /* 📍 ฟันธง: ล็อกขนาดเริ่มต้นให้เล็กลงจาก 900x600 เป็น 780x500 เพื่อไม่ให้ล้นจอทีวี 65 นิ้ว */
       width: maximizedWins.img ? '100vw' : '780px', 
       height: maximizedWins.img ? '100vh' : '500px', 
       minWidth: '600px', minHeight: '400px',
       maxWidth: 'none', maxHeight: 'none', resize: maximizedWins.img ? 'none' : 'both', overflow: 'hidden', 
       background: 'rgba(2, 6, 23, 0.9)', backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)',
-      border: '2px solid #FF4500',
+      
+      /* 📍 เปลี่ยนสีกรอบหน้าต่างและแสงเงาเป็นสีฟ้า (Cyan) */
+      border: '2px solid var(--cyan)',
       boxSizing: 'border-box', 
       borderRadius: maximizedWins.img ? '0px' : '12px',
-      boxShadow: '0 0 50px rgba(255, 69, 0, 0.5), inset 0 0 30px rgba(255, 69, 0, 0.3)',
+      boxShadow: '0 0 40px rgba(0, 234, 255, 0.3), inset 0 0 20px rgba(0, 234, 255, 0.2)',
+      
       display: 'flex', flexDirection: 'column',
       zIndex: windowZ.img || 10000,
       transition: isDraggingImg ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
     }}>
 
-          {/* 📍 เอฟเฟกต์แสงแฟลร์ (Background Flare) */}
-          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '120%', height: '120%', background: 'radial-gradient(circle, rgba(255, 69, 0, 0.15) 0%, transparent 60%)', filter: 'blur(80px)', pointerEvents: 'none', zIndex: 0, animation: 'pulse 4s infinite' }}></div>
+      {/* 📍 เปลี่ยนแสงแฟลร์พื้นหลังเป็นสีฟ้า */}
+      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '120%', height: '120%', background: 'radial-gradient(circle, rgba(0, 234, 255, 0.15) 0%, transparent 60%)', filter: 'blur(80px)', pointerEvents: 'none', zIndex: 0, animation: 'pulse 4s infinite' }}></div>
 
-          {/* Header */}
-          <div className="modal-header" style={{ position: 'relative', zIndex: 10, borderBottom: '2px solid #FF4500', padding: '12px 20px', cursor: maximizedWins.img ? 'default' : (isDraggingImg ? 'grabbing' : 'grab'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(255, 69, 0, 0.2) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(255, 69, 0, 0.5)' }} onMouseDown={(e) => { if(!maximizedWins.img) handleImgMouseDown(e); }}>
-            <div style={{ flex: 1 }}></div>
-            
-            <div style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff3333', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: '20px', textShadow: '0 0 10px #ff3333', pointerEvents: 'none', whiteSpace: 'nowrap', letterSpacing: '1px' }}>
-              📸 IMAGING PLAN VIEWER 
-              <span style={{ fontSize: '14px', color: 'var(--gold)', background: 'rgba(0,0,0,0.5)', border: '1px solid #ffffff', padding: '2px 10px', borderRadius: '4px', marginLeft: '12px', textShadow: '0 0 10px var(--gold)', boxShadow: '0 0 8px rgba(255,255,255,0.5)', letterSpacing: '2px' }}>
-                ORBIT 269
-              </span>
+      {/* Header */}
+      <div className="modal-header" style={{ position: 'relative', zIndex: 10, borderBottom: '2px solid var(--cyan)', padding: '12px 20px', cursor: maximizedWins.img ? 'default' : (isDraggingImg ? 'grabbing' : 'grab'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(0, 234, 255, 0.2) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(0, 234, 255, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.img) handleImgMouseDown(e); }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+          <button 
+            onClick={() => setIsImgListOpen(!isImgListOpen)}
+            style={{
+              /* 📍 สีปุ่มเปิด/ปิดลิสต์เป็นสีฟ้า */
+              background: isImgListOpen ? 'rgba(0, 234, 255, 0.15)' : 'var(--cyan)',
+              border: '1px solid var(--cyan)',
+              color: isImgListOpen ? 'var(--cyan)' : '#000',
+              padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Orbitron',
+              fontSize: '12px', fontWeight: 'bold', letterSpacing: '1px',
+              boxShadow: isImgListOpen ? 'none' : '0 0 15px rgba(0, 234, 255, 0.6)', transition: 'all 0.2s ease'
+            }}
+          >
+            {isImgListOpen ? '◀ HIDE LIST' : '▶ SHOW LIST'}
+          </button>
+        </div>
+        
+        {/* 📍 หัวข้อเปลี่ยนเป็นสีฟ้า คมกริบ ไร้แสงแฟลร์ */}
+        <div style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--cyan)', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: '20px', textShadow: 'none', pointerEvents: 'none', whiteSpace: 'nowrap', letterSpacing: '1px' }}>
+          📸 IMAGING PLAN VIEWER 
+          <span style={{ fontSize: '14px', color: 'var(--gold)', background: 'rgba(0,0,0,0.5)', border: '1px solid #ffffff', padding: '2px 10px', borderRadius: '4px', marginLeft: '12px', textShadow: 'none', boxShadow: 'none', letterSpacing: '2px' }}>
+            ORBIT 269
+          </span>
+        </div>
+        
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', padding: 0, border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onClick={() => toggleMaximize('img')}>{maximizedWins.img ? '🗗' : '🗖'}</button>
+          <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', padding: 0, border: '1px solid var(--red)', color: 'var(--red)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onClick={() => setIsImgOpen(false)}>✕</button>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '20px', gap: isImgListOpen ? '20px' : '0px', position: 'relative', zIndex: 10 }}>
+        
+        {/* ซ้าย: ตารางคิวถ่ายภาพ */}
+        {isImgListOpen && (
+          <div style={{ flex: '0 0 380px', display: 'flex', flexDirection: 'column', borderRight: '1px dashed rgba(0, 234, 255, 0.4)', paddingRight: '15px' }}>
+            <style>{`.img-hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+            <div style={{ flex: '1', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="img-hide-scrollbar">
+            <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontFamily: 'Rajdhani', color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
+                <thead>
+                  <tr style={{ color: 'rgba(255,255,255,0.7)', borderBottom: '2px solid rgba(0, 234, 255, 0.6)', fontSize: '13px' }}>
+                    <th style={{ padding: '10px 5px', width: '50%', textAlign: 'center', letterSpacing: '1.5px', fontFamily: 'Orbitron' }}>DATE & TIME (UTC)</th>
+                    <th style={{ padding: '10px 5px', width: '25%', textAlign: 'center', letterSpacing: '1.5px', fontFamily: 'Orbitron' }}>DURATION</th>
+                    <th style={{ padding: '10px 5px', width: '25%', textAlign: 'center', letterSpacing: '1.5px', fontFamily: 'Orbitron' }}>ACTION</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {imagingPlansData.map(plan => {
+                    const dStart = new Date(plan.start);
+                    const isSelected = selectedPlanId === plan.id;
+                    return (
+                      <tr key={plan.id}
+                          style={{ 
+                            borderBottom: '1px solid rgba(255,255,255,0.05)', 
+                            cursor: 'pointer', 
+                            /* 📍 เปลี่ยนแถบไฮไลต์ตารางเป็นสีฟ้า */
+                            background: isSelected ? 'linear-gradient(90deg, rgba(0, 234, 255, 0.2) 0%, transparent 100%)' : 'transparent',
+                            borderLeft: isSelected ? '4px solid var(--cyan)' : '4px solid transparent',
+                            transition: 'all 0.2s ease',
+                            textAlign: 'center'
+                          }}
+                          onMouseOver={(e) => { if(!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; }}
+                          onMouseOut={(e) => { if(!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                          onClick={() => setSelectedPlanId(isSelected ? null : plan.id)}>
+                        
+                        <td style={{ padding: '12px 5px', fontWeight: 'bold', fontSize: '15px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                            <span style={{ color: isSelected ? '#ffffff' : '#e0e0e0', textShadow: isSelected ? '0 0 10px rgba(0, 234, 255, 0.8)' : 'none', letterSpacing: '1px' }}>
+                              {pad2(dStart.getUTCHours())}:{pad2(dStart.getUTCMinutes())}:{pad2(dStart.getUTCSeconds())}
+                            </span>
+                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: '600', marginTop: '2px' }}>
+                              {dStart.getUTCFullYear()}-{pad2(dStart.getUTCMonth() + 1)}-{pad2(dStart.getUTCDate())}
+                            </span>
+                          </div>
+                        </td>
+                        
+                        <td style={{ padding: '12px 5px', color: isSelected ? '#ffffff' : 'var(--gold)', fontWeight: 'bold', fontSize: '16px' }}>
+                          {plan.duration.toFixed(0)} <span style={{ fontSize: '11px', color: isSelected ? 'rgba(255,255,255,0.6)' : 'rgba(255,204,0,0.6)' }}>s</span>
+                        </td>
+                        
+                        <td style={{ padding: '12px 5px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <button style={{ 
+                              /* 📍 ปุ่ม Play เปลี่ยนเป็นสีฟ้า */
+                              background: isSelected ? 'var(--cyan)' : 'rgba(0, 234, 255, 0.1)', 
+                              border: `1px solid ${isSelected ? '#fff' : 'rgba(0, 234, 255, 0.4)'}`, 
+                              color: isSelected ? '#000' : 'var(--cyan)', 
+                              width: '40px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', transition: 'all 0.2s', 
+                              boxShadow: isSelected ? '0 0 15px rgba(0, 234, 255, 0.6)' : 'none',
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
+                              if (isRealtimePassLock) {
+                                setCustomAlert({ show: true, message: "🔒 REAL-TIME LOCK: ปฏิเสธคำสั่ง! ระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE)", type: 'error' });
+                                return;
+                              }
+                              setSelectedPlanId(plan.id);
+                              setSimulatedTimeMs(new Date(plan.start).getTime() - 5000);
+                              setSpeedMult(1);
+                            }}>
+                              ▶
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-            
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', padding: 0, border: '1px solid #FF4500', color: '#FF4500', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onClick={() => toggleMaximize('img')}>{maximizedWins.img ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', padding: 0, border: '1px solid #FF4500', color: '#FF4500', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onClick={() => setIsImgOpen(false)}>✕</button>
+
+           {/* 📍 ปุ่ม Upload สีฟ้า */}
+           <div style={{ position: 'relative', zIndex: 10, marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed rgba(0, 234, 255, 0.3)', textAlign: 'center' }}>
+                 <label style={{ 
+                  display: 'inline-block', width: '90%', 
+                  background: 'linear-gradient(90deg, rgba(0, 234, 255, 0.1) 0%, rgba(0, 234, 255, 0.2) 50%, rgba(0, 234, 255, 0.1) 100%)', 
+                  border: '2px dashed var(--cyan)', color: 'var(--cyan)', 
+                  padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', 
+                  fontSize: '13px', fontFamily: 'Orbitron', fontWeight: 'bold', 
+                  letterSpacing: '1.5px', transition: 'all 0.3s ease',
+                  boxShadow: '0 0 15px rgba(0, 234, 255, 0.1)'
+                 }}
+                      onMouseOver={(e) => { 
+                        e.currentTarget.style.background = 'var(--cyan)'; 
+                        e.currentTarget.style.color = '#000';
+                        e.currentTarget.style.boxShadow = '0 0 25px rgba(0, 234, 255, 0.8)'; 
+                        e.currentTarget.style.transform = 'scale(1.02)';
+                      }}
+                      onMouseOut={(e) => { 
+                        e.currentTarget.style.background = 'linear-gradient(90deg, rgba(0, 234, 255, 0.1) 0%, rgba(0, 234, 255, 0.2) 50%, rgba(0, 234, 255, 0.1) 100%)'; 
+                        e.currentTarget.style.color = 'var(--cyan)'; 
+                        e.currentTarget.style.boxShadow = '0 0 15px rgba(0, 234, 255, 0.1)'; 
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }}>
+                  📂 UPLOAD NEW MISSION PLAN (PDF & JSON)
+                  <input type="file" accept=".pdf, .json, .geojson" multiple style={{ display: 'none' }} onChange={handleMissionPlanUpload} />
+                 </label>
             </div>
           </div>
+        )}
 
-          {/* Body */}
-          <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '20px', gap: '20px', position: 'relative', zIndex: 10 }}>
-            
-            {/* ซ้าย: ตารางคิวถ่ายภาพ */}
-            <div style={{ flex: '0 0 380px', display: 'flex', flexDirection: 'column', borderRight: '1px dashed rgba(255,69,0,0.5)', paddingRight: '15px' }}>
-              <style>{`.img-hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
-              <div style={{ flex: '1', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="img-hide-scrollbar">
-              <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontFamily: 'Rajdhani', color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
-                  <thead>
-                    <tr style={{ color: 'rgba(255,255,255,0.7)', borderBottom: '2px solid rgba(255,69,0,0.8)', fontSize: '13px' }}>
-                      <th style={{ padding: '10px 5px', width: '50%', textAlign: 'center', letterSpacing: '1.5px', fontFamily: 'Orbitron' }}>DATE & TIME (UTC)</th>
-                      <th style={{ padding: '10px 5px', width: '25%', textAlign: 'center', letterSpacing: '1.5px', fontFamily: 'Orbitron' }}>DURATION</th>
-                      <th style={{ padding: '10px 5px', width: '25%', textAlign: 'center', letterSpacing: '1.5px', fontFamily: 'Orbitron' }}>ACTION</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {imagingPlansData.map(plan => {
-                      const dStart = new Date(plan.start);
-                      const isSelected = selectedPlanId === plan.id;
-                      return (
-                        <tr key={plan.id}
-                            style={{ 
-                              borderBottom: '1px solid rgba(255,255,255,0.05)', 
-                              cursor: 'pointer', 
-                              background: isSelected ? 'linear-gradient(90deg, rgba(255, 69, 0, 0.25) 0%, transparent 100%)' : 'transparent',
-                              borderLeft: isSelected ? '4px solid #FF4500' : '4px solid transparent',
-                              transition: 'all 0.2s ease',
-                              textAlign: 'center'
-                            }}
-                            onMouseOver={(e) => { if(!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; }}
-                            onMouseOut={(e) => { if(!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                            onClick={() => setSelectedPlanId(isSelected ? null : plan.id)}>
-                          
-                          <td style={{ padding: '12px 5px', fontWeight: 'bold', fontSize: '15px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                              <span style={{ color: isSelected ? '#ffffff' : '#e0e0e0', textShadow: isSelected ? '0 0 10px rgba(255,69,0,0.8)' : 'none', letterSpacing: '1px' }}>
-                                {pad2(dStart.getUTCHours())}:{pad2(dStart.getUTCMinutes())}:{pad2(dStart.getUTCSeconds())}
-                              </span>
-                              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: '600', marginTop: '2px' }}>
-                                {dStart.getUTCFullYear()}-{pad2(dStart.getUTCMonth() + 1)}-{pad2(dStart.getUTCDate())}
-                              </span>
-                            </div>
-                          </td>
-                          
-                          <td style={{ padding: '12px 5px', color: isSelected ? '#ffffff' : 'var(--gold)', fontWeight: 'bold', fontSize: '16px' }}>
-                            {plan.duration.toFixed(0)} <span style={{ fontSize: '11px', color: isSelected ? 'rgba(255,255,255,0.6)' : 'rgba(255,204,0,0.6)' }}>s</span>
-                          </td>
-                          
-                          <td style={{ padding: '12px 5px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'center' }}>
-                              <button style={{ 
-                                background: isSelected ? 'linear-gradient(135deg, #FF4500, #ff8c00)' : 'rgba(255, 69, 0, 0.1)', 
-                                border: `1px solid ${isSelected ? '#FF4500' : 'rgba(255, 69, 0, 0.4)'}`, 
-                                color: isSelected ? '#fff' : '#FF4500', 
-                                width: '40px', height: '32px', 
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                                borderRadius: '4px', cursor: 'pointer', fontSize: '13px', 
-                                transition: 'all 0.2s', 
-                                boxShadow: isSelected ? '0 0 15px rgba(255, 69, 0, 0.6)' : 'none',
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
-                                if (isRealtimePassLock) {
-                                  setCustomAlert({ show: true, message: "🔒 REAL-TIME LOCK: ปฏิเสธคำสั่ง! ระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE)", type: 'error' });
-                                  return;
-                                }
-                                setSelectedPlanId(plan.id);
-                                setSimulatedTimeMs(new Date(plan.start).getTime() - 5000);
-                                setSpeedMult(1);
-                              }}>
-                                ▶
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
 
-              {/* ปุ่ม Upload */}
-              <div style={{ position: 'relative', zIndex: 10, marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed rgba(255, 69, 0, 0.3)', textAlign: 'center' }}>
-                   <label style={{ 
-                    display: 'inline-block', width: '90%', 
-                    background: 'linear-gradient(90deg, rgba(34, 211, 238, 0.1) 0%, rgba(34, 211, 238, 0.2) 50%, rgba(34, 211, 238, 0.1) 100%)', 
-                    border: '2px dashed var(--cyan)', color: 'var(--cyan)', 
-                    padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', 
-                    fontSize: '13px', fontFamily: 'Orbitron', fontWeight: 'bold', 
-                    letterSpacing: '1.5px', transition: 'all 0.3s ease',
-                    boxShadow: '0 0 15px rgba(34, 211, 238, 0.1)'
-                   }}
-                        onMouseOver={(e) => { 
-                          e.currentTarget.style.background = 'var(--cyan)'; 
-                          e.currentTarget.style.color = '#000';
-                          e.currentTarget.style.boxShadow = '0 0 25px rgba(34, 211, 238, 0.8)'; 
-                          e.currentTarget.style.transform = 'scale(1.02)';
-                        }}
-                        onMouseOut={(e) => { 
-                          e.currentTarget.style.background = 'linear-gradient(90deg, rgba(34, 211, 238, 0.1) 0%, rgba(34, 211, 238, 0.2) 50%, rgba(34, 211, 238, 0.1) 100%)'; 
-                          e.currentTarget.style.color = 'var(--cyan)'; 
-                          e.currentTarget.style.boxShadow = '0 0 15px rgba(34, 211, 238, 0.1)'; 
-                          e.currentTarget.style.transform = 'scale(1)';
-                        }}>
-                    📂 UPLOAD NEW MISSION PLAN
-                    <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={handlePdfUpload} />
-                   </label>
-              </div>
-
-            </div>
 
             {/* ขวา: แผนที่ 2D */}
             <div 
@@ -4636,7 +6354,7 @@ return (
                          tOrigin = `${cx_pct}% ${cy_pct}%`; 
                       }
                    }
-                   return (
+                  return (
                      <div style={{
                         width: '100%',
                         height: 'auto',
@@ -4647,18 +6365,67 @@ return (
                         position: 'relative',
                         transformOrigin: tOrigin,
                         transform: `scale(${mapZoom})`,
-                        transition: 'transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)'
+                        transition: 'transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)',
+                        /* 📍 ฟันธง: ย้ายภาพมาใส่เป็น CSS Background แทน ป้องกันบั๊กจอดำจาก SVG <image> โหลดไม่ขึ้น */
+                        backgroundImage: `url('${runtimeAsset(mapThemes[mapThemeIdx] ? mapThemes[mapThemeIdx].url : '/textures/8k_earth_daymap.webp')}')`,
+                        backgroundSize: '100% 100%',
+                        backgroundPosition: 'center',
+                        backgroundRepeat: 'no-repeat',
+                        filter: mapThemes[mapThemeIdx] ? mapThemes[mapThemeIdx].filter : 'none'
                      }}>
-                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block', backgroundColor: 'transparent' }}>
-                            <image 
-                              href={mapThemes[mapThemeIdx].url} 
-                              x="0" y="0" width="100" height="100" preserveAspectRatio="none" 
-                              style={{ 
-                                filter: mapThemes[mapThemeIdx].filter,
-                                transition: 'filter 0.5s ease-in-out'
-                              }} 
-                            />
 
+                        {/* 📍 STABILITY FIX: persistent DOM image layer. CSS background remains
+                            unchanged as a visual fallback; this layer gives us deterministic
+                            load/error handling after long-running browser sessions. */}
+                        <img
+                          key={`mission-map-${mapThemeIdx}`}
+                          src={runtimeAsset(mapThemes[mapThemeIdx] ? mapThemes[mapThemeIdx].url : '/textures/8k_earth_daymap.webp')}
+                          alt="Mission Plan Map"
+                          onError={(e) => handleRuntimeImageError(e, runtimeAsset('/textures/Blue_marble_depth.webp'))}
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'fill',
+                            pointerEvents: 'none',
+                            zIndex: 0
+                          }}
+                        />
+
+<svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block', backgroundColor: 'transparent', position: 'relative', zIndex: 1 }}>
+                            
+                           {/* ======================================================== */}
+                            {/* 📍 LAYER 1 (ล่างสุด): วาด Ground Track 24 ชม. (อัปเกรดความเข้ม) */}
+                            {/* ======================================================== */}
+                            {showGroundTrack && groundTrackPath && groundTrackPath.map((pathObj, i) => {
+                              const segments = [];
+                              let currentPoints = [];
+                              pathObj.points.forEach((p, idx) => {
+                                if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
+                                  segments.push(currentPoints);
+                                  currentPoints = [];
+                                }
+                                currentPoints.push(`${(p.lng + 180) / 360 * 100},${(90 - p.lat) / 180 * 100}`);
+                              });
+                              if (currentPoints.length > 0) segments.push(currentPoints);
+                              
+                              return segments.map((seg, j) => (
+                                <polyline 
+                                  key={`mp-gt-${i}-${j}`} 
+                                  points={seg.join(' ')} 
+                                  fill="none" 
+                                  // 📍 ฟันธง: ปรับสีเทาให้สว่างขึ้นและทึบแสง (Opacity 0.9)
+                                  stroke="rgba(255, 204, 0, 0.55)" 
+                                  // 📍 ฟันธง: เพิ่มความหนาของเส้นจาก 0.1 เป็น 0.25 ให้เห็นชัดทะลุจอ
+                                  strokeWidth={0.15 / mapZoom}       
+                                />
+                              ));
+                            })}
+
+                            {/* ======================================================== */}
+                            {/* 📍 LAYER 2 (บนสุด): วาดเป้าหมายแนวถ่าย (Mesh) ทับด้านบนเสมอ! */}
+                            {/* ======================================================== */}
                             {imagingPlansData.map(p => {
                                if(isNaN(p.startLng) || isNaN(p.endLng)) return null;
                                if (simulatedTimeMs > p.end) return null; 
@@ -4667,14 +6434,16 @@ return (
                                const x2 = (p.endLng + 180) / 360 * 100; const y2 = (90 - p.endLat) / 180 * 100;
                                const isSel = selectedPlanId === p.id;
                                
-                               const sw1 = (isSel ? 1.5 : 0.5) / mapZoom;
-                               const sw2 = (isSel ? 0.1 : 0.05) / mapZoom;
-                               const rDot = 0.5 / mapZoom;
+                               const sw1 = (isSel ? 2.5 : 1.2) / mapZoom; 
+                               const sw2 = (isSel ? 0.3 : 0.15) / mapZoom; 
+                               const rDot = 1.0 / mapZoom; 
 
                                return (
                                   <g key={p.id}>
-                                     <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSel ? "rgba(255, 51, 51, 0.8)" : "rgba(255, 100, 51, 0.4)"} strokeWidth={sw1} strokeLinecap="round" />
-                                     <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSel ? "#fff" : "#ff9900"} strokeWidth={sw2} strokeDasharray={`${0.2/mapZoom} ${0.2/mapZoom}`} />
+                                     {/* เส้นแนวถ่ายภาพสีแดงเข้มทึบแสง */}
+                                     <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSel ? "rgba(255, 51, 51, 1)" : "rgba(204, 0, 0, 0.9)"} strokeWidth={sw1} strokeLinecap="round" />
+                                     <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSel ? "#fff" : "rgba(255,255,255,0.4)"} strokeWidth={sw2} strokeDasharray={`${0.5/mapZoom} ${0.5/mapZoom}`} />
+                                     {/* ซ่อนจุดแดง ถ้าไม่ได้คลิกเลือก */}
                                      {isSel && <circle cx={x1} cy={y1} r={rDot} fill="#fff" stroke="#ff3333" strokeWidth={sw2} />}
                                   </g>
                                );
@@ -4684,10 +6453,45 @@ return (
                    )
                 })()}
 
-                <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundImage: 'linear-gradient(rgba(0, 234, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 234, 255, 0.1) 1px, transparent 1px)', backgroundSize: '20px 20px', pointerEvents: 'none' }}></div>
+                {/* สร้างกริดในแผนที่ Mission Plan <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundImage: 'linear-gradient(rgba(0, 234, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 234, 255, 0.1) 1px, transparent 1px)', backgroundSize: '20px 20px', pointerEvents: 'none' }}></div>*/}
                 
-                <div style={{ position:'absolute', bottom:'15px', left:'15px', color:'#00eaff', fontFamily:'Orbitron', fontSize:'12px', fontWeight: 'bold', textShadow:'0 0 10px #000', background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: '4px', borderLeft: '3px solid var(--cyan)' }}>
-                  {selectedPlanId !== null ? `🎯 TARGET LOCKED (ZOOM: ${mapZoom}X)` : '🌍 GLOBAL VIEW (STANDBY)'}
+                {/* 📍 ฟันธง 3: เปลี่ยนจากแค่ตัวอักษร เป็น "กลุ่มปุ่มกด" ที่มีปุ่ม เปิด/ปิด Ground Track */}
+                <div style={{ position:'absolute', bottom:'15px', left:'15px', display: 'flex', gap: '10px' }}>
+                <div style={{ 
+                    /* 📍 ฟันธง: เปลี่ยนสีตัวหนังสือเป็นสีขาวล้วน ไม่มีแสงแฟลร์ (textShadow: none) ให้คมชัด */
+                    color: '#ffffff', 
+                    fontFamily: 'Orbitron', 
+                    fontSize: '12px', 
+                    fontWeight: 'bold', 
+                    textShadow: 'none', 
+                    
+                    /* 📍 ฟันธง: เปลี่ยนพื้นหลังเป็นสีแดงกึ่งโปร่งใส และใส่ขอบสีแดงทึบให้กลมกลืนกับธีมหลัก */
+                    background: selectedPlanId !== null ? 'rgba(255, 69, 0, 0.2)' : 'rgba(0, 0, 0, 0.6)', 
+                    padding: '6px 12px', 
+                    borderRadius: '4px', 
+                    border: selectedPlanId !== null ? '1px solid #FF4500' : '1px solid rgba(255,255,255,0.3)',
+                    borderLeft: selectedPlanId !== null ? '4px solid #FF4500' : '4px solid var(--cyan)', 
+                    
+                    display: 'flex', 
+                    alignItems: 'center',
+                    letterSpacing: '1px'
+                  }}>
+                    {selectedPlanId !== null ? `🎯 TARGET LOCKED (ZOOM: ${mapZoom}X)` : '🌍 GLOBAL VIEW (STANDBY)'}
+                  </div>
+                  
+                  {/* ปุ่มกด Toggle */}
+                  <button 
+                    onClick={() => setShowGroundTrack(!showGroundTrack)}
+                    style={{ 
+                      background: showGroundTrack ? 'rgba(255, 204, 0, 0.2)' : 'rgba(0, 0, 0, 0.6)',
+                      border: `1px solid ${showGroundTrack ? '#ffcc00' : 'rgba(255,255,255,0.3)'}`,
+                      color: showGroundTrack ? '#ffcc00' : '#fff',
+                      fontFamily: 'Orbitron', fontSize: '11px', padding: '0 10px',
+                      borderRadius: '4px', cursor: 'pointer', transition: 'all 0.2s'
+                    }}
+                  >
+                    {showGroundTrack ? 'HIDE ORBIT TRACK' : 'SHOW ORBIT TRACK'}
+                  </button>
                 </div>
             </div>
 
@@ -5326,7 +7130,6 @@ return (
         .conn-dot { position: absolute; width: 0.6cqw; height: 0.6cqw; background: var(--green); border-radius: 50%; box-shadow: 0 0 8px var(--green); z-index: 15; transform: translate(-50%, -50%); }
       `}</style>
 
-
 {(() => {
         // 📍 ฟันธง 1: ฐานข้อมูลความถี่ RF อัจฉริยะ (อิงตาม Group คลุมดาวเทียมครบทุกดวง 100%)
         let spec = { tcFreq: '2050.00 MHz', tmFreq: '2225.00 MHz', xBandFreq: '8150.00 MHz' }; // Default
@@ -5559,14 +7362,14 @@ return (
             {/* ========================================= */}
             <div style={{ position: 'absolute', left: '0', top: '-4%', width: '100%', zIndex: 20, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
               {selectedCatnr === '58016' ? (
-                <img src="/textures/THEOS-2.webp" className={linkActive ? 'anim-wobble' : ''} alt="THEOS-2" style={{ width: '18cqw', minWidth: '120px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
+                // 📍 ฟันธง: ใส่ onError ป้องกันภาพแตกตอนโหลดแอปครั้งแรก ถ้าโหลดไม่ทันให้ดึงรูป THEOS-2-1 มาค้ำไว้ก่อน
+                <img key="signal-theos2" src={runtimeAsset('/textures/THEOS-2.webp')} onError={(e) => handleRuntimeImageError(e, runtimeAsset('/textures/THEOS-2-1.webp'))} className={linkActive ? 'anim-wobble' : ''} alt="THEOS-2" style={{ width: '18cqw', minWidth: '120px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
               ) : selectedCatnr === '33396' ? (
-                <img src="/textures/THEOS.webp" className={linkActive ? 'anim-wobble' : ''} alt="THEOS" style={{ width: '18cqw', minWidth: '120px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
+                <img key="signal-theos1" src={runtimeAsset('/textures/THEOS.webp')} onError={(e) => handleRuntimeImageError(e, runtimeAsset('/textures/THEOS-2-1.webp'))} className={linkActive ? 'anim-wobble' : ''} alt="THEOS" style={{ width: '18cqw', minWidth: '120px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
               ) : (
-                <img src="/textures/THEOS-2-1.webp" className={linkActive ? 'anim-wobble' : ''} alt="Satellite" style={{ width: '18cqw', minWidth: '120px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
+                <img key={`signal-${selectedCatnr}`} src={runtimeAsset('/textures/THEOS-2-1.webp')} onError={(e) => handleRuntimeImageError(e, null)} className={linkActive ? 'anim-wobble' : ''} alt="Satellite" style={{ width: '18cqw', minWidth: '120px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
               )}
             </div>
-
             {/* ========================================= */}
             {/* 🌟 7. HARDWARE BOXES (กล่องอุปกรณ์ภาคพื้นดิน) */}
             {/* ========================================= */}
