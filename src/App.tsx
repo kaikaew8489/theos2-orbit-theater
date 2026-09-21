@@ -1,18 +1,50 @@
-// @ts-nocheck Thailand Satellite Orbit
+// Thailand Satellite Orbit — OK20.2 FINAL DEPLOY READY
 
 import React, { useEffect, useMemo, useRef, useState, startTransition } from 'react';
 import Globe from 'react-globe.gl';
 import * as THREE from 'three';
 import * as satelliteJs from 'satellite.js';
 
+// Runtime integrations/caches are attached to window at runtime (plain JSX compatible).
+
+// Production hardening: contain unexpected render/lifecycle errors instead of leaving a blank screen.
+class SatOrbitErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('[SAT-ORBIT] Unhandled UI error:', error, info);
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div style={{ minHeight: '100vh', background: '#010408', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px', fontFamily: 'Arial, sans-serif' }}>
+        <div style={{ maxWidth: '720px', width: '100%', border: '1px solid #ff3333', borderRadius: '10px', padding: '24px', background: 'rgba(20,0,0,0.92)', boxShadow: '0 0 30px rgba(255,51,51,0.25)' }}>
+          <h2 style={{ margin: '0 0 12px', color: '#ff6666' }}>SAT-ORBIT RECOVERY MODE</h2>
+          <p style={{ margin: '0 0 18px', lineHeight: 1.5 }}>The interface encountered an unexpected error. Orbit data stored in the browser has not been deleted.</p>
+          <button onClick={() => { if (typeof window !== 'undefined') window.location.reload(); }} style={{ padding: '10px 18px', cursor: 'pointer', borderRadius: '6px', border: '1px solid #00eaff', background: 'rgba(0,234,255,0.12)', color: '#00eaff', fontWeight: 700 }}>RELOAD SAT-ORBIT</button>
+        </div>
+      </div>
+    );
+  }
+}
+
 // =========================================================================
 // 📍 PDF PARSER ENGINE (Theos-2 Mission Plan)
 // =========================================================================
-if (window.pdfjsLib) {
+if (typeof window !== 'undefined' && window.pdfjsLib) {
   window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 
 async function extractPdfText(file) {
+  if (typeof window === 'undefined' || !window.pdfjsLib) throw new Error('PDF.js is not available');
   const buf = await file.arrayBuffer();
   const pdf = await window.pdfjsLib.getDocument({data: buf}).promise;
   const allLines = [];
@@ -105,8 +137,7 @@ const GS_NETWORK = [
   { id: 'UDN', name: 'GISTDA (UDN)', lat: 17.451639, lng: 102.933389, alt: 175 }   // อุดรธานี (~175 เมตร)
 ];
 
-// 📍 ประกาศตัวแปร Global
-let GROUND_STATION = GS_NETWORK[0];
+// Active station is maintained inside React state; no mutable global observer is used.
 
 const EARTH_RADIUS_KM = 6371;
 
@@ -120,8 +151,6 @@ const THEOS2_IMAGING_PLAN = [
   { start: Date.UTC(2026, 7, 1, 2, 47, 10), end: Date.UTC(2026, 7, 1, 2, 47, 29) }, 
   // คิวที่ 3: ถ่ายภาพ 37 วินาที[cite: 1]
   { start: Date.UTC(2026, 7, 1, 2, 49, 23), end: Date.UTC(2026, 7, 1, 2, 50,  0) },
-  // คิวจำลอง: แถบอ้างอิงตอน 07:43 (อีกฝั่งของโลก)
-  { start: Date.UTC(2026, 7, 1, 7, 43, 10), end: Date.UTC(2026, 7, 1, 7, 43, 55) }
 ];
 
 const SATELLITE_OPTIONS = [
@@ -133,7 +162,6 @@ const SATELLITE_OPTIONS = [
   { catnr: '41552', name: 'THAICOM 8', displayName: 'THAICOM 8', flag: 'th', group: 'GISTDA & THAILAND (LEO/GEO)', operator: 'Thaicom', mission: 'Communications (GEO)', telemetry: 'Ku-Band', payload: 'Ku-Band' },
 
  // 2. THAI CUBESAT & MICROSAT (LEO) - อ้างอิงจากวงโคจรจริงปัจจุบัน
- { catnr: '99991', name: 'CUBE SAT-1', displayName: 'GISTDA CUBE SAT-1', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'GISTDA', mission: 'Earth Observation', telemetry: 'S-Band', payload: 'X-Band' }, // 📍 รอเปลี่ยนเป็นรหัสจริงเมื่อ GISTDA ประกาศ
  { catnr: '67683', name: 'KNACKSAT-2', displayName: 'KNACKSAT-2 (KMUTNB)', flag: 'th', group: 'THAI CUBESAT & MICROSAT', operator: 'KMUTNB', mission: 'Technology Demo', telemetry: 'Amateur Radio', payload: 'UHF/VHF' }, // 📍 เปลี่ยนเป็น NORAD ID ของจริง (67683)
  
  // 3. SPACE STATIONS & TELESCOPES
@@ -225,15 +253,9 @@ const SATELLITE_OPTIONS = [
 ];
 
 const FALLBACK_TLES = {
-  // GISTDA & ISS (ของจริง)
-  '58016': { line1: '1 58016U 23155A   26166.96487797  .00000718  00000-0  97744-4 0  9995', line2: '2 58016  97.8882 237.9656 0001407  90.8603 269.2771 14.81738229145245' },
-  '33396': { line1: '1 33396U 08049A   26166.85000000  .00000100  00000-0  50000-4 0  9991', line2: '2 33396  98.5400 210.1200 0001500  85.0000 275.0000 14.20000000900001' },
-  '25544': { line1: '1 25544U 98067A   26201.79846070  .00005574  00000-0  10900-3 0  9995', line2: '2 25544  51.6312 133.7599 0006835 319.3995  40.6483 15.49066413576965' },
-  '48274': { line1: '1 48274U 21035A   26204.00000000  .00000000  00000-0  00000-0 0  9999', line2: '2 48274  41.4700 120.0000 0001500 180.0000 180.0000 15.60000000000000' },
-  
-  // 📍 ฟันธง: THAI CUBESAT (อัปเดตรหัส NORAD ID จริงเพื่อรองรับการดึงข้อมูล Real-time API)
-  '99991': { line1: '1 99991U 23155A   26166.96487797  .00000718  00000-0  97744-4 0  9992', line2: '2 99991  97.8882 117.9656 0001407  90.8603 269.2771 14.81738229145249' }, // GISTDA CUBE SAT-1 (รอรหัสจริง)
-  '67683': { line1: '1 67683U 98067XZ  26166.96487797  .00000718  00000-0  97744-4 0  9993', line2: '2 67683  51.6400 137.9656 0001407  90.8603 269.2771 15.50000000000000' }  // KNACKSAT-2 แก้ไขรหัสให้ตรงกับความจริง
+  // Emergency degraded fallback only. The UI marks fallback mode as DEGRADED.
+  // Other satellites require a validated cached/live TLE rather than a synthetic trajectory.
+  '58016': { line1: '1 58016U 23155A   26166.96487797  .00000718  00000-0  97744-4 0  9995', line2: '2 58016  97.8882 237.9656 0001407  90.8603 269.2771 14.81738229145245' }
 };
 
 const injectStyles = () => {
@@ -788,13 +810,52 @@ const toDegrees = (rad) => (rad * 180) / Math.PI;
 const pad2 = (v) => String(v).padStart(2, '0');
 const pad3 = (v) => String(v).padStart(3, '0');
 
+// Production hardening: storage can throw in private/restricted browser contexts.
+const getSafeStorage = (storageName) => {
+  if (typeof window === 'undefined') return null;
+  if (storageName === 'localStorage') return window.localStorage;
+  if (storageName === 'sessionStorage') return window.sessionStorage;
+  return null;
+};
+
+const safeStorageGet = (storageName, key) => {
+  try {
+    const storage = getSafeStorage(storageName);
+    return storage ? storage.getItem(key) : null;
+  } catch (_) {
+    return null;
+  }
+};
+
+const safeStorageSet = (storageName, key, value) => {
+  try {
+    const storage = getSafeStorage(storageName);
+    if (!storage) return false;
+    storage.setItem(key, value);
+    return true;
+  } catch (_) {
+    return false;
+  }
+};
+
+const formatBangkokTime = (timeMs) => {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Bangkok',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).format(new Date(timeMs));
+  } catch (_) {
+    return new Date(timeMs + 7 * 3600000).toISOString().substring(11, 19);
+  }
+};
+
 function getUtcDayOfYear(date) {
   const start = Date.UTC(date.getUTCFullYear(), 0, 1);
   const current = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
   return Math.floor((current - start) / 86400000) + 1;
 }
 
-function calculateSatData(date, satrec) {
+function calculateSatData(date, satrec, station = GS_NETWORK[0]) {
   if (!satrec) return null;
   try {
     const positionAndVelocity = satelliteJs.propagate(satrec, date);
@@ -805,9 +866,9 @@ function calculateSatData(date, satrec) {
     const positionEcf = satelliteJs.eciToEcf(positionAndVelocity.position, gmst);
    // 📍 ฟันธง: ดึงความสูงจริง (เมตร) แปลงเป็นกิโลเมตร เพื่อคำนวณมุม AOS/LOS ให้แม่นยำที่สุด!
    const observerGd = { 
-    latitude: toRadians(GROUND_STATION.lat), 
-    longitude: toRadians(GROUND_STATION.lng), 
-    height: GROUND_STATION.alt / 1000 
+    latitude: toRadians(station.lat), 
+    longitude: toRadians(station.lng), 
+    height: station.alt / 1000 
   };
     const lookAngles = satelliteJs.ecfToLookAngles(observerGd, positionEcf);
     const speed = Math.sqrt(positionAndVelocity.velocity.x ** 2 + positionAndVelocity.velocity.y ** 2 + positionAndVelocity.velocity.z ** 2);
@@ -834,6 +895,59 @@ function calculateSatData(date, satrec) {
 
 function getInclinationDeg(line2) { return Number(line2.trim().split(/\s+/)[2] || 0); }
 
+function hasValidTleChecksum(line) {
+  if (typeof line !== 'string' || line.length < 69) return false;
+  const checksumChar = line.charAt(68);
+  if (!/\d/.test(checksumChar)) return false;
+  let sum = 0;
+  for (let i = 0; i < 68; i++) {
+    const ch = line.charAt(i);
+    if (ch >= '0' && ch <= '9') sum += Number(ch);
+    else if (ch === '-') sum += 1;
+  }
+  return (sum % 10) === Number(checksumChar);
+}
+
+function getTleEpochMs(line1) {
+  try {
+    if (typeof line1 !== 'string' || line1.length < 32) return null;
+    const yy = Number(line1.substring(18, 20));
+    const dayOfYear = Number(line1.substring(20, 32));
+    if (!Number.isFinite(yy) || !Number.isFinite(dayOfYear) || dayOfYear < 1 || dayOfYear >= 367) return null;
+    const year = yy >= 57 ? 1900 + yy : 2000 + yy;
+    return Date.UTC(year, 0, 1) + (dayOfYear - 1) * 86400000;
+  } catch (_) {
+    return null;
+  }
+}
+
+function isUsableTlePair(line1, line2, expectedCatnr = null) {
+  try {
+    if (typeof line1 !== 'string' || typeof line2 !== 'string') return false;
+    if (!line1.startsWith('1 ') || !line2.startsWith('2 ')) return false;
+    if (!hasValidTleChecksum(line1) || !hasValidTleChecksum(line2)) return false;
+    const cat1 = line1.substring(2, 7).trim();
+    const cat2 = line2.substring(2, 7).trim();
+    if (!cat1 || cat1 !== cat2 || (expectedCatnr && cat1 !== String(expectedCatnr))) return false;
+    const rec = satelliteJs.twoline2satrec(line1, line2);
+    return Boolean(rec) && (!Number.isFinite(rec.error) || rec.error === 0);
+  } catch (_) {
+    return false;
+  }
+}
+
+function sanitizeTleMap(raw) {
+  const clean = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return clean;
+  for (const sat of SATELLITE_OPTIONS) {
+    const pair = raw[sat.catnr];
+    if (pair && isUsableTlePair(pair.line1, pair.line2, sat.catnr)) {
+      clean[sat.catnr] = { line1: pair.line1, line2: pair.line2 };
+    }
+  }
+  return clean;
+}
+
 function getFootprintRadiusDeg(altKm, minElevDeg = 5) {
   const re = EARTH_RADIUS_KM;
   const r = re + Math.max(0, altKm);
@@ -854,7 +968,8 @@ function getCirclePolygon(centerLat, centerLng, radiusDeg, numPoints = 64) {
   const coords = [];
   for (let i = 0; i <= numPoints; i++) {
     const tc = (2 * Math.PI * i) / numPoints;
-    let lat = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(tc));
+    const latArg = Math.max(-1, Math.min(1, Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(tc)));
+    let lat = Math.asin(latArg);
     let lon = lon1 + Math.atan2(Math.sin(tc) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat));
     
     lon = (lon + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
@@ -2146,6 +2261,23 @@ const useAntennaBridge = (bridgeData) => {
     setBridgeStatus('OFF');
   };
 
+  // Ensure the sidecar is told to stop tracking when SAT-ORBIT is refreshed/unmounted.
+  useEffect(() => {
+    return () => {
+      const currentSession = sessionIdRef.current;
+      if (currentSession) {
+        sendAntennaBridgeMessage(receiverWinRef.current, {
+          protocol: ANTENNA_BRIDGE_PROTOCOL,
+          type: 'BRIDGE_DISCONNECT',
+          source: ANTENNA_BRIDGE_SOURCE,
+          sessionId: currentSession
+        });
+      }
+      sessionIdRef.current = null;
+      receiverWinRef.current = null;
+    };
+  }, []);
+
 
   return {
     bridgeStatus,
@@ -2189,7 +2321,7 @@ const handleRuntimeImageError = (event, fallbackSrc = null) => {
 // ==========================================
 // 4. MAIN APP
 // ==========================================
-export default function App() {
+function SatOrbitCore() {
   
   // 📍 ฟันธง: สร้างสมองกลควบคุมหน้าจอ Loading (Splash Screen) สไตล์ Sci-Fi
   const [loadingPct, setLoadingPct] = useState(0);
@@ -2225,9 +2357,15 @@ export default function App() {
       let lastError = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const response = await fetch(src, { cache: 'force-cache' });
-          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-          return await response.blob();
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+          try {
+            const response = await fetch(src, { cache: 'force-cache', signal: controller.signal });
+            if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+            return await response.blob();
+          } finally {
+            clearTimeout(timeoutId);
+          }
         } catch (error) {
           lastError = error;
           if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 350 * (attempt + 1)));
@@ -2265,6 +2403,7 @@ export default function App() {
 
   useEffect(() => {
     let pct = 0;
+    let readyTimer = null;
     const interval = setInterval(() => {
       // ⚙️ จุดปรับที่ 1: ความก้าวหน้า (สุ่มบวกทีละ 2% ถึง 6% จะทำให้หลอดเต็มไวขึ้น)
       pct += Math.floor(Math.random() * 2) + 1; 
@@ -2273,17 +2412,19 @@ export default function App() {
         pct = 100;
         clearInterval(interval);
         // ⚙️ จุดปรับที่ 2: เวลาค้างหน้าจอ 100% (หน่วยเป็นมิลลิวินาที / 2000 = ค้าง 2 วินาทีแล้วเข้าแอป)
-        setTimeout(() => setIsAppReady(true), 2000); 
+        readyTimer = setTimeout(() => setIsAppReady(true), 2000); 
       }
       setLoadingPct(pct);
     // ⚙️ จุดปรับที่ 3: ความเร็วในการรีเฟรชตัวเลข (หน่วยเป็นมิลลิวินาที / 50 = อัปเดตไวขึ้น ลื่นไหลขึ้น)
     }, 50); 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (readyTimer) clearTimeout(readyTimer);
+    };
   }, []);
 
   // 📍 ฟันธง 2: กู้คืนสมองกลควบคุมปุ่มสลับสถานี
   const [activeStation, setActiveStation] = useState(GS_NETWORK[0]);
-  GROUND_STATION = activeStation;
 
   const globeRef = useRef(null);
   const fileInputRef = useRef(null); 
@@ -2294,23 +2435,32 @@ export default function App() {
   // 📍 ฟันธง: ตัวแปรควบคุมการแสดงผลสถานี (มี 4 โหมด: 'both', 'icon', 'name', 'none')
   const [stationDisplayMode, setStationDisplayMode] = useState('both');
 
-  const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [size, setSize] = useState(() => ({ width: typeof window !== 'undefined' ? window.innerWidth : 1920, height: typeof window !== 'undefined' ? window.innerHeight : 1080 }));
   
   const [tles, setTles] = useState(() => {
     try {
-      const saved = localStorage.getItem('gistda_tles');
-      const parsed = saved ? JSON.parse(saved) : {};
-      // 📍 ฟันธง: บังคับ Merge โค้ด FALLBACK_TLES ทับ Cache เก่าเสมอ
-      // ป้องกันบั๊กเพิ่มดาวเทียม 99991, 99992 เข้าไปใหม่แล้ว SGP4 คืนค่า NaN เพราะหาข้อมูลใน Cache ไม่เจอ
+      const saved = safeStorageGet('localStorage', 'gistda_tles');
+      const parsed = saved ? sanitizeTleMap(JSON.parse(saved)) : {};
+      // Keep fallbacks for resilience, but only merge validated cached pairs.
       return { ...FALLBACK_TLES, ...parsed };
     } catch(e) { return FALLBACK_TLES; }
   });
 
   const [tleSource, setTleSource] = useState(() => {
-    return localStorage.getItem('gistda_tles') ? 'Restored from Memory' : 'Fallback / Built-in';
+    const saved = safeStorageGet('localStorage', 'gistda_tles');
+    if (!saved) return 'Fallback / Built-in (DEGRADED)';
+    try {
+      const parsed = sanitizeTleMap(JSON.parse(saved));
+      return Object.keys(parsed).length > 0
+        ? 'Restored from Memory'
+        : 'Fallback / Built-in (DEGRADED)';
+    } catch (_) {
+      return 'Fallback / Built-in (DEGRADED)';
+    }
   });
 
   const [isUpdatingTle, setIsUpdatingTle] = useState(false);
+  const tleFetchControllerRef = useRef(null);
   const [selectedCatnr, setSelectedCatnr] = useState(SATELLITE_OPTIONS[0].catnr);
   const [selectedCatnrs, setSelectedCatnrs] = useState([SATELLITE_OPTIONS[0].catnr]); 
   
@@ -2347,9 +2497,17 @@ const handleSeekUp = (amount) => {
   seekRef.current.isHolding = false;
 };
 
+useEffect(() => {
+  return () => {
+    clearTimeout(seekRef.current.timeout);
+    if (seekRef.current.interval) clearInterval(seekRef.current.interval);
+  };
+}, []);
+
   const [isPlaying, setIsPlaying] = useState(true);
   const [speedMult, setSpeedMult] = useState(1);
   const [realtimeSun, setRealtimeSun] = useState(true);
+  const [validationMode, setValidationMode] = useState(null); // 2D Day/Night seasonal validation only
   
   const [showGroundTrack, setShowGroundTrack] = useState(false);
   
@@ -2417,133 +2575,251 @@ const mapThemes = [
 // 📍 สมองกลดึงข้อมูลเปอร์เซ็นต์เมฆจาก Open-Meteo API
 const [cloudCover, setCloudCover] = useState(null);
 const [isFetchingCloud, setIsFetchingCloud] = useState(false);
-const [cloudDataCache, setCloudDataCache] = useState(null); // 📍 เพิ่ม Cache เก็บข้อมูลดิบป้องกันการยิง API สแปม
+const [cloudDataCache, setCloudDataCache] = useState(null);
+const [cloudDataOutOfRange, setCloudDataOutOfRange] = useState(false);
 
-// 1. ยิง API ขอข้อมูลล่วงหน้า 3 วัน "แค่ครั้งเดียว" หรือตอนเปลี่ยนสถานีเท่านั้น!
+// 1. Request a 3-day forecast only when the selected station changes.
 useEffect(() => {
+  const controller = new AbortController();
+  let active = true;
   const lat = activeStation.lat;
   const lng = activeStation.lng;
   setIsFetchingCloud(true);
+  setCloudDataCache(null);
+  setCloudCover(null);
+  setCloudDataOutOfRange(false);
 
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=cloud_cover&forecast_days=3&timezone=UTC`;
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
   
-  fetch(url)
-    .then(r => r.json())
+  fetch(url, { signal: controller.signal })
+    .then(r => {
+      if (!r.ok) throw new Error(`Weather HTTP ${r.status}`);
+      return r.json();
+    })
     .then(data => {
-      if (data && data.hourly && data.hourly.cloud_cover) {
-        setCloudDataCache(data.hourly); // เก็บใส่โกดังไว้
+      if (!active) return;
+      if (data && data.hourly && Array.isArray(data.hourly.time) && Array.isArray(data.hourly.cloud_cover)) {
+        setCloudDataCache(data.hourly);
       }
       setIsFetchingCloud(false);
     })
     .catch(err => {
-      console.warn("Cloud API Error:", err);
+      if (!active) return;
+      if (err?.name !== 'AbortError') console.warn('Cloud API Error:', err);
       setIsFetchingCloud(false);
-    });
-}, [activeStation.id]); // ⚠️ ผูกเงื่อนไขไว้ที่รหัสสถานีเท่านั้น ห้ามผูกกับเวลาเด็ดขาด!
+    })
+    .finally(() => clearTimeout(timeoutId));
 
-// 2. สมองกลดึงค่าเมฆจากโกดัง (Cache) ตามเวลาจำลอง (ซิงค์ Real-time ทันทีแม้กด 1000X โดยไม่ต้องยิง API ใหม่)
+  return () => {
+    active = false;
+    clearTimeout(timeoutId);
+    controller.abort();
+  };
+}, [activeStation.id]);
+
+// 2. Use forecast data only inside the actual forecast window. Seasonal validation dates must not display fake weather.
 useEffect(() => {
-  if (!cloudDataCache) return;
-  
+  if (!cloudDataCache || !Array.isArray(cloudDataCache.time) || !Array.isArray(cloudDataCache.cloud_cover)) return;
+
+  const samples = cloudDataCache.time
+    .map((tStr, idx) => { const stamp = /(?:Z|[+-]\d{2}:?\d{2})$/.test(tStr) ? tStr : `${tStr}Z`; return { t: new Date(stamp).getTime(), value: cloudDataCache.cloud_cover[idx] }; })
+    .filter(s => Number.isFinite(s.t) && Number.isFinite(Number(s.value)));
+
+  if (samples.length === 0) {
+    setCloudCover(null);
+    setCloudDataOutOfRange(true);
+    return;
+  }
+
   const nowMs = simulatedTimeMs;
-  let closestIdx = 0;
-  let minDiff = Infinity;
-  
-  cloudDataCache.time.forEach((tStr, idx) => {
-    const tMs = new Date(tStr + 'Z').getTime();
-    const diff = Math.abs(tMs - nowMs);
+  const FORECAST_TOLERANCE_MS = 60 * 60 * 1000;
+  const firstMs = samples[0].t;
+  const lastMs = samples[samples.length - 1].t;
+
+  if (nowMs < firstMs - FORECAST_TOLERANCE_MS || nowMs > lastMs + FORECAST_TOLERANCE_MS) {
+    setCloudCover(null);
+    setCloudDataOutOfRange(true);
+    return;
+  }
+
+  let closest = samples[0];
+  let minDiff = Math.abs(samples[0].t - nowMs);
+  for (let i = 1; i < samples.length; i++) {
+    const diff = Math.abs(samples[i].t - nowMs);
     if (diff < minDiff) {
       minDiff = diff;
-      closestIdx = idx;
+      closest = samples[i];
     }
-  });
-  
-  setCloudCover(cloudDataCache.cloud_cover[closestIdx]);
+  }
+
+  setCloudDataOutOfRange(false);
+  setCloudCover(Number(closest.value));
 }, [Math.floor(simulatedTimeMs / 3600000), cloudDataCache]);
 
   // --- ระบบ PASS PREDICTION ---
   const [isPassModalOpen, setIsPassModalOpen] = useState(false);
   const [passSchedule, setPassSchedule] = useState([]);
   const [isCalculatingPass, setIsCalculatingPass] = useState(false);
-
-  // 📍 ตัวแปรควบคุมระยะเวลาคำนวณ Pass Schedule (ค่าเริ่มต้น = 3 วัน)
   const [passPredictionDays, setPassPredictionDays] = useState(3);
-
-  // 📍 1. ฟันธง: เพิ่มตัวแปรบรรทัดนี้ลงไปเพื่อเก็บค่าว่ากำลังคลิกเลือก Pass ไหนอยู่
   const [selectedPassIndex, setSelectedPassIndex] = useState(null);
+  const [passScheduleNote, setPassScheduleNote] = useState(null);
+  const passCalcRequestRef = useRef(0);
+  const passCalcTimerRef = useRef(null);
+  const passScheduleCenterRef = useRef(null);
 
- // ฟังก์ชันสมองกล: คำนวณหา AOS/LOS แบบเลือกวันได้
- const calculateFuturePasses = (catnr, days = passPredictionDays) => {
-  setIsCalculatingPass(true);
-  setSelectedPassIndex(null);
-  
-  const rec = satrecs[catnr];
-  if (!rec) { setIsCalculatingPass(false); return; }
+  const calculateFuturePasses = (catnr, days = passPredictionDays) => {
+    const requestId = ++passCalcRequestRef.current;
+    if (passCalcTimerRef.current) clearTimeout(passCalcTimerRef.current);
 
-  setTimeout(() => {
-    const passes = [];
-    let isPassActive = false;
-    let currentPass = null;
-    
-    const now = new Date(simulatedTimeMs);
-    
-    // 📍 ฟันธง: ดึงค่า days ที่ผู้ใช้เลือกมาคำนวณทั้งย้อนหลัง (อดีต) และล่วงหน้า (อนาคต)
-    const lookBackMs = days * 24 * 60 * 60 * 1000; 
-    /* 📍 ฟันธง: ขยายสเตปการค้นหาเป็น 1 นาที (60000ms) ลดภาระ CPU ลง 6 เท่า! */
-    const stepMs = 60000; 
+    setIsCalculatingPass(true);
+    setSelectedPassIndex(null);
+    setPassScheduleNote(null);
 
-    const startTime = Math.floor((now.getTime() - lookBackMs) / stepMs) * stepMs;
-    const maxTime = startTime + (days * 2 * 24 * 60 * 60 * 1000); // ย้อนหลัง + ล่วงหน้า
+    const rec = satrecs[catnr];
+    if (!rec) {
+      passCalcTimerRef.current = null;
+      setPassSchedule([]);
+      setIsCalculatingPass(false);
+      return;
+    }
 
-    for (let t = startTime; t < maxTime; t += stepMs) {
-      const d = new Date(t);
-      const pos = calculateSatData(d, rec);
-      
-      if (!pos || isNaN(pos.elevationDeg)) continue;
+    const stationSnapshot = activeStation;
+    const stationMaskSnapshot = stationMask;
+    const simTimeSnapshot = simulatedTimeMs;
+    passScheduleCenterRef.current = simTimeSnapshot;
 
-      if (pos.elevationDeg >= stationMask) {
-        if (!isPassActive) {
-          isPassActive = true;
-          currentPass = { 
-            aosTime: t, 
-            aosAz: pos.azimuthDeg, 
-            maxEl: pos.elevationDeg, 
-            peakTime: t 
-          };
-        } else {
-          if (pos.elevationDeg > currentPass.maxEl) {
-            currentPass.maxEl = pos.elevationDeg;
-            currentPass.peakTime = t; 
-          }
+    passCalcTimerRef.current = setTimeout(() => {
+      const passes = [];
+      let isPassActive = false;
+      let currentPass = null;
+      let prevT = null;
+      let prevPos = null;
+      let firstValidAbove = null;
+      let lastValidAbove = null;
+      const now = new Date(simTimeSnapshot);
+      const lookBackMs = days * 24 * 60 * 60 * 1000;
+      const stepMs = 60000;
+      const startTime = Math.floor((now.getTime() - lookBackMs) / stepMs) * stepMs;
+      const maxTime = startTime + (days * 2 * 24 * 60 * 60 * 1000);
+
+      const posAt = (timeMs) => calculateSatData(new Date(timeMs), rec, stationSnapshot);
+      const refineCrossing = (leftMs, rightMs, rising) => {
+        let left = leftMs;
+        let right = rightMs;
+        while (right - left > 1000) {
+          const mid = Math.floor((left + right) / 2);
+          const midPos = posAt(mid);
+          if (!midPos || !Number.isFinite(midPos.elevationDeg)) break;
+          const above = midPos.elevationDeg >= stationMaskSnapshot;
+          if (rising ? above : !above) right = mid;
+          else left = mid;
         }
-      } else {
-        if (isPassActive) {
+        return Math.round((left + right) / 2);
+      };
+      const refinePeak = (coarsePeakMs, aosMs, losMs) => {
+        let left = Math.max(aosMs, coarsePeakMs - stepMs);
+        let right = Math.min(losMs, coarsePeakMs + stepMs);
+        for (let i = 0; i < 18 && right - left > 1000; i++) {
+          const m1 = left + (right - left) / 3;
+          const m2 = right - (right - left) / 3;
+          const p1 = posAt(m1);
+          const p2 = posAt(m2);
+          if (!p1 || !p2) break;
+          if (p1.elevationDeg < p2.elevationDeg) left = m1;
+          else right = m2;
+        }
+        const peakTime = Math.round((left + right) / 2);
+        const peakPos = posAt(peakTime);
+        return peakPos ? { peakTime, maxEl: peakPos.elevationDeg } : null;
+      };
+
+      for (let t = startTime; t < maxTime; t += stepMs) {
+        const pos = posAt(t);
+        if (!pos || !Number.isFinite(pos.elevationDeg)) {
+          prevT = null;
+          prevPos = null;
+          continue;
+        }
+
+        const aboveMask = pos.elevationDeg >= stationMaskSnapshot;
+        if (firstValidAbove === null) firstValidAbove = aboveMask;
+        lastValidAbove = aboveMask;
+
+        if (aboveMask) {
+          if (!isPassActive) {
+            isPassActive = true;
+            const aosTime = prevT !== null && prevPos && prevPos.elevationDeg < stationMaskSnapshot
+              ? refineCrossing(prevT, t, true)
+              : t;
+            const aosPos = posAt(aosTime) || pos;
+            currentPass = { aosTime, aosAz: aosPos.azimuthDeg, maxEl: pos.elevationDeg, peakTime: t };
+          } else if (pos.elevationDeg > currentPass.maxEl) {
+            currentPass.maxEl = pos.elevationDeg;
+            currentPass.peakTime = t;
+          }
+        } else if (isPassActive && currentPass) {
           isPassActive = false;
-          currentPass.losTime = t;
-          currentPass.losAz = pos.azimuthDeg; 
+          const losTime = prevT !== null && prevPos && prevPos.elevationDeg >= stationMaskSnapshot
+            ? refineCrossing(prevT, t, false)
+            : t;
+          const losPos = posAt(losTime) || pos;
+          currentPass.losTime = losTime;
+          currentPass.losAz = losPos.azimuthDeg;
+          const refinedPeak = refinePeak(currentPass.peakTime, currentPass.aosTime, currentPass.losTime);
+          if (refinedPeak) {
+            currentPass.peakTime = refinedPeak.peakTime;
+            currentPass.maxEl = refinedPeak.maxEl;
+          }
           currentPass.durationMs = currentPass.losTime - currentPass.aosTime;
           passes.push(currentPass);
+          currentPass = null;
         }
+
+        prevT = t;
+        prevPos = pos;
       }
+
+      if (passCalcRequestRef.current !== requestId) return;
+
+      // GEO/long-duration targets can remain above the station mask for the entire window.
+      // Do not invent artificial AOS/LOS at the prediction-window edges; report the condition explicitly.
+      if (passes.length === 0 && firstValidAbove === true && lastValidAbove === true && isPassActive) {
+        setPassScheduleNote(`CONTINUOUS VISIBILITY ABOVE ${stationMaskSnapshot.toFixed(1)}° MASK — NO DISCRETE AOS/LOS WITHIN ±${days} DAYS`);
+      } else if (passes.length === 0 && isPassActive && currentPass) {
+        setPassScheduleNote(`PASS EXTENDS BEYOND THE ±${days} DAY PREDICTION WINDOW`);
+      } else {
+        setPassScheduleNote(null);
+      }
+
+      setPassSchedule(passes);
+      setIsCalculatingPass(false);
+      passCalcTimerRef.current = null;
+    }, 100);
+  };
+
+  useEffect(() => {
+    if (selectedCatnr) calculateFuturePasses(selectedCatnr, passPredictionDays);
+  }, [selectedCatnr, stationMask, passPredictionDays, activeStation.id, tles[selectedCatnr]?.line1, tles[selectedCatnr]?.line2]);
+
+  // Refresh the pass window when simulated time moves materially (e.g. seasonal jumps / high-rate SIM).
+  // This prevents NEXT PASS / AOS-LOS data from remaining anchored to an old simulation date.
+  const passRefreshBucket = Math.floor(simulatedTimeMs / (6 * 60 * 60 * 1000));
+  useEffect(() => {
+    if (!selectedCatnr || !satrecs[selectedCatnr]) return;
+    const center = passScheduleCenterRef.current;
+    const refreshThresholdMs = Math.max(6, passPredictionDays * 6) * 60 * 60 * 1000;
+    if (center === null || Math.abs(simulatedTimeMs - center) >= refreshThresholdMs) {
+      calculateFuturePasses(selectedCatnr, passPredictionDays);
     }
-    setPassSchedule(passes);
-    setIsCalculatingPass(false);
-  }, 100);
-};
+  }, [passRefreshBucket, selectedCatnr, passPredictionDays, activeStation.id, stationMask]);
 
-// 📍 สั่งให้คำนวณใหม่ทุกครั้งที่ผู้ใช้กดเปลี่ยนจำนวนวัน หรือ เปลี่ยน Station Mask
-useEffect(() => {
-  if (selectedCatnr && isPassModalOpen) {
-    calculateFuturePasses(selectedCatnr, passPredictionDays);
-  }
-}, [passPredictionDays, stationMask]); // <-- ฟันธง: เติม stationMask
-
- // 📍 สั่งให้คำนวณตาราง Pass อัตโนมัติทุกครั้งที่เปลี่ยนดาวเทียม หรือ เปลี่ยน Station Mask
- useEffect(() => {
-  if (selectedCatnr) {
-    calculateFuturePasses(selectedCatnr);
-  }
-}, [selectedCatnr, stationMask]); // <-- ฟันธง: เติม stationMask
+  useEffect(() => {
+    return () => {
+      passCalcRequestRef.current += 1;
+      if (passCalcTimerRef.current) clearTimeout(passCalcTimerRef.current);
+    };
+  }, []);
 
   // ฟันธง: ตัวแปรควบคุมการเปิดปิดหน้าจอ Radar Skyplot
   const [isRadarOpen, setIsRadarOpen] = useState(false);
@@ -2619,7 +2895,7 @@ useEffect(() => {
   const bringToFront = (winName) => {
     startTransition(() => {
       setWindowZ(prev => {
-        const maxZ = Math.max(...Object.values(prev));
+        const maxZ = Math.max(...Object.values(prev).map(Number));
         if (prev[winName] === maxZ) return prev; 
         return { ...prev, [winName]: maxZ + 1 }; 
       });
@@ -2660,35 +2936,57 @@ useEffect(() => {
 
 // 📍 ฟันธง: ฟังก์ชันอ่านไฟล์ Mission Plan (รองรับการอัปโหลด PDF และ JSON พร้อมกัน)
 const handleMissionPlanUpload = async (e) => {
-  const files = Array.from(e.target.files);
+  const files = Array.from(e.target.files || []);
   if (files.length === 0) return;
+  if (files.length > 10) {
+    setCustomAlert({ show: true, message: '⚠️ เลือกไฟล์ได้ไม่เกิน 10 ไฟล์ต่อครั้ง', type: 'error' });
+    return;
+  }
 
   let newImagingPlans = [];
   let pdfFile = null;
 
   for (const file of files) {
-    if (file.name.endsWith('.pdf')) {
+    const lowerName = String(file.name || '').toLowerCase();
+    if (lowerName.endsWith('.pdf')) {
+      if (file.size > 25 * 1024 * 1024) {
+        setCustomAlert({ show: true, message: `⚠️ PDF ${file.name} มีขนาดเกิน 25 MB`, type: 'error' });
+        continue;
+      }
       pdfFile = file; 
-    } else if (file.name.endsWith('.json') || file.name.endsWith('.geojson')) {
-      
+    } else if (lowerName.endsWith('.json') || lowerName.endsWith('.geojson')) {
+      if (file.size > 10 * 1024 * 1024) {
+        setCustomAlert({ show: true, message: `⚠️ JSON/GeoJSON ${file.name} มีขนาดเกิน 10 MB`, type: 'error' });
+        continue;
+      }
       const text = await file.text();
       try {
         const geoData = JSON.parse(text);
-        if (geoData.features) {
+        if (Array.isArray(geoData.features)) {
+          if (geoData.features.length > 5000) throw new Error('GeoJSON contains more than 5000 features');
           newImagingPlans = geoData.features.map((feat, index) => {
-            const props = feat.properties;
-            const coords = feat.geometry.coordinates[0]; 
-            const startLng = coords[0][0];
-            const startLat = coords[0][1];
-            const endLng = coords[2][0]; 
-            const endLat = coords[2][1];
+            const props = feat?.properties || {};
+            const coords = feat?.geometry?.coordinates?.[0];
+            if (!Array.isArray(coords) || coords.length < 3 || !Array.isArray(coords[0]) || !Array.isArray(coords[2])) {
+              throw new Error(`Invalid geometry in feature ${index}`);
+            }
+            const startLng = Number(coords[0][0]);
+            const startLat = Number(coords[0][1]);
+            const endLng = Number(coords[2][0]); 
+            const endLat = Number(coords[2][1]);
+            if (![startLng, startLat, endLng, endLat].every(Number.isFinite) || Math.abs(startLat) > 90 || Math.abs(endLat) > 90 || Math.abs(startLng) > 180 || Math.abs(endLng) > 180) {
+              throw new Error(`Invalid coordinates in feature ${index}`);
+            }
 
             const startTime = new Date(props.acqStart).getTime();
-            const endTime = new Date(props.acqEnd).getTime();    
+            const endTime = new Date(props.acqEnd).getTime();
+            if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) {
+              throw new Error(`Invalid acquisition time in feature ${index}`);
+            }
 
             return {
               id: props.id || `plan-${index}`,
-              start: props.acqStart,
+              start: startTime,
               end: endTime,
               duration: (endTime - startTime) / 1000,
               startLat: startLat,
@@ -2710,7 +3008,8 @@ const handleMissionPlanUpload = async (e) => {
   }
 
   if (newImagingPlans.length > 0) {
-    setImagingPlansData(newImagingPlans); 
+    setSourcePlans(newImagingPlans);
+    imagingSwathCache.current = {};
   }
 
   if (pdfFile) {
@@ -2726,6 +3025,10 @@ const handleMissionPlanUpload = async (e) => {
 const handlePdfUpload = async (event) => {
   const file = event.target.files[0];
   if (!file) return;
+  if (file.size > 25 * 1024 * 1024) {
+    setCustomAlert({ show: true, message: '⚠️ PDF มีขนาดเกิน 25 MB', type: 'error' });
+    return;
+  }
   
   // 📍 ฟันธง: ดักจับกรณีหน้างานเน็ตสะดุด โหลดไลบรารี PDF ไม่ขึ้น ป้องกันแอปพัง 100%
   if (typeof window.pdfjsLib === 'undefined') {
@@ -2739,19 +3042,25 @@ const handlePdfUpload = async (event) => {
     
     // 📍 แปลงข้อมูลดิบจาก PDF ให้อยู่ในฟอร์แมตที่ตาราง React เข้าใจ
     const formattedPlans = parsedData.map(p => {
-      const [dateStr, timeStr] = p.acq_start.split(' ');
-      const [y, m, d] = dateStr.split('/');
-      const [hr, min, sec] = timeStr.split(':');
-      const startDate = new Date(Date.UTC(y, m - 1, d, hr, min, parseFloat(sec)));
+      const [dateStr, timeStr] = String(p.acq_start || '').split(' ');
+      if (!dateStr || !timeStr) return null;
+      const [y, m, d] = dateStr.split('/').map(Number);
+      const [hr, min, sec] = timeStr.split(':').map(Number);
+      const duration = Number(p.acq_duration_s || 0);
+      const startMs = Date.UTC(y, m - 1, d, hr, min, sec);
+      if (![y, m, d, hr, min, sec, duration, startMs].every(Number.isFinite) || duration < 0) return null;
+      const startDate = new Date(startMs);
       return {
         id: p.file_nb,
         start: startDate,
-        end: new Date(startDate.getTime() + (p.acq_duration_s || 0) * 1000), // 📍 ฟันธง: เติมเวลาจบให้แผนที่ 2D เอาไปคำนวณต่อ
-        duration: p.acq_duration_s || 0
+        end: new Date(startMs + duration * 1000),
+        duration
       };
-    });
+    }).filter(Boolean);
 
+    if (formattedPlans.length === 0) throw new Error('No valid imaging records found in PDF');
     setSourcePlans(formattedPlans);
+    imagingSwathCache.current = {};
     
     // 📍 เรียก Popup Sci-Fi แทน alert() แบบเก่า
     setCustomAlert({ 
@@ -2887,15 +3196,38 @@ useEffect(() => {
     setIsRightPanelOpen(!isRightPanelOpen);
   };
 
-// คำนวณตำแหน่งดวงอาทิตย์
+// คำนวณตำแหน่งดวงอาทิตย์ (NOAA-style approximation: declination + equation of time)
   const currentSunPos = useMemo(() => {
     const d = new Date(simulatedTimeMs);
     const doy = getUtcDayOfYear(d);
-    const dec = -23.44 * Math.cos((2 * Math.PI / 365.24) * (doy + 10));
-    const hrs = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
-    let lon = 180 - (hrs * 15);
+    const utcHours = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+    const year = d.getUTCFullYear();
+    const isLeapYear = (year % 4 === 0) && (year % 100 !== 0 || year % 400 === 0);
+    const daysInYear = isLeapYear ? 366 : 365;
+    const gamma = (2 * Math.PI / daysInYear) * (doy - 1 + (utcHours - 12) / 24);
+
+    const eqTimeMin = 229.18 * (
+      0.000075 +
+      0.001868 * Math.cos(gamma) -
+      0.032077 * Math.sin(gamma) -
+      0.014615 * Math.cos(2 * gamma) -
+      0.040849 * Math.sin(2 * gamma)
+    );
+
+    const declinationRad =
+      0.006918 -
+      0.399912 * Math.cos(gamma) +
+      0.070257 * Math.sin(gamma) -
+      0.006758 * Math.cos(2 * gamma) +
+      0.000907 * Math.sin(2 * gamma) -
+      0.002697 * Math.cos(3 * gamma) +
+      0.00148 * Math.sin(3 * gamma);
+
+    const utcMinutes = utcHours * 60;
+    let lon = (720 - utcMinutes - eqTimeMin) / 4;
     lon = ((lon + 180) % 360 + 360) % 360 - 180;
-    return { lat: dec, lng: lon };
+
+    return { lat: toDegrees(declinationRad), lng: lon };
   }, [Math.floor(simulatedTimeMs / 60000)]);
 
   const satrecs = useMemo(() => {
@@ -2904,7 +3236,11 @@ useEffect(() => {
       if (tles[cat].line1 && tles[cat].line2) {
         // ฟันธง: ใส่เกราะป้องกัน ถ้า TLE ดวงไหนพัง ให้ข้ามไปดวงอื่น แอปจะได้ไม่แครช
         try {
-          recs[cat] = satelliteJs.twoline2satrec(tles[cat].line1, tles[cat].line2);
+          const rec = satelliteJs.twoline2satrec(tles[cat].line1, tles[cat].line2);
+          if (!rec || (Number.isFinite(rec.error) && rec.error !== 0)) {
+            throw new Error(`satellite.js parser error code ${rec?.error}`);
+          }
+          recs[cat] = rec;
         } catch (error) {
           console.warn(`[TLE ERROR] สแกนข้อมูลดาวเทียม NORAD: ${cat} ล้มเหลว โปรดตรวจสอบไฟล์`, error);
         }
@@ -2917,16 +3253,19 @@ useEffect(() => {
     injectStyles();
     const handleResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', handleResize);
-    
-    setTimeout(() => {
+
+    const initialCameraTimer = setTimeout(() => {
       if (globeRef.current) {
-        globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
+        globeRef.current.pointOfView({ lat: activeStation.lat, lng: activeStation.lng, altitude: 2.2 }, 1000);
         const controls = globeRef.current.controls();
         controls.autoRotate = false;
       }
     }, 500);
 
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(initialCameraTimer);
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
  // 📍 1. สมองกลควบคุมเวลา (ล็อก Tick Rate ที่ 40ms ให้ CPU หายใจ และส่งไม้ต่อให้ WebGL เกลี่ยเฟรม)
@@ -2954,7 +3293,7 @@ useEffect(() => {
       try {
         const rec = satrecs[selectedCatnr];
         if (rec) {
-          const pos = calculateSatData(new Date(simulatedTimeMs), rec);
+          const pos = calculateSatData(new Date(simulatedTimeMs), rec, activeStation);
           if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
             globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng }, 0);
           }
@@ -3154,10 +3493,13 @@ const targetSatrec = selectedCatnr ? satrecs[selectedCatnr] : null;
 
 // 📍 หุ้มเกราะ targetData
 const targetData = useMemo(() => {
-  return targetSatrec ? calculateSatData(new Date(simulatedTimeMs), targetSatrec) : null;
-}, [simulatedTimeMs, targetSatrec]);
+  return targetSatrec ? calculateSatData(new Date(simulatedTimeMs), targetSatrec, activeStation) : null;
+}, [simulatedTimeMs, targetSatrec, activeStation.id]);
 
 const targetConfig = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr) || SATELLITE_OPTIONS[0];
+const selectedTleEpochMs = selectedCatnr && tles[selectedCatnr] ? getTleEpochMs(tles[selectedCatnr].line1) : null;
+const selectedTleAgeDays = selectedTleEpochMs === null ? null : Math.abs(Date.now() - selectedTleEpochMs) / 86400000;
+const selectedTleIsStale = selectedTleAgeDays !== null && selectedTleAgeDays > 14;
 const linkActive = targetData && targetData.elevationDeg >= stationMask;
 
 // =========================================================================
@@ -3193,6 +3535,56 @@ const nextPassTimestamp = useMemo(() => {
   return null;
 }, [simulatedTimeMs, passSchedule, linkActive]);
 
+// Production hardening: LINE alert delivery uses in-flight de-duplication, timeout and retry cooldown.
+// The endpoint remains a client-visible integration URL; protect/rate-limit the Apps Script before public deployment.
+const LINE_ALERT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec';
+const lineAlertInFlightRef = useRef(new Set());
+const lineAlertRetryAtRef = useRef(new Map());
+const lineAlertControllersRef = useRef(new Set());
+
+const sendLineAlert = async (alertId, payloadData) => {
+  if (safeStorageGet('sessionStorage', alertId)) return true;
+  if (lineAlertInFlightRef.current.has(alertId)) return false;
+  const retryAt = lineAlertRetryAtRef.current.get(alertId) || 0;
+  if (Date.now() < retryAt) return false;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  lineAlertInFlightRef.current.add(alertId);
+  lineAlertControllersRef.current.add(controller);
+
+  try {
+    const response = await fetch(LINE_ALERT_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payloadData),
+      signal: controller.signal
+    });
+    if (!response.ok && response.type !== 'opaque') {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    safeStorageSet('sessionStorage', alertId, 'true');
+    lineAlertRetryAtRef.current.delete(alertId);
+    return true;
+  } catch (error) {
+    if (error?.name !== 'AbortError') console.error('[LINE] Notify error:', error);
+    else console.warn('[LINE] Notify timeout:', alertId);
+    lineAlertRetryAtRef.current.set(alertId, Date.now() + 60000);
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+    lineAlertInFlightRef.current.delete(alertId);
+    lineAlertControllersRef.current.delete(controller);
+  }
+};
+
+useEffect(() => () => {
+  lineAlertControllersRef.current.forEach(controller => controller.abort());
+  lineAlertControllersRef.current.clear();
+  lineAlertInFlightRef.current.clear();
+  lineAlertRetryAtRef.current.clear();
+}, []);
+
 // 📍 เซนเซอร์จับเวลา PRE-PASS (แจ้งล่วงหน้า 10 นาทีลง LINE)
 useEffect(() => {
   const isStrictLive = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
@@ -3202,33 +3594,30 @@ useEffect(() => {
   const TEN_MINUTES_MS = 600000; 
   
   const stableAosTime = Math.floor(nextPassTimestamp.time / 1800000) * 1800000;
-  const passId = `AOS-${selectedCatnr}-${stableAosTime}`;
+  const passId = `AOS-${activeStation.id}-${selectedCatnr}-${stableAosTime}`;
 
-  if (timeToAos <= TEN_MINUTES_MS && timeToAos > 0 && !sessionStorage.getItem(passId)) {
-    sessionStorage.setItem(passId, 'true'); 
-
+  if (timeToAos <= TEN_MINUTES_MS && timeToAos > 0 && !safeStorageGet('sessionStorage', passId)) {
     const upcomingPass = passSchedule.find(p => p.aosTime === nextPassTimestamp.time);
     if (upcomingPass) {
       const flagUrl = targetConfig.flag ? `https://flagcdn.com/w40/${targetConfig.flag}.png` : 'https://raw.githubusercontent.com/line/line-bot-sdk-nodejs/master/examples/kitchensink/public/logo.png';
       const doyStr = String(getUtcDayOfYear(new Date(upcomingPass.aosTime))).padStart(3, '0');
 
       const payloadData = {
-        isLos: false, satName: targetConfig.displayName, flagUrl: flagUrl, station: GROUND_STATION.name, doy: doyStr,
+        isLos: false, satName: targetConfig.displayName, flagUrl: flagUrl, station: activeStation.name, doy: doyStr,
         aosUtc: new Date(upcomingPass.aosTime).toISOString().substring(11, 19) + ' UTC',
-        aosLocal: new Date(upcomingPass.aosTime).toLocaleTimeString('en-GB') + ' THA',
+        aosLocal: formatBangkokTime(upcomingPass.aosTime) + ' THA',
         losUtc: new Date(upcomingPass.losTime).toISOString().substring(11, 19) + ' UTC',
-        losLocal: new Date(upcomingPass.losTime).toLocaleTimeString('en-GB') + ' THA',
+        losLocal: formatBangkokTime(upcomingPass.losTime) + ' THA',
         maxEl: upcomingPass.maxEl.toFixed(1),
         duration: `${Math.floor(upcomingPass.durationMs / 60000)}m ${Math.floor((upcomingPass.durationMs % 60000)/1000)}s`
       };
       
-      fetch('https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec', {
-        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payloadData) 
-      }).then(() => console.log(`[LINE] ยิงแจ้งเตือน 10 นาที (AOS) สำเร็จ! ID: ${passId}`))
-        .catch(err => console.error("LINE Notify Error:", err));
+      sendLineAlert(passId, payloadData).then(sent => {
+        if (sent) console.log(`[LINE] ยิงแจ้งเตือน 10 นาที (AOS) สำเร็จ! ID: ${passId}`);
+      });
     }
   }
-}, [simulatedTimeMs, nextPassTimestamp, selectedCatnr, targetConfig, speedMult, isPlaying, passSchedule]);
+}, [simulatedTimeMs, nextPassTimestamp, selectedCatnr, targetConfig, speedMult, isPlaying, passSchedule, activeStation.id]);
 
 // 📍 เซนเซอร์จับจังหวะจบ Pass (แจ้ง LOS ลง LINE)
 useEffect(() => {
@@ -3237,32 +3626,29 @@ useEffect(() => {
 
   passSchedule.forEach(pass => {
     const stableLosTime = Math.floor(pass.losTime / 1800000) * 1800000;
-    const passIdLos = `LOS-${selectedCatnr}-${stableLosTime}`;
+    const passIdLos = `LOS-${activeStation.id}-${selectedCatnr}-${stableLosTime}`;
     const timeSinceLos = simulatedTimeMs - pass.losTime;
     
-    if (timeSinceLos >= 0 && timeSinceLos <= 120000 && !sessionStorage.getItem(passIdLos)) {
-      sessionStorage.setItem(passIdLos, 'true');
-      
+    if (timeSinceLos >= 0 && timeSinceLos <= 120000 && !safeStorageGet('sessionStorage', passIdLos)) {
       const flagUrl = targetConfig.flag ? `https://flagcdn.com/w40/${targetConfig.flag}.png` : 'https://raw.githubusercontent.com/line/line-bot-sdk-nodejs/master/examples/kitchensink/public/logo.png';
       const doyStr = String(getUtcDayOfYear(new Date(pass.aosTime))).padStart(3, '0');
 
       const payloadData = {
-        isLos: true, satName: targetConfig.displayName, flagUrl: flagUrl, station: GROUND_STATION.name, doy: doyStr,
+        isLos: true, satName: targetConfig.displayName, flagUrl: flagUrl, station: activeStation.name, doy: doyStr,
         aosUtc: new Date(pass.aosTime).toISOString().substring(11, 19) + ' UTC',
-        aosLocal: new Date(pass.aosTime).toLocaleTimeString('en-GB') + ' THA',
+        aosLocal: formatBangkokTime(pass.aosTime) + ' THA',
         losUtc: new Date(pass.losTime).toISOString().substring(11, 19) + ' UTC',
-        losLocal: new Date(pass.losTime).toLocaleTimeString('en-GB') + ' THA',
+        losLocal: formatBangkokTime(pass.losTime) + ' THA',
         maxEl: pass.maxEl.toFixed(1),
         duration: `${Math.floor(pass.durationMs / 60000)}m ${Math.floor((pass.durationMs % 60000)/1000)}s`
       };
       
-      fetch('https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec', {
-        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payloadData)
-      }).then(() => console.log(`[LINE] ยิงแจ้งเตือน LOS สำเร็จ! ID: ${passIdLos}`))
-        .catch(err => console.error("LINE Notify Error:", err));
+      sendLineAlert(passIdLos, payloadData).then(sent => {
+        if (sent) console.log(`[LINE] ยิงแจ้งเตือน LOS สำเร็จ! ID: ${passIdLos}`);
+      });
     }
   });
-}, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying]);
+}, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying, activeStation.id]);
 
 // =========================================================================
 // 📍 จบก้อนระบบประมวลผล (ถัดจากบรรทัดนี้คือ return ( ... ) ของคุณครับ)
@@ -3275,7 +3661,7 @@ const allSatObjects = useMemo(() => {
   const currentD = new Date(simulatedTimeMs);
   return SATELLITE_OPTIONS.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
     if (!satrecs[sat.catnr]) return null;
-    const data = calculateSatData(currentD, satrecs[sat.catnr]);
+    const data = calculateSatData(currentD, satrecs[sat.catnr], activeStation);
     if (!data) return null;
     
     // 📍 รีไซเคิลอ็อบเจ็กต์เดิม ไม่สร้างใหม่ (ป้องกัน GPU พัง)
@@ -3298,7 +3684,7 @@ const allSatObjects = useMemo(() => {
     
     return obj;
   }).filter(Boolean);
-}, [simulatedTimeMs, satrecs, selectedCatnr, selectedCatnrs]);
+}, [simulatedTimeMs, satrecs, selectedCatnr, selectedCatnrs, activeStation.id]);
 
 // 📍 ฟันธง 1.1: สร้างสวิตช์หน่วงเวลา (Throttle) ตัดคอขวด CPU 
  // ถ้าเร่งเกิน 100X ให้วาดเส้นนำทางวงโคจรใหม่ทุกๆ 30 นาทีซิมูเลชัน (ลดภาระขยะใน Memory ได้ 1,000,000%)
@@ -3379,6 +3765,9 @@ const allSatObjects = useMemo(() => {
 
 // 📍 ฟันธง 2: ระบบวาดเส้นแดงบน 3D ใช้ useRef เป็นโกดัง Cache (ลดภาระ CPU ไม่ต้องคำนวณใหม่ทุก 16ms)
 const imagingSwathCache = useRef({});
+useEffect(() => {
+  imagingSwathCache.current = {};
+}, [sourcePlans, tles['58016']?.line1, tles['58016']?.line2]);
 const imagingSwathPaths = useMemo(() => {
   if (!targetSatrec || selectedCatnr !== '58016') return []; 
   const paths = [];
@@ -3389,18 +3778,19 @@ const imagingSwathPaths = useMemo(() => {
 
     if (simulatedTimeMs > pEnd) return;
 
-    if (!imagingSwathCache.current[plan.id]) {
+    const swathCacheKey = `${plan.id}|${pStart}|${pEnd}`;
+    if (!imagingSwathCache.current[swathCacheKey]) {
       const points = [];
       for (let t = pStart; t <= pEnd; t += 1000) {
-        const pos = calculateSatData(new Date(t), targetSatrec);
+        const pos = calculateSatData(new Date(t), targetSatrec, activeStation);
         if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
           points.push({ lat: pos.lat, lng: pos.lng, alt: 0.002 });
         }
       }
-      imagingSwathCache.current[plan.id] = { id: plan.id, points };
+      imagingSwathCache.current[swathCacheKey] = { id: plan.id, points };
     }
     
-    const cachedPlan = imagingSwathCache.current[plan.id];
+    const cachedPlan = imagingSwathCache.current[swathCacheKey];
     if (cachedPlan.points.length >= 2) {
       const isImagingNow = simulatedTimeMs >= pStart && simulatedTimeMs <= pEnd;
       cachedPlan.color = isImagingNow ? 'rgba(255, 51, 51, 1)' : 'rgba(255, 100, 51, 0.45)';
@@ -3419,7 +3809,7 @@ const imagingPlansData = useMemo(() => {
   return sourcePlans.map((plan, idx) => {
     const startPos = calculateSatData(new Date(plan.start), rec);
     const endPos = calculateSatData(new Date(plan.end), rec);
-    const duration = (plan.end - plan.start) / 1000;
+    const duration = (new Date(plan.end).getTime() - new Date(plan.start).getTime()) / 1000;
     return {
       id: plan.id,
       ...plan,
@@ -3452,7 +3842,8 @@ const footprintBoundaryPath = useMemo(() => {
         
         for (let i = 0; i <= 128; i++) {
             const tc = (2 * Math.PI * i) / 128;
-            let lat = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(tc));
+            const latArg = Math.max(-1, Math.min(1, Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(tc)));
+            let lat = Math.asin(latArg);
             let lon = lon1 + Math.atan2(Math.sin(tc) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat));
             pts[i].lng = ((lon + 3 * Math.PI) % (2 * Math.PI) - Math.PI) * 180 / Math.PI;
             pts[i].lat = (lat * 180) / Math.PI;
@@ -3477,8 +3868,9 @@ useEffect(() => {
   // ถ้าจับสัญญาณได้ (AOS) และไม่ได้กด Mute
   if (linkActive && !isMuted) {
     if (!audioCtxRef.current) {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      audioCtxRef.current = new AudioContext();
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) return;
+      audioCtxRef.current = new AudioContextCtor();
     }
    // 📍 ฟันธง: ดักจับ Error จาก Browser Policy ป้องกันแอปพังหากผู้ใช้ยังไม่ได้คลิกหน้าจอ
    if (audioCtxRef.current.state === 'suspended') {
@@ -3537,9 +3929,23 @@ useEffect(() => {
   };
 }, [linkActive, isMuted]); // ทำงานใหม่ทุกครั้งที่สถานะ Mute หรือ AOS เปลี่ยนแปลง
 
+useEffect(() => {
+  return () => {
+    if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+    const ctx = audioCtxRef.current;
+    if (ctx && ctx.state !== 'closed') ctx.close().catch(() => {});
+  };
+}, []);
+
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setTleSource('Update Failed (File Too Large)');
+      setCustomAlert({ show: true, message: '⚠️ ไฟล์ TLE มีขนาดเกิน 5 MB', type: 'error' });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
 
     setIsUpdatingTle(true);
     setTleSource('Reading File...');
@@ -3547,9 +3953,10 @@ useEffect(() => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const text = e.target.result;
+        const text = typeof e.target?.result === 'string' ? e.target.result : '';
+        if (!text.trim()) throw new Error('Empty TLE file');
         const lines = text.trim().split(/\r?\n/);
-        const newTles = { ...tles };
+        const tleUpdates = {};
         let successCount = 0;
 
         for (let i = 0; i < lines.length; i++) {
@@ -3559,8 +3966,9 @@ useEffect(() => {
             const line2 = lines[i + 1] ? lines[i + 1].trim() : '';
             if (line2.startsWith('2 ')) {
               const catnr = line1.substring(2, 7).trim();
-              if (SATELLITE_OPTIONS.find(s => s.catnr === catnr)) {
-                newTles[catnr] = { line1, line2 };
+              const line2Catnr = line2.substring(2, 7).trim();
+              if (line2Catnr === catnr && SATELLITE_OPTIONS.find(s => s.catnr === catnr) && isUsableTlePair(line1, line2, catnr)) {
+                tleUpdates[catnr] = { line1, line2 };
                 successCount++;
               }
             }
@@ -3568,12 +3976,12 @@ useEffect(() => {
         }
 
         if (successCount > 0) {
-          setTles(newTles);
-          try {
-            localStorage.setItem('gistda_tles', JSON.stringify(newTles)); 
-          } catch(e) {}
-          const now = new Date();
-          setTleSource(`Manual Upload (${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())})`);
+          setTles(prev => {
+            const merged = { ...prev, ...tleUpdates };
+            safeStorageSet('localStorage', 'gistda_tles', JSON.stringify(merged));
+            return merged;
+          });
+          setTleSource(`Manual Upload (${formatBangkokTime(Date.now())} THA)`);
         } else {
           setTleSource('Update Failed (No Match)');
         }
@@ -3585,11 +3993,19 @@ useEffect(() => {
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
+    reader.onerror = () => {
+      setTleSource('Update Failed (File Read Error)');
+      setIsUpdatingTle(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
     reader.readAsText(file);
   };
 
   // ฟันธง: ฟังก์ชันดึง TLE อัตโนมัติจาก Server ตัวกลาง 
   const handleAutoUpdateTle = async () => {
+    if (tleFetchControllerRef.current) tleFetchControllerRef.current.abort();
+    const controller = new AbortController();
+    tleFetchControllerRef.current = controller;
     setIsUpdatingTle(true);
     setTleSource('Fetching Live TLE...');
 
@@ -3597,12 +4013,19 @@ useEffect(() => {
      // เอา URL จาก Apps Script มาวางตรงนี้ครับ!!!
      const proxyUrl = "https://script.google.com/macros/s/AKfycbyv1ZA8fPvSlK3KhblBbkGTB4UC86nlpFES63jGvRlBiHSbuChYMs2BQgqsSXBQjDRf/exec";
       
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error("Network response was not ok");
-      
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      let response;
+      try {
+        response = await fetch(proxyUrl, { signal: controller.signal, cache: 'no-store' });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (!response.ok) throw new Error(`Network response was not ok (${response.status})`);
+
       const text = await response.text();
+      if (text.length > 5 * 1024 * 1024) throw new Error('TLE response exceeds 5 MB safety limit');
       const lines = text.trim().split(/\r?\n/);
-      const newTles = { ...tles };
+      const tleUpdates = {};
       let successCount = 0;
 
       for (let i = 0; i < lines.length; i++) {
@@ -3612,8 +4035,9 @@ useEffect(() => {
           const line2 = lines[i + 1] ? lines[i + 1].trim() : '';
           if (line2.startsWith('2 ')) {
             const catnr = line1.substring(2, 7).trim();
-            if (SATELLITE_OPTIONS.find(s => s.catnr === catnr)) {
-              newTles[catnr] = { line1, line2 };
+            const line2Catnr = line2.substring(2, 7).trim();
+            if (line2Catnr === catnr && SATELLITE_OPTIONS.find(s => s.catnr === catnr) && isUsableTlePair(line1, line2, catnr)) {
+              tleUpdates[catnr] = { line1, line2 };
               successCount++;
             }
           }
@@ -3621,24 +4045,39 @@ useEffect(() => {
       }
 
       if (successCount > 0) {
-        setTles(newTles);
-        try { localStorage.setItem('gistda_tles', JSON.stringify(newTles)); } catch(e) {}
-        const now = new Date();
-        setTleSource(`TLE Update (${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())})`);
+        setTles(prev => {
+          const merged = { ...prev, ...tleUpdates };
+          safeStorageSet('localStorage', 'gistda_tles', JSON.stringify(merged));
+          return merged;
+        });
+        setTleSource(`TLE Update (${formatBangkokTime(Date.now())} THA)`);
       } else {
         setTleSource('Update Failed (Bad Data)');
       }
     } catch (err) {
-      console.error(err);
-      setTleSource('Update Failed (Network Error)');
+      if (err?.name === 'AbortError') {
+        // A timeout belongs to the current request; an abort caused by a newer request/unmount does not.
+        if (tleFetchControllerRef.current === controller) setTleSource('Update Failed (Timeout)');
+      } else {
+        console.error(err);
+        setTleSource('Update Failed (Network Error)');
+      }
     } finally {
-      setIsUpdatingTle(false);
+      if (tleFetchControllerRef.current === controller) {
+        tleFetchControllerRef.current = null;
+        setIsUpdatingTle(false);
+      }
     }
   };
 
   // 📍 ฟันธง: สั่งกระตุกฟังก์ชันโหลด TLE อัตโนมัติ 1 ครั้ง ทันทีที่เปิดแอปหรือกด F5
   useEffect(() => {
     handleAutoUpdateTle();
+    return () => {
+      const controller = tleFetchControllerRef.current;
+      tleFetchControllerRef.current = null;
+      if (controller) controller.abort();
+    };
   }, []);
 
   const thaiTime = new Date(currentDate.getTime() + 7 * 3600000);
@@ -3649,7 +4088,7 @@ useEffect(() => {
     if (!linkActive || !targetData || isNaN(targetData.lat) || isNaN(targetData.lng)) return [];
     if (targetData.altKm > 30000) return []; 
 
-    const gsPoint = { lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, alt: 0 };
+    const gsPoint = { lat: activeStation.lat, lng: activeStation.lng, alt: 0 };
     const satPoint = { lat: targetData.lat, lng: targetData.lng, alt: Math.max(0.01, targetData.altKm / EARTH_RADIUS_KM) };
     
     return [{ 
@@ -3658,7 +4097,7 @@ useEffect(() => {
       stroke: 1.5,
       isSignal: true
     }];
-  }, [linkActive, targetData]);
+  }, [linkActive, targetData, activeStation.id]);
 
   const radarContainerRef = useRef(null);
   const [radarDim, setRadarDim] = useState({ w: 360, h: 460 });
@@ -3691,7 +4130,7 @@ useEffect(() => {
   const radarData = useMemo(() => {
     if (!targetSatrec || !targetData) return { segments: [], maxEl: 0, aosAz: null, losAz: null, sectorEdgePoints: [] };
 
-    const nextPos = calculateSatData(new Date(currentDate.getTime() + 60000), targetSatrec);
+    const nextPos = calculateSatData(new Date(currentDate.getTime() + 60000), targetSatrec, activeStation);
     const isDescending = nextPos && nextPos.elevationDeg < targetData.elevationDeg;
 
     if (targetData.elevationDeg <= 0 || (targetData.elevationDeg < stationMask && isDescending)) {
@@ -3711,7 +4150,7 @@ useEffect(() => {
 
     for (let m = -15; m <= 15; m += 0.5) { 
       const d = new Date(currentDate.getTime() + m * 60000);
-      const pos = calculateSatData(d, targetSatrec);
+      const pos = calculateSatData(d, targetSatrec, activeStation);
       
       if (pos && !isNaN(pos.elevationDeg) && !isNaN(pos.azimuthDeg)) {
         if (pos.elevationDeg > maxEl) maxEl = pos.elevationDeg; 
@@ -3757,7 +4196,7 @@ useEffect(() => {
       return { segments: [], maxEl: 'N/A', aosAz: null, losAz: null, sectorEdgePoints: [] };
     }
     return { segments, maxEl: maxEl > 0 ? maxEl.toFixed(1) : 'N/A', aosAz, losAz, sectorEdgePoints };
-  }, [targetSatrec, targetData, Math.floor(simulatedTimeMs / 60000), radarLayout, stationMask]); // <-- เพิ่ม stationMask
+  }, [targetSatrec, targetData, Math.floor(simulatedTimeMs / 60000), radarLayout, stationMask, activeStation.id]); // observer-dependent
 
   const radarCurrentPos = useMemo(() => {
     if (!targetData || isNaN(targetData.elevationDeg) || isNaN(targetData.azimuthDeg)) return null;
@@ -3789,7 +4228,7 @@ useEffect(() => {
     // 🌟 ฟันธง: ใช้ลูป 1440 นาที (24 ชั่วโมง) แบบออริจินัลของคุณ เพื่อวาดเส้น Sine Wave ทำนายล่วงหน้าให้เต็มแผนที่
     for (let m = 0; m <= 1440; m += 1.5) {
       const d = new Date(currentDate.getTime() + m * 60 * 1000);
-      const pos = calculateSatData(d, targetSatrec);
+      const pos = calculateSatData(d, targetSatrec, activeStation);
       
       if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
         // 📍 ปรับแค่ alt เป็น 0.01 เพื่อไม่ให้เส้นจมหายไปในภูเขา 3D (Bump Map)
@@ -3846,52 +4285,205 @@ useEffect(() => {
 
 // 📍 ฟันธง: สมองกล Cache ระบบแสง Day/Night 2D (แก้อาการกระตุกขั้นเด็ดขาด!)
 const dayNightOverlay2D = useMemo(() => {
-  if (!realtimeSun) return null;
-  
-  const terminatorPts = [];
-  const sunLat = currentSunPos.lat === 0 ? 0.0001 : currentSunPos.lat;
-  const sunLatRad = sunLat * Math.PI / 180;
-  const sunLngRad = currentSunPos.lng * Math.PI / 180;
-  
-  for (let i = 0; i <= 100; i++) {
-    const lng = (i / 100) * 360 - 180;
-    const lngRad = lng * Math.PI / 180;
-    const latRad = Math.atan(-Math.cos(lngRad - sunLngRad) / Math.tan(sunLatRad));
-    const lat = latRad * 180 / Math.PI;
-    const y = (90 - lat) / 180 * 100;
-    terminatorPts.push(`${i},${y}`);
-  }
-  
-  if (sunLat >= 0) {
-    terminatorPts.push(`100,100`, `0,100`);
+  if (!realtimeSun || typeof window === 'undefined' || typeof document === 'undefined') return null;
+
+  // NASA-style 2D day/night geometry for an equirectangular map.
+  // The physical day/night test is the solar-zenith dot product at every map cell.
+  // This avoids artificial polygon closing at the poles or +/-180 deg map seam.
+  const MASK_W = 1024;
+  const MASK_H = 512;
+
+  // Keep presentation smooth at high simulation speeds without changing orbit logic.
+  // The Sun moves about 0.25 deg in longitude per simulated minute.
+  const sunStepDeg = speedMult >= 600 ? 2.0 : (speedMult >= 60 ? 1.0 : 0.25);
+  const maskSunLat = Math.round(currentSunPos.lat * 10) / 10;
+  const maskSunLng = Math.round(currentSunPos.lng / sunStepDeg) * sunStepDeg;
+  const themeFullNightAlpha = mapThemeIdx === 0 ? 0.80 : 0.72;
+  const cacheKey = `${maskSunLat.toFixed(1)}|${maskSunLng.toFixed(2)}|T${mapThemeIdx}|A${themeFullNightAlpha.toFixed(2)}|${MASK_W}x${MASK_H}`;
+
+  let shadowDataUrl = null;
+  let cityMaskDataUrl = null;
+  const cachedMask = window.__SAT_ORBIT_DAYNIGHT_2D_CACHE__;
+
+  if (cachedMask && cachedMask.key === cacheKey) {
+    shadowDataUrl = cachedMask.shadowDataUrl;
+    cityMaskDataUrl = cachedMask.cityMaskDataUrl;
   } else {
-    terminatorPts.push(`100,0`, `0,0`);
+    const shadowCanvas = document.createElement('canvas');
+    const cityMaskCanvas = document.createElement('canvas');
+    shadowCanvas.width = cityMaskCanvas.width = MASK_W;
+    shadowCanvas.height = cityMaskCanvas.height = MASK_H;
+
+    const shadowCtx = shadowCanvas.getContext('2d');
+    const cityMaskCtx = cityMaskCanvas.getContext('2d');
+    if (!shadowCtx || !cityMaskCtx) return null;
+
+    const shadowImage = shadowCtx.createImageData(MASK_W, MASK_H);
+    const cityMaskImage = cityMaskCtx.createImageData(MASK_W, MASK_H);
+
+    const sunLatRad = maskSunLat * Math.PI / 180;
+    const sunLngRad = maskSunLng * Math.PI / 180;
+    const sinSunLat = Math.sin(sunLatRad);
+    const cosSunLat = Math.cos(sunLatRad);
+
+    // Scientific twilight model for the 2D presentation layer.
+    // The physical terminator remains solar altitude = 0 deg.
+    // Visual darkness then follows the standard twilight boundaries:
+    // Civil -6 deg, Nautical -12 deg, Astronomical -18 deg.
+    const SUN_HORIZON = 0.0;
+    const CIVIL_END = Math.sin(-6 * Math.PI / 180);
+    const NAUTICAL_END = Math.sin(-12 * Math.PI / 180);
+    const ASTRONOMICAL_END = Math.sin(-18 * Math.PI / 180);
+    const FULL_NIGHT_BLEND_END = Math.sin(-24 * Math.PI / 180);
+
+    // Darkness targets are presentation opacities only; geometry is still solar-position driven.
+    const CIVIL_ALPHA = 0.28;
+    const NAUTICAL_ALPHA = 0.48;
+    const ASTRONOMICAL_ALPHA = 0.64;
+    const FULL_NIGHT_ALPHA = themeFullNightAlpha;
+
+    // Night lights start shortly after sunset and reach full visibility during nautical twilight.
+    const CITY_DAY = Math.sin(-3 * Math.PI / 180);
+    const CITY_NIGHT = Math.sin(-12 * Math.PI / 180);
+
+    const smooth01 = (v) => {
+      const t = Math.max(0, Math.min(1, v));
+      return t * t * (3 - 2 * t);
+    };
+
+    const blendBetween = (value, upper, lower) =>
+      smooth01((upper - value) / (upper - lower));
+
+    // Precompute the longitude term once per column.
+    const cosDeltaLon = new Float32Array(MASK_W);
+    for (let x = 0; x < MASK_W; x++) {
+      const lng = -180 + ((x + 0.5) / MASK_W) * 360;
+      const lngRad = lng * Math.PI / 180;
+      cosDeltaLon[x] = Math.cos(lngRad - sunLngRad);
+    }
+
+    for (let y = 0; y < MASK_H; y++) {
+      const lat = 90 - ((y + 0.5) / MASK_H) * 180;
+      const latRad = lat * Math.PI / 180;
+      const sinLat = Math.sin(latRad);
+      const cosLat = Math.cos(latRad);
+
+      for (let x = 0; x < MASK_W; x++) {
+        // cos(zenith angle) = sin(solar altitude).
+        // Positive = Sun above horizon, negative = Sun below horizon.
+        const solarAltitudeSin =
+          sinLat * sinSunLat +
+          cosLat * cosSunLat * cosDeltaLon[x];
+
+        let shadowAlpha = 0;
+        if (solarAltitudeSin < SUN_HORIZON) {
+          if (solarAltitudeSin >= CIVIL_END) {
+            shadowAlpha = CIVIL_ALPHA * blendBetween(solarAltitudeSin, SUN_HORIZON, CIVIL_END);
+          } else if (solarAltitudeSin >= NAUTICAL_END) {
+            shadowAlpha = CIVIL_ALPHA +
+              (NAUTICAL_ALPHA - CIVIL_ALPHA) * blendBetween(solarAltitudeSin, CIVIL_END, NAUTICAL_END);
+          } else if (solarAltitudeSin >= ASTRONOMICAL_END) {
+            shadowAlpha = NAUTICAL_ALPHA +
+              (ASTRONOMICAL_ALPHA - NAUTICAL_ALPHA) * blendBetween(solarAltitudeSin, NAUTICAL_END, ASTRONOMICAL_END);
+          } else if (solarAltitudeSin >= FULL_NIGHT_BLEND_END) {
+            shadowAlpha = ASTRONOMICAL_ALPHA +
+              (FULL_NIGHT_ALPHA - ASTRONOMICAL_ALPHA) * blendBetween(solarAltitudeSin, ASTRONOMICAL_END, FULL_NIGHT_BLEND_END);
+          } else {
+            shadowAlpha = FULL_NIGHT_ALPHA;
+          }
+        }
+
+        const cityT = smooth01(
+          (CITY_DAY - solarAltitudeSin) / (CITY_DAY - CITY_NIGHT)
+        );
+
+        const p = (y * MASK_W + x) * 4;
+
+        // Deep-navy night tint: preserve terrain/ice detail without turning night into a flat black mask.
+        shadowImage.data[p] = 2;
+        shadowImage.data[p + 1] = 6;
+        shadowImage.data[p + 2] = 16;
+        shadowImage.data[p + 3] = Math.round(255 * shadowAlpha);
+
+        // Grayscale luminance mask for the Black Marble night-lights texture.
+        const maskValue = Math.round(255 * cityT);
+        cityMaskImage.data[p] = maskValue;
+        cityMaskImage.data[p + 1] = maskValue;
+        cityMaskImage.data[p + 2] = maskValue;
+        cityMaskImage.data[p + 3] = 255;
+      }
+    }
+
+    shadowCtx.putImageData(shadowImage, 0, 0);
+    cityMaskCtx.putImageData(cityMaskImage, 0, 0);
+
+    shadowDataUrl = shadowCanvas.toDataURL('image/png');
+    cityMaskDataUrl = cityMaskCanvas.toDataURL('image/png');
+
+    window.__SAT_ORBIT_DAYNIGHT_2D_CACHE__ = {
+      key: cacheKey,
+      shadowDataUrl,
+      cityMaskDataUrl
+    };
   }
-  const nightPolygon = terminatorPts.join(' ');
 
   return (
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
+    <svg
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 1
+      }}
+    >
       <defs>
-        <filter id="terminator-blur" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="1.5" />
-        </filter>
-        <filter id="city-glow">
+        <filter id="city-glow" x="-10%" y="-10%" width="120%" height="120%">
           <feColorMatrix type="matrix" values="
             1.8 0 0 0 0
             0 1.4 0 0 0
             0 0 0.9 0 0
             0 0 0 1 0" />
         </filter>
-        <mask id="night-mask">
-          <rect x="0" y="0" width="100" height="100" fill="black" />
-          <polygon points={nightPolygon} fill="white" filter="url(#terminator-blur)" />
+        <mask id="night-mask-corrected" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+          <image
+            href={cityMaskDataUrl}
+            x="0"
+            y="0"
+            width="100"
+            height="100"
+            preserveAspectRatio="none"
+          />
         </mask>
       </defs>
-      <polygon points={nightPolygon} fill="rgba(0, 0, 0, 1.0)" filter="url(#terminator-blur)" />
-      <image href={runtimeAsset('/textures/Earth_nightmap.webp')} x="0" y="0" width="100" height="100" preserveAspectRatio="none" mask="url(#night-mask)" filter="url(#city-glow)" style={{ mixBlendMode: 'screen' }} />
+
+      <image
+        href={shadowDataUrl}
+        x="0"
+        y="0"
+        width="100"
+        height="100"
+        preserveAspectRatio="none"
+      />
+
+      <image
+        href={runtimeAsset('/textures/Earth_nightmap.webp')}
+        x="0"
+        y="0"
+        width="100"
+        height="100"
+        preserveAspectRatio="none"
+        mask="url(#night-mask-corrected)"
+        filter="url(#city-glow)"
+        style={{ mixBlendMode: 'screen' }}
+      />
     </svg>
   );
-}, [realtimeSun, currentSunPos]); // <- หัวใจสำคัญ! สั่งให้คำนวณใหม่เฉพาะตอนดวงอาทิตย์ขยับเท่านั้น
+}, [realtimeSun, currentSunPos, speedMult, mapThemeIdx]);
 
 // 📍 ฟันธง: สร้าง State ควบคุม SPAN และปุ่ม เปิด-ปิด กราฟ
 const [xBandSpan, setXBandSpan] = useState(1000); 
@@ -3907,6 +4499,8 @@ const [showSBand, setShowSBand] = useState(true);
 const iqCanvasRef = useRef(null);
 const xBandCanvasRef = useRef(null);
 const sBandCanvasRef = useRef(null);
+const analyzerRuntimeRef = useRef({ simulatedTimeMs, targetData });
+analyzerRuntimeRef.current = { simulatedTimeMs, targetData };
 
 useEffect(() => {
   if (!isAnalyzerOpen) return;
@@ -3949,7 +4543,8 @@ useEffect(() => {
       });
 
       // 📍 ฟันธง: คำนวณคุณภาพการ Lock ของ Demodulator อ้างอิงจากมุม Elevation
-      const el = targetData ? targetData.elevationDeg : -10;
+      const runtimeTargetData = analyzerRuntimeRef.current.targetData;
+      const el = runtimeTargetData ? runtimeTargetData.elevationDeg : -10;
       const isAutoTrack = el >= 5.0;
       const isProgramTrack = el >= 0.0 && el < 5.0;
       
@@ -4022,9 +4617,10 @@ useEffect(() => {
       let trackMode = 'STANDBY';
       let trackColor = 'var(--red)';
 
-      if (linkActive && targetData) {
-          const el = targetData.elevationDeg;
-          let baseStrength = targetData.altKm / targetData.rangeKm; 
+      const runtimeTargetData = analyzerRuntimeRef.current.targetData;
+      if (linkActive && runtimeTargetData) {
+          const el = runtimeTargetData.elevationDeg;
+          let baseStrength = runtimeTargetData.altKm / runtimeTargetData.rangeKm; 
           
           if (el >= 5) {
               trackMode = 'AUTOTRACK';
@@ -4086,7 +4682,7 @@ useEffect(() => {
       ctx.textAlign = 'left';
       
       const textX = 15;
-      ctx.fillText(`${formatTime(new Date(simulatedTimeMs))} THA, SIM`, textX, 20);
+      ctx.fillText(`${formatTime(new Date(analyzerRuntimeRef.current.simulatedTimeMs))} UTC, SIM`, textX, 20);
       ctx.fillText(`REF ${refLevel.toFixed(1)} dBm   AT 10 dB`, textX, 35);
       ctx.fillText(`LOG 5 dB/`, textX, 50); 
       
@@ -4153,7 +4749,7 @@ useEffect(() => {
 
   draw();
   return () => cancelAnimationFrame(animationFrameId);
-}, [isAnalyzerOpen, linkActive, selectedCatnr, simulatedTimeMs, xBandSpan, sBandSpan, showXBand, showSBand]);
+}, [isAnalyzerOpen, linkActive, selectedCatnr, xBandSpan, sBandSpan, showXBand, showSBand]);
 
 // 📍 WOW Feature 1: DIAGRAM STATE
 const [isDiagramOpen, setIsDiagramOpen] = useState(false);
@@ -4176,36 +4772,57 @@ useEffect(() => {
 }, [isDraggingDiagram]);
 
 // Logic Auto-Pilot 🤖
+const autoPilotRuntimeRef = useRef({ simulatedTimeMs, nextPassTimestamp });
+autoPilotRuntimeRef.current = { simulatedTimeMs, nextPassTimestamp };
+
 useEffect(() => {
+  if (autoPilotTimer.current) {
+    clearInterval(autoPilotTimer.current);
+    autoPilotTimer.current = null;
+  }
+
   if (isAutoPilot) {
-    if (globeRef.current) globeRef.current.controls().autoRotate = true; // 1. หมุนโลก
+    if (globeRef.current) globeRef.current.controls().autoRotate = true;
     let windowCycle = 0;
     autoPilotTimer.current = setInterval(() => {
-      // 2. สลับหน้าต่างทุกๆ 8 วินาที
       windowCycle++;
-      if(windowCycle % 3 === 0) { setIsRadarOpen(true); setIsAnalyzerOpen(false); setIsDiagramOpen(false); }
-      else if(windowCycle % 3 === 1) { setIsRadarOpen(false); setIsAnalyzerOpen(true); setIsDiagramOpen(false); }
+      if (windowCycle % 3 === 0) { setIsRadarOpen(true); setIsAnalyzerOpen(false); setIsDiagramOpen(false); }
+      else if (windowCycle % 3 === 1) { setIsRadarOpen(false); setIsAnalyzerOpen(true); setIsDiagramOpen(false); }
       else { setIsRadarOpen(false); setIsAnalyzerOpen(false); setIsDiagramOpen(true); }
 
-      // 3. Time Travel ถ้ารอนานเกินไป (ข้ามไปก่อน AOS 30 วิ)
-      if (nextPassTimestamp && nextPassTimestamp.time) {
-        const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
-        if (timeToAos > 120000) { // ถ้ารอเกิน 2 นาที วาร์ปเลย!
-          setSimulatedTimeMs(nextPassTimestamp.time - 30000);
+      const runtime = autoPilotRuntimeRef.current;
+      const nextPass = runtime.nextPassTimestamp;
+      if (nextPass && nextPass.time) {
+        const timeToAos = nextPass.time - runtime.simulatedTimeMs;
+        if (timeToAos > 120000) {
+          setSimulatedTimeMs(nextPass.time - 30000);
           setCustomAlert({ show: true, message: 'AUTO-PILOT: TIME TRAVEL INITIATED 🚀', type: 'success' });
         }
       }
     }, 8000);
-  } else {
-    // 📍 ฟันธง: ล้างคำสั่งกล้องออกไป ปล่อยให้เคลียร์แค่ระบบหมุนพอ
-    if (globeRef.current) globeRef.current.controls().autoRotate = false;
-    if (autoPilotTimer.current) clearInterval(autoPilotTimer.current);
+  } else if (globeRef.current) {
+    globeRef.current.controls().autoRotate = false;
   }
-  return () => { if (autoPilotTimer.current) clearInterval(autoPilotTimer.current); };
-}, [isAutoPilot, simulatedTimeMs, nextPassTimestamp]);
+
+  return () => {
+    if (autoPilotTimer.current) {
+      clearInterval(autoPilotTimer.current);
+      autoPilotTimer.current = null;
+    }
+  };
+}, [isAutoPilot]);
 
 // 📍 ฟันธง: สมองกล "MISSION AUTO-SEQUENCER" (ระบบวนลูปตารางรับสัญญาณอัตโนมัติ)
 const autoSnapRef = useRef({});
+const missionJumpTimerRef = useRef(null);
+const missionSequencerStateRef = useRef({ validationMode, isPlaying, speedMult, selectedCatnr, stationId: activeStation.id });
+missionSequencerStateRef.current = { validationMode, isPlaying, speedMult, selectedCatnr, stationId: activeStation.id };
+
+useEffect(() => {
+  return () => {
+    if (missionJumpTimerRef.current) clearTimeout(missionJumpTimerRef.current);
+  };
+}, []);
 
 useEffect(() => {
   if (!passSchedule || passSchedule.length === 0) return;
@@ -4214,7 +4831,7 @@ useEffect(() => {
   const activeRealPass = passSchedule.find(p => now >= p.aosTime && now <= p.losTime);
 
   // 🚀 1. Real-Time AOS Interceptor (ระบบความปลอดภัย กรณีมีดาวเทียมเข้าจริงในปัจจุบัน)
-  if (activeRealPass) {
+  if (activeRealPass && !validationMode) {
     const passId = `SNAP-REAL-${activeRealPass.aosTime}`;
     if (!autoSnapRef.current[passId]) {
       autoSnapRef.current[passId] = true;
@@ -4227,7 +4844,7 @@ useEffect(() => {
   // 🚀 2. SIMULATION SEQUENCER (ระบบโดดข้าม Pass อัตโนมัติเมื่ออยู่ในโหมด SIM ที่ความเร็ว 1X)
   const isSimulating = Math.abs(simulatedTimeMs - now) > 60000 && speedMult === 1 && isPlaying;
   
-  if (isSimulating) {
+  if (!validationMode && isSimulating) {
     // 📍 ค้นหาว่าเพิ่งผ่าน LOS ของ Pass ปัจจุบันมา 10 ถึง 12 วินาทีหรือไม่ (หน่วง 10 วิเพื่อให้ผู้ชมเห็นจังหวะสัญญาณหลุด)
     const justFinishedPass = passSchedule.find(p => 
       simulatedTimeMs > p.losTime + 10000 && simulatedTimeMs < p.losTime + 12000
@@ -4250,14 +4867,23 @@ useEffect(() => {
           });
           
          // 📍 รออีก 4 วินาทีให้ผู้ชมอ่านข้อความจบ แล้วกระโดดเวลา (Time Jump) ไปรอที่ AOS - 10 วินาทีของ Pass ถัดไปทันที! (จังหวะเคาต์ดาวน์เป๊ะๆ)
-         setTimeout(() => {
+         if (missionJumpTimerRef.current) clearTimeout(missionJumpTimerRef.current);
+         const scheduledCatnr = selectedCatnr;
+         const scheduledStationId = activeStation.id;
+         missionJumpTimerRef.current = setTimeout(() => {
+          const runtime = missionSequencerStateRef.current;
+          missionJumpTimerRef.current = null;
+          if (runtime.validationMode || !runtime.isPlaying || runtime.speedMult !== 1 || runtime.selectedCatnr !== scheduledCatnr || runtime.stationId !== scheduledStationId) {
+            delete autoSnapRef.current[jumpId];
+            return;
+          }
           setSimulatedTimeMs(nextPass.aosTime - 10000);
         }, 4000);
       }
     }
     }
   }
-}, [simulatedTimeMs, passSchedule, speedMult, isPlaying]);
+}, [simulatedTimeMs, passSchedule, speedMult, isPlaying, validationMode, selectedCatnr, activeStation.id]);
 
 // 📍 ฟันธง: สมองกล Auto-Scale ปรับขนาด UI ให้พอดีกับทุกหน้าจออัตโนมัติ
 const uiScale = Math.min(1, size.width / 1920, size.height / 1080);
@@ -4338,9 +4964,9 @@ return (
   {(() => {
       // 📍 ฟันธง: ลบดาวเทียมออกจาก HTML ทิ้งไปเลย เพราะเราย้ายป้ายชื่อเข้าโลก 3D แล้ว!
       const memoizedHtmlElements = [
-        { type: 'station', lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, name: GROUND_STATION.name, altitude: 0 }
+        { type: 'station', lat: activeStation.lat, lng: activeStation.lng, name: activeStation.name, altitude: 0 }
       ];
-      const memoizedRings = [{ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng }];
+      const memoizedRings = [{ lat: activeStation.lat, lng: activeStation.lng }];
 
       return (
         <Globe
@@ -4368,8 +4994,9 @@ return (
             const altitudeTier = d.altKm > 30000 ? 'GEO' : (d.altKm > 10000 ? 'MEO' : 'LEO');
             const threeCacheKey = `${d.catnr}|${d.isTarget ? 'TARGET' : 'SECONDARY'}|${altitudeTier}|A${runtimeAssetRevision}`;
 
-            if (d.__gistdaThreeObject && d.__gistdaThreeObjectKey === threeCacheKey) {
-              return d.__gistdaThreeObject;
+            if (!d.__gistdaThreeObjects) d.__gistdaThreeObjects = {};
+            if (d.__gistdaThreeObjects[threeCacheKey]) {
+              return d.__gistdaThreeObjects[threeCacheKey];
             }
 
             const group = new THREE.Group();
@@ -4433,8 +5060,7 @@ return (
             group.add(labelSprite);
          }
 
-         d.__gistdaThreeObject = group;
-         d.__gistdaThreeObjectKey = threeCacheKey;
+         d.__gistdaThreeObjects[threeCacheKey] = group;
          return group;
       }}
             
@@ -4624,7 +5250,7 @@ return (
                   {/* วาดเส้นเชื่อมโยง (Line of Sight) ระหว่างสถานีกับดาวเทียม */}
                   {linkActive && targetData && !isNaN(targetData.lat) && !isNaN(targetData.lng) && (
                     <line
-                      x1={`${(GROUND_STATION.lng + 180) / 360 * 100}`} y1={`${(90 - GROUND_STATION.lat) / 180 * 100}`}
+                      x1={`${(activeStation.lng + 180) / 360 * 100}`} y1={`${(90 - activeStation.lat) / 180 * 100}`}
                       x2={`${(targetData.lng + 180) / 360 * 100}`} y2={`${(90 - targetData.lat) / 180 * 100}`}
                       stroke="rgba(0, 234, 255, 0.8)" strokeWidth="0.3"
                     />
@@ -4659,11 +5285,11 @@ return (
                     ));
                   })}
                 </svg>
-              <div className="map-marker" style={{ left: `${(GROUND_STATION.lng + 180) / 360 * 100}%`, top: `${(90 - GROUND_STATION.lat) / 180 * 100}%`, color: '#00eaff', zIndex: 5 }}>
+              <div className="map-marker" style={{ left: `${(activeStation.lng + 180) / 360 * 100}%`, top: `${(90 - activeStation.lat) / 180 * 100}%`, color: '#00eaff', zIndex: 5 }}>
                 {/* 🌟 ฟันธงที่ 1: ลดขนาดอิโมจิจานรับสัญญาณจาก 24px เหลือ 16px */}
                 <span style={{ fontSize: '16px', textShadow: '0 0 15px #00eaff', marginBottom: '2px' }}>📡</span>
                 {/* 🌟 ฟันธงที่ 2: ลดขนาดป้ายชื่อ GISTDA จาก 10px เหลือ 8px (ขนาดกะทัดรัดไม่กวนแผนที่) */}
-                <span className="label" style={{ fontSize: '8px', fontWeight: '900', textShadow: '0 0 8px #00eaff', color: '#00eaff' }}>GISTDA (SRC)</span>
+                <span className="label" style={{ fontSize: '8px', fontWeight: '900', textShadow: '0 0 8px #00eaff', color: '#00eaff' }}>{activeStation.name}</span>
               </div>
 
               {allSatObjects.map(sat => {
@@ -4956,10 +5582,10 @@ return (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <strong style={{ 
                       /* 📍 ฟันธง: ถ้าอัปเดตพังให้เป็นสีแดง ถ้าสำเร็จให้เป็นสีเขียว */
-                      color: tleSource.includes('Failed') ? 'var(--red)' : 'var(--green)', 
+                      color: tleSource.includes('Failed') ? 'var(--red)' : (tleSource.includes('Fallback') || tleSource.includes('DEGRADED') || selectedTleIsStale ? 'var(--gold)' : 'var(--green)'), 
                       fontWeight: '900', textAlign: 'right', textShadow: 'none' 
                     }}>
-                      {tleSource}
+                      {tleSource}{selectedTleIsStale ? ` • STALE ${Math.floor(selectedTleAgeDays)}d` : ''}
                     </strong>
                     {/* 📍 ฟันธง: กู้คืนปุ่ม SYNC TLE กลับมาแล้ว! */}
                     <button 
@@ -4981,406 +5607,9 @@ return (
               </ul>
             </div>
             
-        {/* ☁️ CLOUD COVER FORECAST HUD */}
-        <div className="panel-box" style={{ padding: '12px 15px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px', gap: '4px' }}>
-                <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(12px, 1.2vw, 14px)', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>LOCAL WEATHER (METEO)</span>
-                <span style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'var(--gold)', fontFamily: 'Orbitron', fontWeight: '900', whiteSpace: 'nowrap', flexShrink: 0, padding: '2px 6px', background: 'rgba(255,204,0,0.1)', borderRadius: '4px', border: '1px solid rgba(255,204,0,0.4)', boxShadow: '0 0 8px rgba(255,204,0,0.2)' }}>{activeStation.id} STATION</span>
-              </div>
-              
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                
-                {/* 📍 ปรับขนาดกล่องไอคอนให้สมดุล */}
-                <div style={{ flex: '0 0 auto', display: 'flex', justifyContent: 'center', alignItems: 'center', width: 'clamp(45px, 4.5vw, 60px)', height: 'clamp(45px, 4.5vw, 60px)', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}>
-                  {cloudCover === null ? (
-                    <span style={{ fontSize: 'clamp(24px, 2.5vw, 32px)', filter: 'grayscale(100%)', opacity: 0.5 }}>☁️</span>
-                  ) : cloudCover <= 30 ? (
-                    <img src="https://api.iconify.design/solar:sun-bold-duotone.svg?color=%2300ff66" alt="Clear" style={{ width: 'clamp(30px, 3vw, 40px)', height: 'clamp(30px, 3vw, 40px)', filter: 'drop-shadow(0 0 8px rgba(0,255,102,0.8))' }} />
-                  ) : cloudCover <= 70 ? (
-                    <img src="https://api.iconify.design/solar:cloud-sun-bold-duotone.svg?color=%23ffcc00" alt="Partly Cloudy" style={{ width: 'clamp(30px, 3vw, 40px)', height: 'clamp(30px, 3vw, 40px)', filter: 'drop-shadow(0 0 8px rgba(255,204,0,0.8))' }} />
-                  ) : (
-                    <img src="https://api.iconify.design/solar:clouds-bold-duotone.svg?color=%23ffffff" alt="Overcast" style={{ width: 'clamp(30px, 3vw, 40px)', height: 'clamp(30px, 3vw, 40px)', filter: 'none' }} />
-                  )}
-                </div>
-
-                <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-                  <div style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'rgba(255,255,255,0.7)', fontFamily: 'Rajdhani', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>CLOUD COVER / VISIBILITY</div>
-                  <div style={{ fontSize: 'clamp(12px, 1.2vw, 16px)', fontFamily: 'Orbitron', fontWeight: '900', color: cloudCover === null ? '#fff' : (cloudCover <= 30 ? 'var(--green)' : (cloudCover <= 70 ? 'var(--gold)' : '#ffffff')), lineHeight: '1.2', textShadow: (cloudCover === null || cloudCover > 70) ? 'none' : `0 0 8px ${cloudCover <= 30 ? 'rgba(0,255,102,0.6)' : 'rgba(255,204,0,0.6)'}`, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {cloudCover === null ? 'ANALYZING...' : (cloudCover <= 30 ? 'CLEAR (OPTICAL OK)' : (cloudCover <= 70 ? 'PARTLY CLOUDY' : 'OVERCAST (DEGRADED)'))}
-                  </div>
-                </div>
-                
-                <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '5px' }}>
-                  {/* 📍 ฟันธง: ลบ textShadow ของตัวเลขเปอร์เซ็นต์เมฆออก */}
-                  <div style={{ fontSize: 'clamp(22px, 2vw, 28px)', fontFamily: 'Orbitron', fontWeight: '900', color: cloudCover === null ? '#fff' : (cloudCover <= 30 ? 'var(--green)' : (cloudCover <= 70 ? 'var(--gold)' : '#ffffff')), textShadow: 'none', lineHeight: '1' }}>
-                    {isFetchingCloud ? '--' : `${cloudCover}%`}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-          )}
-        </div>
-
-      {/* 📍 ฟันธง: ล็อกจุดหมุนการหดตัวมุมขวาบน พร้อมชดเชยความสูงที่หดไป (Height Compensation) แก้ปัญหาหลุมดำด้านล่าง */}
-      <div className="right-container" style={{ transform: `scale(${uiScale})`, transformOrigin: 'top right', maxHeight: `calc(100% / ${uiScale})`, height: `calc(100% / ${uiScale})` }}>
-          
-      {/* 📍 แถวควบคุมหลักด้านบนขวา: ZONE + UTC TIME (สมมาตรกับฝั่งซ้ายเป๊ะ) */}
-      <div style={{ display: 'flex', width: '100%', gap: '15px', alignItems: 'flex-start', pointerEvents: 'none', marginBottom: '15px', zIndex: 100, flexShrink: 0, flexDirection: 'row-reverse' }}>
-            <button 
-              className="menu-toggle-btn"
-              onClick={toggleRightPanel}
-              style={{ pointerEvents: 'auto', marginBottom: 0 }}
-            >
-              {isRightPanelOpen ? '✕' : '☰'}
-            </button>
-
-            <div className="global-clock-hud" style={{ margin: 0, flex: 1, padding: '10px 15px' }}>
-              <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                  <span style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'rgba(255, 255, 255, 0.6)', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '2px' }}>TIMEZONE</span>
-                  <strong style={{ fontFamily: 'Orbitron', fontSize: 'clamp(24px, 2.5vw, 32px)', fontWeight: '900', color: 'var(--cyan)', lineHeight: '1.1', letterSpacing: '3px' }}>UTC</strong>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                  <span style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'rgba(255, 255, 255, 0.6)', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '2px' }}>UNIVERSAL TIME</span>
-                  {/* 📍 ฟันธง: ขยายกล่องหุ้มตัวเลขเป็น 0.85em และโคลอน 0.4em เพื่อความสมดุล */}
-                  <strong style={{ display: 'flex', fontFamily: 'Orbitron', fontSize: 'clamp(24px, 2.5vw, 32px)', fontWeight: '900', color: 'var(--cyan)', lineHeight: '1.1' }}>
-                    {formatTime(currentDate).split('').map((char, i) => (
-                      <span key={i} style={{ display: 'inline-block', width: char === ':' ? '0.4em' : '0.85em', textAlign: 'center' }}>{char}</span>
-                    ))}
-                  </strong>
-                </div>
-
-              </div>
-            </div>
-          </div>
-          
-          {isRightPanelOpen && (
-           <div className="right-panel">
-              
-     {/* กลุ่มที่ 1: การควบคุมเวลาและความเร็ว */}
-     <div className="control-group">
-        {/* 📍 ฟันธง: ลบ <p>TIME & PLAYBACK</p> ทิ้งไปเลย พื้นที่จะโปร่งขึ้นทันที */}
-        
-        {(() => {
-          // 📍 ฟันธง: สมองกลล็อกการจำลองเวลา (SIM Lock)
-                // จะล็อกก็ต่อเมื่อ "เวลาคือ LIVE + มีสัญญาณดาวเทียมเข้าจริงๆ" (ห้ามกด SIM ข้ามเวลา!)
-                const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
-
-                return (
-                  <>
-                  {/* 📍 ฟันธง: ปุ่ม AUTO-EARTH เปลี่ยนเป็นสี Sci-Fi (อิงตามตัวแปร --cyan) และเปลี่ยนสีตาม Theme อัตโนมัติ */}
-                  <button 
-                     onClick={() => {
-                      const nextState = !isAutoPilot;
-                      setIsAutoPilot(nextState);
-                      if (nextState) {
-                        setCameraMode('FREE LOOK');
-                        isTrackingRef.current = false;
-                      }
-                      if (!nextState && globeRef.current) {
-                        globeRef.current.controls().autoRotate = false;
-                        globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
-                      }
-                     }}
-                     disabled={isRealtimePassLock}
-                     style={{ 
-                       width: '100%', marginBottom: '12px', padding: '12px', 
-                       fontSize: 'clamp(15px, 1.5vw, 19px)', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', 
-                       borderRadius: '6px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', transition: 'all 0.3s', 
-                       background: isAutoPilot ? 'linear-gradient(90deg, var(--cyan), var(--green))' : 'rgba(0, 234, 255, 0.08)', 
-                       color: isAutoPilot ? '#000' : 'var(--cyan)', 
-                       border: '2px solid var(--cyan)', 
-                       boxShadow: isAutoPilot ? '0 0 25px var(--cyan)' : 'inset 0 0 10px rgba(0, 234, 255, 0.2)', 
-                       opacity: isRealtimePassLock ? 0.3 : 1 
-                     }}
-                   >
-                      {isAutoPilot ? 'AUTO-EARTH: ACTIVE' : 'AUTO-EARTH: OFF'}
-                    </button>
-
-                    <div className="speed-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginTop: '16px' }}>
-                      {[1, 10, 60, 120, 600, 1200].map(s => (
-                        <button key={s} disabled={isRealtimePassLock} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer'}} onClick={() => setSpeedMult(s)}>{s}X</button>
-                      ))}
-                    </div>
-
-                   {/* 📍 ฟันธง: ยุบรวม LIVE, RESET และ MODE เป็น Grid 3 คอลัมน์ ลดความอ้วนของปุ่มและประหยัดพื้นที่แนวตั้ง! */}
-                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: 'clamp(10px, 1.5vh, 15px)', height: 'clamp(35px, 4.5vh, 45px)' }}>
-                      {(() => {
-                        const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
-                        return (
-                          <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '4px', fontSize: 'clamp(11px, 1.1vw, 14px)', letterSpacing: '1px', background: isRealtimePassLock ? 'rgba(0, 255, 102, 0.2)' : '', borderColor: isRealtimePassLock ? 'var(--green)' : '', color: isRealtimePassLock ? 'var(--green)' : '', boxShadow: isRealtimePassLock ? 'inset 0 0 10px rgba(0, 255, 102, 0.3)' : '' }}>
-                            {isRealtimePassLock ? '🟢 REAL-TIME' : (isLive ? '🟢 LIVE' : '🟠 SIM')}
-                          </div>
-                        );
-                      })()}
-                      
-                      <button className="btn" style={{ margin: 0, padding: '0', fontSize: 'clamp(11px, 1.1vw, 14px)', letterSpacing: '1.5px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => {
-                        setSimulatedTimeMs(Date.now()); setSpeedMult(1); setIsPlaying(true); isTrackingRef.current = false; setCameraMode('FREE LOOK');
-                        setSelectedPlanId(null); setMapZoom(1); setImgMapOrigin('center center'); setTacticalZoom(1); setZoomOrigin('center center');
-                        setIsAutoPilot(false);
-                        
-                        // 📍 ฟันธง: ล็อกเป้าบังคับกลับมาที่พระเอก THEOS-2 (58016) เสมอ!
-                        setSelectedCatnr('58016');
-                        setSelectedCatnrs(['58016']);
-                        
-                        // 📍 ฟันธง: บังคับสถานีภาคพื้นดินกลับมาที่ SRC (ลำดับที่ 0 ใน GS_NETWORK)
-                        setActiveStation(GS_NETWORK[0]);
-
-                        if (globeRef.current) {
-                          globeRef.current.controls().autoRotate = false;
-                          // 📍 ฟันธง: บังคับกล้องโลก 3D บินกลับมาที่พิกัดไทย (SRC) ทันที
-                          globeRef.current.pointOfView({ lat: GS_NETWORK[0].lat, lng: GS_NETWORK[0].lng, altitude: 2.2 }, 1000);
-                        }
-                      }}>RESET</button>
-
-                      <button onClick={() => setSliderMode(sliderMode === 'DAILY' ? 'PASS' : 'DAILY')} disabled={isRealtimePassLock} style={{ margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', background: sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.1)' : 'rgba(255, 204, 0, 0.15)', border: `1px solid ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`, color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', borderRadius: '4px', fontSize: 'clamp(10px, 1vw, 13px)', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '1px', transition: 'all 0.3s', boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.2)' : 'rgba(255, 204, 0, 0.3)'}`, opacity: isRealtimePassLock ? 0.3 : 1 }}>
-                        MODE: {sliderMode === 'DAILY' ? '24H' : 'PASS'}
-                      </button>
-                    </div>
-
-                    {/* 📍 ฟันธง: เส้นประคั่นและตัวเลขบอกเวลาหัวท้ายแนบชิด Slider สวยงามสะอาดตา */}
-                    <div className="time-scrubber-container" style={{ marginTop: 'clamp(10px, 1.5vh, 15px)', paddingTop: 'clamp(10px, 1.5vh, 15px)' }}>
-                      <div className="scrubber-labels" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'clamp(4px, 0.8vh, 8px)' }}>
-                        <span style={{ textAlign: 'left', color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(10px, 1vw, 13px)', fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '1px' }}>{sliderMode === 'DAILY' ? '00:00 UTC' : 'AOS -5m'}</span>
-                        <span style={{ textAlign: 'right', color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(10px, 1vw, 13px)', fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '1px' }}>{sliderMode === 'DAILY' ? '23:59 UTC' : 'LOS +5m'}</span>
-                      </div>
-                      
-                      {(() => {
-                        const currentSimDate = new Date(simulatedTimeMs);
-                        let minTime = Date.UTC(currentSimDate.getUTCFullYear(), currentSimDate.getUTCMonth(), currentSimDate.getUTCDate(), 0, 0, 0);
-                        let maxTime = minTime + 86400000 - 1; 
-
-                        if (sliderMode === 'PASS' && passSchedule.length > 0) {
-                          let targetPass = passSchedule.find(p => simulatedTimeMs >= p.aosTime - 300000 && simulatedTimeMs <= p.losTime + 300000);
-                          if (!targetPass) targetPass = passSchedule.reduce((prev, curr) => Math.abs(curr.peakTime - simulatedTimeMs) < Math.abs(prev.peakTime - simulatedTimeMs) ? curr : prev);
-                          if (targetPass) { minTime = targetPass.aosTime - 300000; maxTime = targetPass.losTime + 300000; }
-                        }
-                        const progressPct = ((simulatedTimeMs - minTime) / (maxTime - minTime)) * 100;
-
-                        return (
-                          <div style={{ position: 'relative' }}>
-                            <div style={{ position: 'absolute', top: '10px', left: 0, height: '8px', width: `${Math.max(0, Math.min(100, progressPct))}%`, background: isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), borderRadius: '4px', pointerEvents: 'none', boxShadow: `0 0 10px ${isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)')}` }}></div>
-                            <input type="range" min={minTime} max={maxTime} value={simulatedTimeMs} disabled={isRealtimePassLock} className="sci-fi-slider"
-                              style={{ '--thumb-color': isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), '--thumb-glow': isRealtimePassLock ? 'rgba(0, 255, 102, 0.8)' : (sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.8)' : 'rgba(255, 204, 0, 0.8)'), opacity: isRealtimePassLock ? 0.5 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'grab' }}
-                              onMouseDown={() => { if(!isRealtimePassLock) setIsPlaying(false); }} onChange={(e) => { if(!isRealtimePassLock) setSimulatedTimeMs(Number(e.target.value)); }} />
-                          </div>
-                        );
-                      })()}
-                      
-                     {/* 📍 ฟันธง: แก้ไข Current SIM - ขยายความกว้างตัวเลขให้ห่างขึ้นเป็น 0.9em, ล็อกความกว้างแก้กระตุก และปิด text-shadow 100% */}
-                     <div style={{ textAlign: 'center', fontSize: 'clamp(12px, 1.2vw, 16px)', color: 'rgba(255,255,255,0.7)', marginTop: '12px', fontVariantNumeric: 'tabular-nums', fontWeight: 'bold', letterSpacing: '1px' }}>
-                        CURRENT SIM: 
-                        <strong style={{ display: 'inline-flex', color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', fontSize: 'clamp(16px, 1.8vw, 24px)', textShadow: 'none', marginLeft: '12px', fontFamily: 'Orbitron', alignItems: 'center', justifyContent: 'center' }}>
-                          {formatTime(new Date(simulatedTimeMs)).split('').map((char, i) => (
-                            <span key={i} style={{ display: 'inline-block', width: char === ':' ? '0.4em' : '0.9em', textAlign: 'center' }}>{char}</span>
-                          ))}
-                          <span style={{ marginLeft: '8px' }}>UTC</span>
-                        </strong>
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-
-           {/* กลุ่มที่ 2: การแสดงผลมุมมอง */}
-           <div className="control-group">
-              {/* 📍 ฟันธง: ลบ <p>DISPLAY CONTROLS</p> ทิ้ง และปรับ marginTop ของกล่องด้านในเป็น 0px เพื่อให้ชิดขอบสวยงาม */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '0px' }}>
-                
-             {/* STATION MASK -> Cyan */}
-             <style>{`
-                 .station-mask-override {
-                   font-size: 18px !important;
-                   padding: 4px 2px !important;
-                   line-height: 1.1 !important;
-                 }
-               `}</style>
-               <button 
-                  className="btn btn-cyan active station-mask-override"
-                  style={{ marginBottom: 0, letterSpacing: '0.2px' }} 
-                  onClick={() => setStationMask(prev => prev === 5 ? 0 : (prev === 0 ? 3 : 5))}
-                >
-                STATION MASK: {stationMask}° 
-                </button>
-                
-                {/* DAY/NIGHT -> Gold */}
-                <button 
-                  className={`btn btn-gold ${realtimeSun ? 'active' : ''}`} 
-                  style={{ marginBottom: 0, fontSize: 'clamp(14px, 1.5vw, 18px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px' }} 
-                  onClick={() => setRealtimeSun(!realtimeSun)}
-                >
-                  {realtimeSun ? 'DAY/NIGHT' : 'SUN OFF'}
-                </button>
-                
-                {/* 3D GLOBE / 2D TACTICAL -> Gold */}
-                <button 
-                  className={`btn btn-gold ${isFlatMap ? 'active' : ''}`} 
-                  style={{ marginBottom: 0, fontSize: 'clamp(14px, 1.5vw, 18px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px' }} 
-                  onClick={() => setIsFlatMap(!isFlatMap)}
-                >
-                  {isFlatMap ? '2D TACTICAL' : '3D GLOBE'}
-                </button>
-                
-                {/* STATION MODE -> Green */}
-                <button 
-                  className={`btn btn-green ${stationDisplayMode !== 'none' ? 'active' : ''}`}
-                  style={{ marginBottom: 0, fontSize: 'clamp(14px, 1.5vw, 18px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px' }}
-                  onClick={() => {
-                    const modes = ['both', 'icon', 'name', 'none'];
-                    const nextIndex = (modes.indexOf(stationDisplayMode) + 1) % modes.length;
-                    setStationDisplayMode(modes[nextIndex]);
-                  }}
-                >
-                  {`STATION: ${stationDisplayMode.toUpperCase()}`}
-                </button>
-                
-                {/* GROUND TRACK -> Green */}
-                <button 
-                  className={`btn btn-green ${showGroundTrack ? 'active' : ''}`} 
-                  style={{ marginBottom: 0, fontSize: 'clamp(14px, 1.5vw, 18px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px' }} 
-                  onClick={() => setShowGroundTrack(!showGroundTrack)}
-                >
-                  GROUND TRACK
-                </button>
-
-              {/* TARGET LOCK -> Red */}
-              <button 
-                  className={`btn btn-red ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
-                  style={{ marginBottom: 0, fontSize: 'clamp(14px, 1.5vw, 18px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px' }}
-                  onClick={() => {
-                    startTransition(() => {
-                      const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
-                      setCameraMode(newMode);
-                      isTrackingRef.current = (newMode === 'TRACKING');
-                      
-                      if (newMode === 'TRACKING') {
-                        setIsAutoPilot(false);
-                        if (globeRef.current) globeRef.current.controls().autoRotate = false;
-                      }
-                      
-                      if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
-                        try {
-                          const rec = satrecs[selectedCatnr];
-                          if (rec) {
-                              const pos = calculateSatData(new Date(simulatedTimeMs), rec);
-                              if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-                                const camAlt = Math.max(0.4, (pos.altKm / EARTH_RADIUS_KM) + 0.5);
-                                globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: camAlt }, 1000);
-                              }
-                          }
-                        } catch (err) {}
-                      } else if (newMode === 'FREE LOOK' && globeRef.current) {
-                        globeRef.current.pointOfView({ lat: GROUND_STATION.lat, lng: GROUND_STATION.lng, altitude: 2.2 }, 1000);
-                      }
-                    });
-                  }}
-                >
-                  TARGET LOCK
-                </button>
-
-              {/* UI COLOR THEME (ย่อชื่อให้สั้นกระชับ ไม่ล้นกรอบ) */}
-             {/* UI THEME */}
-              <button 
-                  className="btn btn-gold" 
-                  style={{ marginBottom: 0, fontSize: 'clamp(13px, 1.4vw, 17px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px', textShadow: '0 0 10px currentColor', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
-                  /* 📍 ฟันธง: ลบ startTransition ออก เพื่อให้เปลี่ยน Theme ทันทีแบบ High Priority ไม่มีดีเลย์แน่นอน */
-                  onClick={() => setUiThemeIdx((prev) => (prev + 1) % uiThemes.length)}
-                  title={`UI THEME: ${uiThemes[uiThemeIdx].name}`}
-                >
-                  UI THEME
-                </button>
-
-                {/* MAP THEME */}
-                <button 
-                  className="btn btn-cyan" 
-                  style={{ marginBottom: 0, fontSize: 'clamp(13px, 1.4vw, 17px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px', borderColor: 'var(--cyan)', color: 'var(--cyan)', textShadow: '0 0 8px var(--cyan)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
-                  onClick={() => setMapThemeIdx((prev) => (prev + 1) % mapThemes.length)}
-                  title={`MAP THEME: ${mapThemes[mapThemeIdx].name}`}
-                >
-                MAP THEME
-                </button>
-              </div>
-            </div>
-
-        {/* 🛠️ กลุ่มที่ 3: DATA & TOOLS (Redesigned & Regrouped) */}
-            <div className="control-group" style={{ paddingBottom: '15px' }}>
-
-              {/* 📍 ฟันธง: จับ 6 ปุ่มมัดรวมใน Grid เดียวกันทั้งหมด (3 แถว x 2 คอลัมน์) เพื่อความสมมาตร 100% */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '12px' }}>
-                
-                {/* 1. SATELLITE DATABASE */}
-                <button 
-                  className={`btn btn-cyan ${isModalOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsModalOpen(!isModalOpen); if (!isModalOpen) bringToFront('db'); }}
-                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
-                >
-                 SATELLITE DATABASE
-                </button>
-
-                {/* 2. SIGNAL ANALYZER (IQ) */}
-                <button 
-                  className={`btn ${linkActive ? 'btn-green' : 'btn-red'} ${isAnalyzerOpen ? 'active' : ''}`}
-                  onClick={() => { setIsAnalyzerOpen(!isAnalyzerOpen); if (!isAnalyzerOpen) bringToFront('analyzer'); }}
-                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', boxShadow: linkActive ? '0 0 20px rgba(0,255,102,0.4)' : '0 0 20px rgba(255,51,51,0.2)', transition: 'all 0.3s' }}
-                >
-                  SIGNAL ANALYZER
-                </button>
-                
-                {/* 3. GROUND STATION */}
-                <button 
-                  className={`btn btn-cyan ${isGsModalOpen ? 'active' : ''}`}
-                  onClick={() => { setIsGsModalOpen(!isGsModalOpen); if (!isGsModalOpen) bringToFront('gs'); }}
-                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
-                >GROUND STATION</button>
-
-                {/* 4. RADAR SKYPLOT */}
-                <button 
-                  className={`btn btn-green ${isRadarOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsRadarOpen(!isRadarOpen); if (!isRadarOpen) bringToFront('radar'); }}
-                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
-                >RADAR SKYPLOT</button>
-
-                {/* 5. POINTING ANGLES */}
-                <button 
-                  className={`btn btn-gold ${isAnglesOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsAnglesOpen(!isAnglesOpen); if (!isAnglesOpen) bringToFront('angles'); }}
-                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
-                >POINTING ANGLES</button>
-
-                {/* 6. SIGNAL FLOW */}
-                <button 
-                  className={`btn ${isDiagramOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsDiagramOpen(!isDiagramOpen); if (!isDiagramOpen) bringToFront('diagram'); }}
-                  style={{ 
-                    margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900',
-                    background: isDiagramOpen ? '#ff00ff' : 'rgba(255, 0, 255, 0.05)', color: isDiagramOpen ? '#fff' : '#ff00ff', border: '1px solid #ff00ff', boxShadow: isDiagramOpen ? '0 0 25px #ff00ff' : 'inset 0 0 10px rgba(255, 0, 255, 0.15)', transition: 'all 0.3s'
-                  }}
-                >SIGNAL FLOW</button>
-
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                <button 
-                  className={`btn btn-red ${isImgOpen ? 'active' : ''}`}
-                  onClick={() => { setIsImgOpen(!isImgOpen); if (!isImgOpen) bringToFront('img'); }}
-                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', transition: 'all 0.3s' }}
-                >MISSION PLAN</button>
-
-                <button 
-                  className={`btn btn-gold ${isPassModalOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsPassModalOpen(!isPassModalOpen); if (!isPassModalOpen) { bringToFront('pass'); if (selectedCatnr) calculateFuturePasses(selectedCatnr); } }}
-                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', transition: 'all 0.3s' }}
-                >PASS SCHEDULE</button>
-              </div>
-          </div>
-          {/* 📍 ฟันธง: กล่อง ANTENNA TELEMETRY เติมเต็มความสมมาตรฝั่งขวา 100% พร้อมปุ่มวาร์ปไป Vercel App */}
-          {/* 📍 ฟันธง: ลบ marginTop: 'auto' ทิ้ง เพื่อให้กล่องเด้งขึ้นไปชิดกับปุ่มด้านบนตามระยะ Gap มาตรฐาน */}
-              <div className="panel-box" style={{ padding: '12px 15px', background: 'linear-gradient(145deg, rgba(0, 25, 15, 0.85), rgba(0, 10, 5, 0.95))', border: '1px solid var(--green)', marginBottom: '10px' }}>
+        {/* 📍 ANTENNA TELEMETRY - ย้ายมาไว้ฝั่งซ้ายเหนือ LOCAL WEATHER ตาม Mission/Tracking Status */}
+        {/* 📍 คง Logic, สี, ขนาด, AZ/EL, TRACKING/STANDBY และ 3D SIMULATOR เดิมทั้งหมด */}
+              <div className="panel-box" style={{ padding: '12px 15px', background: 'linear-gradient(145deg, rgba(0, 25, 15, 0.85), rgba(0, 10, 5, 0.95))', border: '1px solid var(--green)', marginBottom: '6px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,255,102,0.3)', paddingBottom: '6px', gap: '4px' }}>
                 <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(12px, 1.2vw, 14px)', color: 'var(--green)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap' }}>ANTENNA TELEMETRY</span>
                 <span className={`status-badge ${linkActive ? 'live' : 'sim'}`} style={{ fontSize: 'clamp(9px, 0.9vw, 11px)', color: linkActive ? 'var(--green)' : 'var(--gold)', fontFamily: 'Orbitron', fontWeight: '900', padding: '2px 6px', background: linkActive ? 'rgba(0,255,102,0.1)' : 'rgba(255,204,0,0.1)', borderRadius: '4px', border: `1px solid ${linkActive ? 'var(--green)' : 'var(--gold)'}`, margin: 0 }}>
@@ -5520,6 +5749,476 @@ return (
                 
               </div>
             </div>
+        {/* ☁️ CLOUD COVER FORECAST HUD */}
+        <div className="panel-box" style={{ padding: '12px 15px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px', gap: '4px' }}>
+                <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(12px, 1.2vw, 14px)', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>LOCAL WEATHER (METEO)</span>
+                <span style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'var(--gold)', fontFamily: 'Orbitron', fontWeight: '900', whiteSpace: 'nowrap', flexShrink: 0, padding: '2px 6px', background: 'rgba(255,204,0,0.1)', borderRadius: '4px', border: '1px solid rgba(255,204,0,0.4)', boxShadow: '0 0 8px rgba(255,204,0,0.2)' }}>{activeStation.id} STATION</span>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                
+                {/* 📍 ปรับขนาดกล่องไอคอนให้สมดุล */}
+                <div style={{ flex: '0 0 auto', display: 'flex', justifyContent: 'center', alignItems: 'center', width: 'clamp(45px, 4.5vw, 60px)', height: 'clamp(45px, 4.5vw, 60px)', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}>
+                  {cloudCover === null ? (
+                    <span style={{ fontSize: 'clamp(24px, 2.5vw, 32px)', filter: 'grayscale(100%)', opacity: 0.5 }}>☁️</span>
+                  ) : cloudCover <= 30 ? (
+                    <img src="https://api.iconify.design/solar:sun-bold-duotone.svg?color=%2300ff66" alt="Clear" style={{ width: 'clamp(30px, 3vw, 40px)', height: 'clamp(30px, 3vw, 40px)', filter: 'drop-shadow(0 0 8px rgba(0,255,102,0.8))' }} />
+                  ) : cloudCover <= 70 ? (
+                    <img src="https://api.iconify.design/solar:cloud-sun-bold-duotone.svg?color=%23ffcc00" alt="Partly Cloudy" style={{ width: 'clamp(30px, 3vw, 40px)', height: 'clamp(30px, 3vw, 40px)', filter: 'drop-shadow(0 0 8px rgba(255,204,0,0.8))' }} />
+                  ) : (
+                    <img src="https://api.iconify.design/solar:clouds-bold-duotone.svg?color=%23ffffff" alt="Overcast" style={{ width: 'clamp(30px, 3vw, 40px)', height: 'clamp(30px, 3vw, 40px)', filter: 'none' }} />
+                  )}
+                </div>
+
+                <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+                  <div style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'rgba(255,255,255,0.7)', fontFamily: 'Rajdhani', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>CLOUD COVER / VISIBILITY</div>
+                  <div style={{ fontSize: 'clamp(12px, 1.2vw, 16px)', fontFamily: 'Orbitron', fontWeight: '900', color: cloudCover === null ? '#fff' : (cloudCover <= 30 ? 'var(--green)' : (cloudCover <= 70 ? 'var(--gold)' : '#ffffff')), lineHeight: '1.2', textShadow: (cloudCover === null || cloudCover > 70) ? 'none' : `0 0 8px ${cloudCover <= 30 ? 'rgba(0,255,102,0.6)' : 'rgba(255,204,0,0.6)'}`, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {cloudDataOutOfRange ? 'OUT OF FORECAST RANGE' : (cloudCover === null ? 'ANALYZING...' : (cloudCover <= 30 ? 'CLEAR (OPTICAL OK)' : (cloudCover <= 70 ? 'PARTLY CLOUDY' : 'OVERCAST (DEGRADED)')))}
+                  </div>
+                </div>
+                
+                <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '5px' }}>
+                  {/* 📍 ฟันธง: ลบ textShadow ของตัวเลขเปอร์เซ็นต์เมฆออก */}
+                  <div style={{ fontSize: 'clamp(22px, 2vw, 28px)', fontFamily: 'Orbitron', fontWeight: '900', color: cloudCover === null ? '#fff' : (cloudCover <= 30 ? 'var(--green)' : (cloudCover <= 70 ? 'var(--gold)' : '#ffffff')), textShadow: 'none', lineHeight: '1' }}>
+                    {isFetchingCloud ? '--' : (cloudDataOutOfRange || cloudCover === null ? 'N/A' : `${cloudCover}%`)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          )}
+        </div>
+
+      {/* 📍 ฟันธง: ล็อกจุดหมุนการหดตัวมุมขวาบน พร้อมชดเชยความสูงที่หดไป (Height Compensation) แก้ปัญหาหลุมดำด้านล่าง */}
+      <div className="right-container" style={{ transform: `scale(${uiScale})`, transformOrigin: 'top right', maxHeight: `calc(100% / ${uiScale})`, height: `calc(100% / ${uiScale})` }}>
+          
+      {/* 📍 แถวควบคุมหลักด้านบนขวา: ZONE + UTC TIME (สมมาตรกับฝั่งซ้ายเป๊ะ) */}
+      <div style={{ display: 'flex', width: '100%', gap: '15px', alignItems: 'flex-start', pointerEvents: 'none', marginBottom: '15px', zIndex: 100, flexShrink: 0, flexDirection: 'row-reverse' }}>
+            <button 
+              className="menu-toggle-btn"
+              onClick={toggleRightPanel}
+              style={{ pointerEvents: 'auto', marginBottom: 0 }}
+            >
+              {isRightPanelOpen ? '✕' : '☰'}
+            </button>
+
+            <div className="global-clock-hud" style={{ margin: 0, flex: 1, padding: '10px 15px' }}>
+              <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'rgba(255, 255, 255, 0.6)', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '2px' }}>TIMEZONE</span>
+                  <strong style={{ fontFamily: 'Orbitron', fontSize: 'clamp(24px, 2.5vw, 32px)', fontWeight: '900', color: 'var(--cyan)', lineHeight: '1.1', letterSpacing: '3px' }}>UTC</strong>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                  <span style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'rgba(255, 255, 255, 0.6)', fontWeight: '900', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '2px' }}>UNIVERSAL TIME</span>
+                  {/* 📍 ฟันธง: ขยายกล่องหุ้มตัวเลขเป็น 0.85em และโคลอน 0.4em เพื่อความสมดุล */}
+                  <strong style={{ display: 'flex', fontFamily: 'Orbitron', fontSize: 'clamp(24px, 2.5vw, 32px)', fontWeight: '900', color: 'var(--cyan)', lineHeight: '1.1' }}>
+                    {formatTime(currentDate).split('').map((char, i) => (
+                      <span key={i} style={{ display: 'inline-block', width: char === ':' ? '0.4em' : '0.85em', textAlign: 'center' }}>{char}</span>
+                    ))}
+                  </strong>
+                </div>
+
+              </div>
+            </div>
+          </div>
+          
+          {isRightPanelOpen && (
+           <div className="right-panel">
+              
+     {/* กลุ่มที่ 1: การควบคุมเวลาและความเร็ว */}
+     <div className="control-group">
+        {/* 📍 ฟันธง: ลบ <p>TIME & PLAYBACK</p> ทิ้งไปเลย พื้นที่จะโปร่งขึ้นทันที */}
+        
+        {(() => {
+          // 📍 ฟันธง: สมองกลล็อกการจำลองเวลา (SIM Lock)
+                // จะล็อกก็ต่อเมื่อ "เวลาคือ LIVE + มีสัญญาณดาวเทียมเข้าจริงๆ" (ห้ามกด SIM ข้ามเวลา!)
+                const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
+
+                // Seasonal validation: jump only the simulation clock.
+                // Freeze playback so screenshots are repeatable and keep the existing orbit/day-night engines untouched.
+                const validationYear = new Date(simulatedTimeMs).getUTCFullYear();
+                const jumpToValidationDate = (key, monthIndex, day) => {
+                  setValidationMode(key);
+                  setIsAutoPilot(false);
+                  setIsPlaying(false);
+                  setSpeedMult(1);
+                  setSliderMode('DAILY');
+                  setRealtimeSun(true);
+                  setSimulatedTimeMs(Date.UTC(validationYear, monthIndex, day, 12, 0, 0));
+                };
+                const returnToLiveValidation = () => {
+                  setValidationMode(null);
+                  setSpeedMult(1);
+                  setSliderMode('DAILY');
+                  setRealtimeSun(true);
+                  setSimulatedTimeMs(Date.now());
+                  setIsPlaying(true);
+                };
+
+                return (
+                  <>
+                  {/* 📍 ฟันธง: ปุ่ม AUTO-EARTH เปลี่ยนเป็นสี Sci-Fi (อิงตามตัวแปร --cyan) และเปลี่ยนสีตาม Theme อัตโนมัติ */}
+                  <button 
+                     onClick={() => {
+                      const nextState = !isAutoPilot;
+                      setIsAutoPilot(nextState);
+                      if (nextState) {
+                        setCameraMode('FREE LOOK');
+                        isTrackingRef.current = false;
+                      }
+                      if (!nextState && globeRef.current) {
+                        globeRef.current.controls().autoRotate = false;
+                        globeRef.current.pointOfView({ lat: activeStation.lat, lng: activeStation.lng, altitude: 2.2 }, 1000);
+                      }
+                     }}
+                     disabled={isRealtimePassLock}
+                     style={{ 
+                       width: '100%', marginBottom: '12px', padding: '12px', 
+                       fontSize: 'clamp(15px, 1.5vw, 19px)', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '2px', 
+                       borderRadius: '6px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', transition: 'all 0.3s', 
+                       background: isAutoPilot ? 'linear-gradient(90deg, var(--cyan), var(--green))' : 'rgba(0, 234, 255, 0.08)', 
+                       color: isAutoPilot ? '#000' : 'var(--cyan)', 
+                       border: '2px solid var(--cyan)', 
+                       boxShadow: isAutoPilot ? '0 0 25px var(--cyan)' : 'inset 0 0 10px rgba(0, 234, 255, 0.2)', 
+                       opacity: isRealtimePassLock ? 0.3 : 1 
+                     }}
+                   >
+                      {isAutoPilot ? 'AUTO-EARTH: ACTIVE' : 'AUTO-EARTH: OFF'}
+                    </button>
+
+                    <div className="speed-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginTop: '16px' }}>
+                      {[1, 10, 60, 120, 600, 1200].map(s => (
+                        <button key={s} disabled={isRealtimePassLock} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer'}} onClick={() => { setSpeedMult(s); setIsPlaying(true); }}>{s}X</button>
+                      ))}
+                    </div>
+
+                   {/* 📍 ฟันธง: ยุบรวม LIVE, RESET และ MODE เป็น Grid 3 คอลัมน์ ลดความอ้วนของปุ่มและประหยัดพื้นที่แนวตั้ง! */}
+                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: 'clamp(10px, 1.5vh, 15px)', height: 'clamp(35px, 4.5vh, 45px)' }}>
+                      {(() => {
+                        const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+                        return (
+                          <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '4px', fontSize: 'clamp(11px, 1.1vw, 14px)', letterSpacing: '1px', background: isRealtimePassLock ? 'rgba(0, 255, 102, 0.2)' : '', borderColor: isRealtimePassLock ? 'var(--green)' : '', color: isRealtimePassLock ? 'var(--green)' : '', boxShadow: isRealtimePassLock ? 'inset 0 0 10px rgba(0, 255, 102, 0.3)' : '' }}>
+                            {isRealtimePassLock ? '🟢 REAL-TIME' : (isLive ? '🟢 LIVE' : '🟠 SIM')}
+                          </div>
+                        );
+                      })()}
+                      
+                      <button className="btn" style={{ margin: 0, padding: '0', fontSize: 'clamp(11px, 1.1vw, 14px)', letterSpacing: '1.5px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => {
+                        setValidationMode(null); setSimulatedTimeMs(Date.now()); setSpeedMult(1); setIsPlaying(true); isTrackingRef.current = false; setCameraMode('FREE LOOK');
+                        setSelectedPlanId(null); setMapZoom(1); setImgMapOrigin('center center'); setTacticalZoom(1); setZoomOrigin('center center');
+                        setIsAutoPilot(false);
+                        
+                        // 📍 ฟันธง: ล็อกเป้าบังคับกลับมาที่พระเอก THEOS-2 (58016) เสมอ!
+                        setSelectedCatnr('58016');
+                        setSelectedCatnrs(['58016']);
+                        
+                        // 📍 ฟันธง: บังคับสถานีภาคพื้นดินกลับมาที่ SRC (ลำดับที่ 0 ใน GS_NETWORK)
+                        setActiveStation(GS_NETWORK[0]);
+
+                        if (globeRef.current) {
+                          globeRef.current.controls().autoRotate = false;
+                          // 📍 ฟันธง: บังคับกล้องโลก 3D บินกลับมาที่พิกัดไทย (SRC) ทันที
+                          globeRef.current.pointOfView({ lat: GS_NETWORK[0].lat, lng: GS_NETWORK[0].lng, altitude: 2.2 }, 1000);
+                        }
+                      }}>RESET</button>
+
+                      <button onClick={() => setSliderMode(sliderMode === 'DAILY' ? 'PASS' : 'DAILY')} disabled={isRealtimePassLock} style={{ margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', background: sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.1)' : 'rgba(255, 204, 0, 0.15)', border: `1px solid ${sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'}`, color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', borderRadius: '4px', fontSize: 'clamp(10px, 1vw, 13px)', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer', fontFamily: 'Orbitron', fontWeight: '900', letterSpacing: '1px', transition: 'all 0.3s', boxShadow: `0 0 10px ${sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.2)' : 'rgba(255, 204, 0, 0.3)'}`, opacity: isRealtimePassLock ? 0.3 : 1 }}>
+                        MODE: {sliderMode === 'DAILY' ? '24H' : 'PASS'}
+                      </button>
+                    </div>
+
+                    {/* 📍 ฟันธง: เส้นประคั่นและตัวเลขบอกเวลาหัวท้ายแนบชิด Slider สวยงามสะอาดตา */}
+                    <div className="time-scrubber-container" style={{ marginTop: 'clamp(10px, 1.5vh, 15px)', paddingTop: 'clamp(10px, 1.5vh, 15px)' }}>
+                      <div className="scrubber-labels" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'clamp(4px, 0.8vh, 8px)' }}>
+                        <span style={{ textAlign: 'left', color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(10px, 1vw, 13px)', fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '1px' }}>{sliderMode === 'DAILY' ? '00:00 UTC' : 'AOS -5m'}</span>
+                        <span style={{ textAlign: 'right', color: 'rgba(255,255,255,0.6)', fontSize: 'clamp(10px, 1vw, 13px)', fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '1px' }}>{sliderMode === 'DAILY' ? '23:59 UTC' : 'LOS +5m'}</span>
+                      </div>
+                      
+                      {(() => {
+                        const currentSimDate = new Date(simulatedTimeMs);
+                        let minTime = Date.UTC(currentSimDate.getUTCFullYear(), currentSimDate.getUTCMonth(), currentSimDate.getUTCDate(), 0, 0, 0);
+                        let maxTime = minTime + 86400000 - 1; 
+
+                        if (sliderMode === 'PASS' && passSchedule.length > 0) {
+                          let targetPass = passSchedule.find(p => simulatedTimeMs >= p.aosTime - 300000 && simulatedTimeMs <= p.losTime + 300000);
+                          if (!targetPass) targetPass = passSchedule.reduce((prev, curr) => Math.abs(curr.peakTime - simulatedTimeMs) < Math.abs(prev.peakTime - simulatedTimeMs) ? curr : prev);
+                          if (targetPass) { minTime = targetPass.aosTime - 300000; maxTime = targetPass.losTime + 300000; }
+                        }
+                        const progressPct = ((simulatedTimeMs - minTime) / (maxTime - minTime)) * 100;
+
+                        return (
+                          <div style={{ position: 'relative' }}>
+                            <div style={{ position: 'absolute', top: '10px', left: 0, height: '8px', width: `${Math.max(0, Math.min(100, progressPct))}%`, background: isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), borderRadius: '4px', pointerEvents: 'none', boxShadow: `0 0 10px ${isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)')}` }}></div>
+                            <input type="range" min={minTime} max={maxTime} value={simulatedTimeMs} disabled={isRealtimePassLock} className="sci-fi-slider"
+                              style={{ '--thumb-color': isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), '--thumb-glow': isRealtimePassLock ? 'rgba(0, 255, 102, 0.8)' : (sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.8)' : 'rgba(255, 204, 0, 0.8)'), opacity: isRealtimePassLock ? 0.5 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'grab' }}
+                              onMouseDown={() => { if(!isRealtimePassLock) setIsPlaying(false); }} onChange={(e) => { if(!isRealtimePassLock) setSimulatedTimeMs(Number(e.target.value)); }} />
+                          </div>
+                        );
+                      })()}
+                      
+                     {/* 📍 ฟันธง: แก้ไข Current SIM - ขยายความกว้างตัวเลขให้ห่างขึ้นเป็น 0.9em, ล็อกความกว้างแก้กระตุก และปิด text-shadow 100% */}
+                     <div style={{ textAlign: 'center', fontSize: 'clamp(12px, 1.2vw, 16px)', color: 'rgba(255,255,255,0.7)', marginTop: '12px', fontVariantNumeric: 'tabular-nums', fontWeight: 'bold', letterSpacing: '1px' }}>
+                        CURRENT SIM: 
+                        <strong style={{ display: 'inline-flex', color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', fontSize: 'clamp(16px, 1.8vw, 24px)', textShadow: 'none', marginLeft: '12px', fontFamily: 'Orbitron', alignItems: 'center', justifyContent: 'center' }}>
+                          {formatTime(new Date(simulatedTimeMs)).split('').map((char, i) => (
+                            <span key={i} style={{ display: 'inline-block', width: char === ':' ? '0.4em' : '0.9em', textAlign: 'center' }}>{char}</span>
+                          ))}
+                          <span style={{ marginLeft: '8px' }}>UTC</span>
+                        </strong>
+                      </div>
+
+                      {/* 2D DAY/NIGHT SEASON VALIDATION - test dates only; no orbit logic is modified */}
+                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed rgba(0,234,255,0.35)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px', fontFamily: 'Orbitron' }}>
+                          <span style={{ color: 'var(--cyan)', fontSize: 'clamp(10px, 1vw, 12px)', fontWeight: 900, letterSpacing: '1px' }}>SEASON VALIDATION</span>
+                          <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: 'clamp(9px, 0.9vw, 11px)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            {new Date(simulatedTimeMs).toISOString().substring(0, 10)} / 12:00 UTC
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '6px' }}>
+                          {[
+                            { key: 'MAR_EQX', date: '20 MAR', label: 'EQX', month: 2, day: 20 },
+                            { key: 'JUN_SOL', date: '21 JUN', label: 'SOL', month: 5, day: 21 },
+                            { key: 'SEP_EQX', date: '23 SEP', label: 'EQX', month: 8, day: 23 },
+                            { key: 'DEC_SOL', date: '21 DEC', label: 'SOL', month: 11, day: 21 }
+                          ].map(v => {
+                            const active = validationMode === v.key;
+                            return (
+                              <button
+                                key={v.key}
+                                disabled={isRealtimePassLock}
+                                onClick={() => jumpToValidationDate(v.key, v.month, v.day)}
+                                style={{
+                                  margin: 0, padding: '6px 4px', borderRadius: '4px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer',
+                                  border: `1px solid ${active ? 'var(--cyan)' : 'rgba(0,234,255,0.35)'}`,
+                                  background: active ? 'rgba(0,234,255,0.18)' : 'rgba(0,234,255,0.05)',
+                                  color: active ? '#fff' : 'var(--cyan)', fontFamily: 'Orbitron', fontWeight: 900,
+                                  fontSize: 'clamp(8px, 0.82vw, 10px)', lineHeight: 1.05, letterSpacing: '0.35px',
+                                  boxShadow: active ? '0 0 12px rgba(0,234,255,0.45)' : 'none', opacity: isRealtimePassLock ? 0.3 : 1,
+                                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                                }}
+                              >
+                                {`${v.date} ${v.label}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <button
+                          disabled={isRealtimePassLock}
+                          onClick={returnToLiveValidation}
+                          style={{
+                            width: '100%', marginTop: '6px', padding: '6px 5px', borderRadius: '4px', cursor: isRealtimePassLock ? 'not-allowed' : 'pointer',
+                            border: '1px solid var(--green)', background: validationMode ? 'rgba(0,255,102,0.08)' : 'rgba(0,255,102,0.16)',
+                            color: 'var(--green)', fontFamily: 'Orbitron', fontWeight: 900, fontSize: 'clamp(9px, 0.9vw, 11px)', letterSpacing: '1px',
+                            boxShadow: validationMode ? 'none' : '0 0 10px rgba(0,255,102,0.35)', opacity: isRealtimePassLock ? 0.3 : 1
+                          }}
+                        >
+                          LIVE NOW
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+           {/* กลุ่มที่ 2: การแสดงผลมุมมอง */}
+           <div className="control-group">
+              {/* 📍 ฟันธง: ลบ <p>DISPLAY CONTROLS</p> ทิ้ง และปรับ marginTop ของกล่องด้านในเป็น 0px เพื่อให้ชิดขอบสวยงาม */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '0px' }}>
+                
+             {/* STATION MASK -> Cyan */}
+             <style>{`
+                 .station-mask-override {
+                   font-size: 18px !important;
+                   padding: 4px 2px !important;
+                   line-height: 1.1 !important;
+                 }
+               `}</style>
+               <button 
+                  className="btn btn-cyan active station-mask-override"
+                  style={{ marginBottom: 0, letterSpacing: '0.2px' }} 
+                  onClick={() => setStationMask(prev => prev === 5 ? 0 : (prev === 0 ? 3 : 5))}
+                >
+                STATION MASK: {stationMask}° 
+                </button>
+                
+                {/* DAY/NIGHT -> Gold */}
+                <button 
+                  className={`btn btn-gold ${realtimeSun ? 'active' : ''}`} 
+                  style={{ marginBottom: 0, fontSize: 'clamp(14px, 1.5vw, 18px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px' }} 
+                  onClick={() => setRealtimeSun(!realtimeSun)}
+                >
+                  {realtimeSun ? 'DAY/NIGHT' : 'SUN OFF'}
+                </button>
+                
+                {/* 3D GLOBE / 2D TACTICAL -> Gold */}
+                <button 
+                  className={`btn btn-gold ${isFlatMap ? 'active' : ''}`} 
+                  style={{ marginBottom: 0, fontSize: 'clamp(14px, 1.5vw, 18px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px' }} 
+                  onClick={() => setIsFlatMap(!isFlatMap)}
+                >
+                  {isFlatMap ? '2D TACTICAL' : '3D GLOBE'}
+                </button>
+                
+                {/* STATION MODE -> Green */}
+                <button 
+                  className={`btn btn-green ${stationDisplayMode !== 'none' ? 'active' : ''}`}
+                  style={{ marginBottom: 0, fontSize: 'clamp(14px, 1.5vw, 18px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px' }}
+                  onClick={() => {
+                    const modes = ['both', 'icon', 'name', 'none'];
+                    const nextIndex = (modes.indexOf(stationDisplayMode) + 1) % modes.length;
+                    setStationDisplayMode(modes[nextIndex]);
+                  }}
+                >
+                  {`STATION: ${stationDisplayMode.toUpperCase()}`}
+                </button>
+                
+                {/* GROUND TRACK -> Green */}
+                <button 
+                  className={`btn btn-green ${showGroundTrack ? 'active' : ''}`} 
+                  style={{ marginBottom: 0, fontSize: 'clamp(14px, 1.5vw, 18px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px' }} 
+                  onClick={() => setShowGroundTrack(!showGroundTrack)}
+                >
+                  GROUND TRACK
+                </button>
+
+              {/* TARGET LOCK -> Red */}
+              <button 
+                  className={`btn btn-red ${cameraMode === 'TRACKING' ? 'active' : ''}`} 
+                  style={{ marginBottom: 0, fontSize: 'clamp(14px, 1.5vw, 18px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px' }}
+                  onClick={() => {
+                    startTransition(() => {
+                      const newMode = cameraMode === 'TRACKING' ? 'FREE LOOK' : 'TRACKING';
+                      setCameraMode(newMode);
+                      isTrackingRef.current = (newMode === 'TRACKING');
+                      
+                      if (newMode === 'TRACKING') {
+                        setIsAutoPilot(false);
+                        if (globeRef.current) globeRef.current.controls().autoRotate = false;
+                      }
+                      
+                      if (newMode === 'TRACKING' && selectedCatnr && globeRef.current) {
+                        try {
+                          const rec = satrecs[selectedCatnr];
+                          if (rec) {
+                              const pos = calculateSatData(new Date(simulatedTimeMs), rec, activeStation);
+                              if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
+                                const camAlt = Math.max(0.4, (pos.altKm / EARTH_RADIUS_KM) + 0.5);
+                                globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng, altitude: camAlt }, 1000);
+                              }
+                          }
+                        } catch (err) {}
+                      } else if (newMode === 'FREE LOOK' && globeRef.current) {
+                        globeRef.current.pointOfView({ lat: activeStation.lat, lng: activeStation.lng, altitude: 2.2 }, 1000);
+                      }
+                    });
+                  }}
+                >
+                  TARGET LOCK
+                </button>
+
+              {/* UI COLOR THEME (ย่อชื่อให้สั้นกระชับ ไม่ล้นกรอบ) */}
+             {/* UI THEME */}
+              <button 
+                  className="btn btn-gold" 
+                  style={{ marginBottom: 0, fontSize: 'clamp(13px, 1.4vw, 17px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px', textShadow: '0 0 10px currentColor', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
+                  /* 📍 ฟันธง: ลบ startTransition ออก เพื่อให้เปลี่ยน Theme ทันทีแบบ High Priority ไม่มีดีเลย์แน่นอน */
+                  onClick={() => setUiThemeIdx((prev) => (prev + 1) % uiThemes.length)}
+                  title={`UI THEME: ${uiThemes[uiThemeIdx].name}`}
+                >
+                  UI THEME
+                </button>
+
+                {/* MAP THEME */}
+                <button 
+                  className="btn btn-cyan" 
+                  style={{ marginBottom: 0, fontSize: 'clamp(13px, 1.4vw, 17px)', padding: 'clamp(14px, 1.5vh, 20px) 5px', letterSpacing: '1px', borderColor: 'var(--cyan)', color: 'var(--cyan)', textShadow: '0 0 8px var(--cyan)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
+                  onClick={() => setMapThemeIdx((prev) => (prev + 1) % mapThemes.length)}
+                  title={`MAP THEME: ${mapThemes[mapThemeIdx].name}`}
+                >
+                MAP THEME
+                </button>
+              </div>
+            </div>
+
+        {/* 🛠️ กลุ่มที่ 3: DATA & TOOLS (Redesigned & Regrouped) */}
+            <div className="control-group" style={{ paddingBottom: '15px' }}>
+
+              {/* 📍 ฟันธง: จับ 6 ปุ่มมัดรวมใน Grid เดียวกันทั้งหมด (3 แถว x 2 คอลัมน์) เพื่อความสมมาตร 100% */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '12px' }}>
+                
+                {/* 1. SATELLITE DATABASE */}
+                <button 
+                  className={`btn btn-cyan ${isModalOpen ? 'active' : ''}`} 
+                  onClick={() => { setIsModalOpen(!isModalOpen); if (!isModalOpen) bringToFront('db'); }}
+                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
+                >
+                 SATELLITE DATABASE
+                </button>
+
+                {/* 2. SIGNAL ANALYZER (IQ) */}
+                <button 
+                  className={`btn ${linkActive ? 'btn-green' : 'btn-red'} ${isAnalyzerOpen ? 'active' : ''}`}
+                  onClick={() => { setIsAnalyzerOpen(!isAnalyzerOpen); if (!isAnalyzerOpen) bringToFront('analyzer'); }}
+                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', boxShadow: linkActive ? '0 0 20px rgba(0,255,102,0.4)' : '0 0 20px rgba(255,51,51,0.2)', transition: 'all 0.3s' }}
+                >
+                  SIGNAL ANALYZER
+                </button>
+                
+                {/* 3. GROUND STATION */}
+                <button 
+                  className={`btn btn-cyan ${isGsModalOpen ? 'active' : ''}`}
+                  onClick={() => { setIsGsModalOpen(!isGsModalOpen); if (!isGsModalOpen) bringToFront('gs'); }}
+                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
+                >GROUND STATION</button>
+
+                {/* 4. RADAR SKYPLOT */}
+                <button 
+                  className={`btn btn-green ${isRadarOpen ? 'active' : ''}`} 
+                  onClick={() => { setIsRadarOpen(!isRadarOpen); if (!isRadarOpen) bringToFront('radar'); }}
+                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
+                >RADAR SKYPLOT</button>
+
+                {/* 5. POINTING ANGLES */}
+                <button 
+                  className={`btn btn-gold ${isAnglesOpen ? 'active' : ''}`} 
+                  onClick={() => { setIsAnglesOpen(!isAnglesOpen); if (!isAnglesOpen) bringToFront('angles'); }}
+                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
+                >POINTING ANGLES</button>
+
+                {/* 6. SIGNAL FLOW */}
+                <button 
+                  className={`btn ${isDiagramOpen ? 'active' : ''}`} 
+                  onClick={() => { setIsDiagramOpen(!isDiagramOpen); if (!isDiagramOpen) bringToFront('diagram'); }}
+                  style={{ 
+                    margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900',
+                    background: isDiagramOpen ? '#ff00ff' : 'rgba(255, 0, 255, 0.05)', color: isDiagramOpen ? '#fff' : '#ff00ff', border: '1px solid #ff00ff', boxShadow: isDiagramOpen ? '0 0 25px #ff00ff' : 'inset 0 0 10px rgba(255, 0, 255, 0.15)', transition: 'all 0.3s'
+                  }}
+                >SIGNAL FLOW</button>
+
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                <button 
+                  className={`btn btn-red ${isImgOpen ? 'active' : ''}`}
+                  onClick={() => { setIsImgOpen(!isImgOpen); if (!isImgOpen) bringToFront('img'); }}
+                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', transition: 'all 0.3s' }}
+                >MISSION PLAN</button>
+
+                <button 
+                  className={`btn btn-gold ${isPassModalOpen ? 'active' : ''}`} 
+                  onClick={() => { setIsPassModalOpen(!isPassModalOpen); if (!isPassModalOpen) { bringToFront('pass'); if (selectedCatnr) calculateFuturePasses(selectedCatnr); } }}
+                  style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', transition: 'all 0.3s' }}
+                >PASS SCHEDULE</button>
+              </div>
+          </div>
          {/* 📍 เครดิตลิขสิทธิ์และผู้พัฒนา (อัปเดตปีอัตโนมัติ และบีบพื้นที่แนวตั้งขั้นสุด) */}
          <div style={{ textAlign: 'center', marginTop: '4px', fontSize: '16px', color: 'rgba(255, 255, 255, 0.6)', fontFamily: 'Rajdhani', letterSpacing: '1px', lineHeight: '1.2', paddingBottom: '2px' }}>
              © {new Date().getFullYear()} Ground System Engineering Division:GSE <br />
@@ -5595,7 +6294,6 @@ return (
                       style={{ padding: '8px 2px', fontSize: '14px', letterSpacing: '1px', margin: 0, fontWeight: activeStation.id === station.id ? '900' : 'bold' }}
                       onClick={() => {
                         setActiveStation(station);
-                        if (selectedCatnr) calculateFuturePasses(selectedCatnr);
                       }}
                     >
                       {station.id}
@@ -5606,19 +6304,19 @@ return (
 
               <div className="gs-row">
                 <span className="gs-label">LOCATION:</span>
-                <span className="gs-value">{GROUND_STATION.name}</span>
+                <span className="gs-value">{activeStation.name}</span>
               </div>
               <div className="gs-row">
                 <span className="gs-label">LATITUDE:</span>
-                <span className="gs-value highlight">{Math.abs(GROUND_STATION.lat).toFixed(4)}° {GROUND_STATION.lat >= 0 ? 'N' : 'S'}</span>
+                <span className="gs-value highlight">{Math.abs(activeStation.lat).toFixed(4)}° {activeStation.lat >= 0 ? 'N' : 'S'}</span>
               </div>
               <div className="gs-row">
                 <span className="gs-label">LONGITUDE:</span>
-                <span className="gs-value highlight">{Math.abs(GROUND_STATION.lng).toFixed(4)}° {GROUND_STATION.lng >= 0 ? 'E' : 'W'}</span>
+                <span className="gs-value highlight">{Math.abs(activeStation.lng).toFixed(4)}° {activeStation.lng >= 0 ? 'E' : 'W'}</span>
               </div>
               <div className="gs-row">
                 <span className="gs-label">ALTITUDE (ASL):</span>
-                <span className="gs-value highlight">{GROUND_STATION.alt} m</span>
+                <span className="gs-value highlight">{activeStation.alt} m</span>
               </div>
               <div className="gs-row">
                 <span className="gs-label">S-BAND (TT&C):</span>
@@ -5730,31 +6428,41 @@ return (
           <div className="modal-content" style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
             {Array.from(new Set(SATELLITE_OPTIONS.map(s => s.group))).map(groupName => {
               const satsInGroup = SATELLITE_OPTIONS.filter(sat => sat.group === groupName);
-              const groupCatnrs = satsInGroup.map(s => s.catnr);
-              const isAllSelected = groupCatnrs.every(cat => selectedCatnrs.includes(cat));
+              const groupCatnrs = satsInGroup.filter(s => satrecs[s.catnr]).map(s => s.catnr);
+              const isAllSelected = groupCatnrs.length > 0 && groupCatnrs.every(cat => selectedCatnrs.includes(cat));
 
               return (
               <div key={groupName}>
                 <div className="group-header-row">
                   <div className="modal-group-title">{groupName}</div>
-                  <button className="group-toggle-btn" onClick={() => {
+                  <button className="group-toggle-btn" disabled={groupCatnrs.length === 0} title={groupCatnrs.length === 0 ? 'No validated TLE is available for this group' : undefined} style={groupCatnrs.length === 0 ? { opacity: 0.35, cursor: 'not-allowed' } : undefined} onClick={() => {
+                      if (groupCatnrs.length === 0) return;
                       let newSelected = [...selectedCatnrs];
                       if (isAllSelected) { newSelected = newSelected.filter(c => !groupCatnrs.includes(c) || c === selectedCatnr); } 
                       else { groupCatnrs.forEach(c => { if (!newSelected.includes(c)) newSelected.push(c); }); }
                       setSelectedCatnrs(newSelected);
                     }}>
-                    {isAllSelected ? '- DESELECT ALL' : '+ SELECT ALL'}
+                    {groupCatnrs.length === 0 ? 'NO VALID TLE' : (isAllSelected ? '- DESELECT ALL' : '+ SELECT ALL')}
                   </button>
                 </div>
                 <div className="modal-grid">
-                  {satsInGroup.map(sat => (
-                    <button key={sat.catnr} className={`modal-sat-btn ${sat.catnr === selectedCatnr ? 'primary' : selectedCatnrs.includes(sat.catnr) ? 'secondary' : ''}`} 
+                  {satsInGroup.map(sat => {
+                    const hasTle = Boolean(satrecs[sat.catnr]);
+                    return (
+                    <button key={sat.catnr} disabled={!hasTle} title={hasTle ? sat.displayName : `${sat.displayName}: NO VALID TLE`} className={`modal-sat-btn ${sat.catnr === selectedCatnr ? 'primary' : selectedCatnrs.includes(sat.catnr) ? 'secondary' : ''}`} 
+                      style={!hasTle ? { opacity: 0.38, cursor: 'not-allowed', filter: 'grayscale(80%)' } : undefined}
                       onClick={() => {
+                        if (!hasTle) return;
                         let newSelected = [...selectedCatnrs];
-                        if (newSelected.includes(sat.catnr)) { newSelected = newSelected.filter(c => c !== sat.catnr); } 
-                        else { newSelected.push(sat.catnr); }
+                        if (newSelected.includes(sat.catnr)) {
+                          // The application always needs one primary target. Never allow an empty selection.
+                          if (newSelected.length === 1) return;
+                          newSelected = newSelected.filter(c => c !== sat.catnr);
+                        } else {
+                          newSelected.push(sat.catnr);
+                        }
                         setSelectedCatnrs(newSelected);
-                        const nextTarget = newSelected.length > 0 ? newSelected[newSelected.length - 1] : null;
+                        const nextTarget = newSelected[newSelected.length - 1];
                         setSelectedCatnr(nextTarget);
                         isTrackingRef.current = true; 
                         setCameraMode('TRACKING');
@@ -5762,7 +6470,7 @@ return (
                           try {
                             const rec = satrecs[nextTarget];
                             if (rec) {
-                                const pos = calculateSatData(currentDate, rec);
+                                const pos = calculateSatData(currentDate, rec, activeStation);
                                 if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
                                   globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng }, 0);
                                 }
@@ -5775,10 +6483,11 @@ return (
                         <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', width: '100%', textAlign: 'left' }}>{sat.displayName}</span>
                       </div>
                       <div style={{ flexShrink: 0 }}>
-                        {sat.catnr === selectedCatnr ? ( <span style={{ color: '#fff', textShadow: '0 0 10px #fff', fontSize: '12px', letterSpacing: '1px' }}>🎯 MAIN</span> ) : selectedCatnrs.includes(sat.catnr) ? ( <span style={{ color: '#000', fontSize: '12px' }}>●</span> ) : null}
+                        {!hasTle ? ( <span style={{ color: 'var(--red)', fontSize: '10px', fontWeight: 900, letterSpacing: '0.5px' }}>NO TLE</span> ) : sat.catnr === selectedCatnr ? ( <span style={{ color: '#fff', textShadow: '0 0 10px #fff', fontSize: '12px', letterSpacing: '1px' }}>🎯 MAIN</span> ) : selectedCatnrs.includes(sat.catnr) ? ( <span style={{ color: '#000', fontSize: '12px' }}>●</span> ) : null}
                       </div>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )})}
@@ -5865,7 +6574,7 @@ return (
                 </thead>
                 <tbody>
                   {passSchedule.length === 0 ? (
-                    <tr><td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: 'var(--red)', fontWeight: 'bold', letterSpacing: '2px' }}>NO PASSES DETECTED IN THIS TIMEFRAME</td></tr>
+                    <tr><td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: passScheduleNote ? 'var(--gold)' : 'var(--red)', fontWeight: 'bold', letterSpacing: '2px' }}>{passScheduleNote || 'NO PASSES DETECTED IN THIS TIMEFRAME'}</td></tr>
                   ) : (
                     passSchedule.map((pass, idx) => {
                       const aosD = new Date(pass.aosTime); const losD = new Date(pass.losTime); const peakD = new Date(pass.peakTime); 
@@ -5881,7 +6590,7 @@ return (
                       let rowStyle = {
                         borderBottom: '1px dashed rgba(255,255,255,0.1)', 
                         cursor: 'pointer', transition: 'all 0.2s', textAlign: 'center',
-                        background: 'transparent', opacity: 1, filter: 'none'
+                        background: 'transparent', opacity: 1, filter: 'none', borderLeft: 'none', boxShadow: 'none'
                       };
 
                       let statusBadge;
@@ -6506,10 +7215,8 @@ return (
           
           /* 📍 ฟันธง: ลดขนาดเริ่มต้น width จาก 1050px เป็น 880px และ height จาก 650px เป็น 550px */
           width: maximizedWins.analyzer ? '100vw' : 'min(880px, 95vw)', height: maximizedWins.analyzer ? '100vh' : 'min(550px, 85vh)',
-    minWidth: 'min(750px, 90vw)', minHeight: 'min(480px, 80vh)',
-          
-          /* 📍 ฟันธง: ลดขนาดต่ำสุด minWidth จาก 900px เป็น 750px และ minHeight จาก 550px เป็น 480px */
-          minWidth: '750px', minHeight: '480px', resize: maximizedWins.analyzer ? 'none' : 'both', overflow: 'hidden',
+          minWidth: 'min(750px, 90vw)', minHeight: 'min(480px, 80vh)',
+          resize: maximizedWins.analyzer ? 'none' : 'both', overflow: 'hidden',
           
           background: 'linear-gradient(145deg, #050a15 0%, #02040a 100%)',
           border: maximizedWins.analyzer ? 'none' : `2px solid ${linkActive ? 'var(--cyan)' : 'var(--red)'}`,
@@ -6930,16 +7637,19 @@ return (
                   const delta = Math.asin(Math.sin(eps*Math.PI/180)*Math.sin(lambda*Math.PI/180)) * 180/Math.PI;
                   
                   const gmst = (18.697374558 + 24.06570982441908 * tDays) % 24;
-                  const lmst = (gmst * 15 + GROUND_STATION.lng) % 360;
+                  const lmst = (gmst * 15 + activeStation.lng) % 360;
                   const ha = (lmst - alpha + 360) % 360;
                   
-                  const latRad = GROUND_STATION.lat * Math.PI/180;
+                  const latRad = activeStation.lat * Math.PI/180;
                   const decRad = delta * Math.PI/180;
                   const haRad = ha * Math.PI/180;
                   
-                  const sunElRad = Math.asin(Math.sin(decRad)*Math.sin(latRad) + Math.cos(decRad)*Math.cos(latRad)*Math.cos(haRad));
+                  const sunElArg = Math.max(-1, Math.min(1, Math.sin(decRad)*Math.sin(latRad) + Math.cos(decRad)*Math.cos(latRad)*Math.cos(haRad)));
+                  const sunElRad = Math.asin(sunElArg);
                   const sunEl = sunElRad * 180/Math.PI;
-                  const sunAzRad = Math.acos((Math.sin(decRad) - Math.sin(sunElRad)*Math.sin(latRad)) / (Math.cos(sunElRad)*Math.cos(latRad)));
+                  const azDen = Math.cos(sunElRad)*Math.cos(latRad);
+                  const azCos = azDen === 0 ? 1 : Math.max(-1, Math.min(1, (Math.sin(decRad) - Math.sin(sunElRad)*Math.sin(latRad)) / azDen));
+                  const sunAzRad = Math.acos(azCos);
                   let sunAz = sunAzRad * 180/Math.PI;
                   if (Math.sin(haRad) > 0) sunAz = 360 - sunAz;
                   return { el: sunEl, az: sunAz };
@@ -6948,7 +7658,7 @@ return (
               const stepMs = angleInterval * 1000;
               const rows = [];
               for (let t = targetPass.aosTime; t <= targetPass.losTime; t += stepMs) {
-                 const pos = calculateSatData(new Date(t), targetSatrec);
+                 const pos = calculateSatData(new Date(t), targetSatrec, activeStation);
                  const sun = getSunPos(t);
                  rows.push({ time: new Date(t), satEl: pos ? Math.max(0, pos.elevationDeg) : 0, satAz: pos ? pos.azimuthDeg : 0, sunEl: sun.el, sunAz: sun.az });
               }
@@ -7096,6 +7806,8 @@ return (
         @keyframes krasue-glow { 0% { opacity: 0.6; } 50% { opacity: 1.0; } 100% { opacity: 0.6; } }
         
         .pkt-tm { fill: var(--cyan); color: var(--cyan); animation: krasue-glow 1.2s ease-in-out infinite; }
+        .pkt-tm-sat { fill: var(--cyan); color: var(--cyan); opacity: 1; filter: drop-shadow(0 0 5px var(--cyan)); }
+        .pkt-binary { fill: #ff4df8 !important; color: #ff4df8 !important; filter: drop-shadow(0 0 5px rgba(255,77,248,0.75)); }
         .pkt-tc { fill: var(--gold); color: var(--gold); animation: krasue-glow 1.2s ease-in-out infinite 0.4s; }
         .pkt-pl { fill: var(--green); color: var(--green); animation: krasue-glow 1.2s ease-in-out infinite 0.8s; }
         .p-line { stroke-width: 3; stroke-dasharray: 8 8; stroke-linecap: round; transition: all 0.3s; }
@@ -7103,7 +7815,7 @@ return (
         .l-tm { stroke: var(--cyan); animation: dash-fwd 0.8s linear infinite; filter: drop-shadow(0 0 5px var(--cyan)); }
         .l-tc { stroke: var(--gold); animation: dash-fwd 0.6s linear infinite; filter: drop-shadow(0 0 5px var(--gold)); }
         .l-pl { stroke: var(--green); animation: dash-fwd 0.8s linear infinite; filter: drop-shadow(0 0 5px var(--green)); }
-        .l-dual { stroke: rgba(0, 234, 255, 0.4); animation: dash-fwd 0.8s linear infinite; filter: drop-shadow(0 0 5px rgba(0, 234, 255, 0.2)); }
+        .l-dual { stroke: var(--cyan); stroke-width: 3; animation: dash-fwd 0.8s linear infinite; filter: drop-shadow(0 0 5px var(--cyan)); }
         
         /* 📍 จุดแก้ขนาดกล่องหลัก (UP/DOWN, SRC, X-BAND) */
         /* 📍 เปลี่ยน px เป็น cqw ให้ยืดหดตามจอ 100% */
@@ -7208,10 +7920,10 @@ return (
                 <g>
                   {/* คลื่นดาวเทียม V-Shape */}
                   <g>
-                    <svg overflow="visible" className="pkt-tm">
+                    <svg overflow="visible" className="pkt-tm-sat">
                       <g transform="rotate(98) scale(1)">
-                        <path d="M -50,0 Q -37.5,-12 -25,0 Q -12.5,12 0,0 Q 12.5,-12 25,0 Q 37.5,12 50,0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                          <animateTransform attributeName="transform" type="scale" values="0.5; 0.85; 0.5" dur="1s" repeatCount="indefinite" />
+                        <path d="M -50,0 Q -37.5,-12 -25,0 Q -12.5,12 0,0 Q 12.5,-12 25,0 Q 37.5,12 50,0" fill="none" stroke="currentColor" strokeLinecap="round" style={{ strokeWidth: 'clamp(1.8px, 0.18cqw, 2.5px)' }}>
+                          <animateTransform attributeName="transform" type="scale" values="0.58; 0.95; 0.58" dur="1s" repeatCount="indefinite" />
                         </path>
                       </g>
                       <animate attributeName="x" from="50%" to="46%" dur="3s" repeatCount="indefinite" />
@@ -7221,8 +7933,8 @@ return (
                   <g>
                     <svg overflow="visible" className="pkt-tc">
                       <g transform="rotate(-82) scale(1)">
-                        <path d="M -50,0 Q -37.5,-12 -25,0 Q -12.5,12 0,0 Q 12.5,-12 25,0 Q 37.5,12 50,0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                          <animateTransform attributeName="transform" type="scale" values="0.5; 0.85; 0.5" dur="1s" repeatCount="indefinite" />
+                        <path d="M -50,0 Q -37.5,-12 -25,0 Q -12.5,12 0,0 Q 12.5,-12 25,0 Q 37.5,12 50,0" fill="none" stroke="currentColor" strokeLinecap="round" style={{ strokeWidth: 'clamp(1.8px, 0.18cqw, 2.5px)' }}>
+                          <animateTransform attributeName="transform" type="scale" values="0.58; 0.95; 0.58" dur="1s" repeatCount="indefinite" />
                         </path>
                       </g>
                       <animate attributeName="x" from="46%" to="50%" dur="3s" repeatCount="indefinite" />
@@ -7232,8 +7944,8 @@ return (
                   <g>
                     <svg overflow="visible" className="pkt-pl">
                       <g transform="rotate(82) scale(1)">
-                        <path d="M -60,0 Q -45,-18 -30,0 Q -15,18 0,0 Q 15,-18 30,0 Q 45,18 60,0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                          <animateTransform attributeName="transform" type="scale" values="0.5; 0.85; 0.5" dur="1s" repeatCount="indefinite" />
+                        <path d="M -60,0 Q -45,-18 -30,0 Q -15,18 0,0 Q 15,-18 30,0 Q 45,18 60,0" fill="none" stroke="currentColor" strokeLinecap="round" style={{ strokeWidth: 'clamp(1.8px, 0.18cqw, 2.5px)' }}>
+                          <animateTransform attributeName="transform" type="scale" values="0.58; 0.95; 0.58" dur="1s" repeatCount="indefinite" />
                         </path>
                       </g>
                       <animate attributeName="x" from="50%" to="54%" dur="2.5s" repeatCount="indefinite" />
@@ -7315,7 +8027,7 @@ return (
 
                   {/* รหัสดิจิตอล (ปรับระยะให้ยาวขึ้น และวิ่งตรงๆ) */}
                   <g>
-                    <text className="pkt-tm" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: '1.2cqw', fontWeight: 900, color: '#b59410', letterSpacing: '4px' }}>
+                    <text className="pkt-binary" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: '1.2cqw', fontWeight: 900, fill: '#ff4df8', color: '#ff4df8', filter: 'drop-shadow(0 0 5px rgba(255,77,248,0.75))', letterSpacing: '4px' }}>
                       0 1 0 1 0 1
                       <animate attributeName="x" from="12%" to="34%" dur="3s" repeatCount="indefinite" />
                       <animate attributeName="y" from="85%" to="85%" dur="3s" repeatCount="indefinite" />
@@ -7323,7 +8035,7 @@ return (
                     </text>
                   </g>
                   <g>
-                    <text className="pkt-pl" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: '1.2cqw', fontWeight: 900, color: '#b59410', letterSpacing: '4px' }}>
+                    <text className="pkt-binary" dominantBaseline="middle" textAnchor="middle" style={{ fontSize: '1.2cqw', fontWeight: 900, fill: '#ff4df8', color: '#ff4df8', filter: 'drop-shadow(0 0 5px rgba(255,77,248,0.75))', letterSpacing: '4px' }}>
                       1 0 1 0 1 0
                       <animate attributeName="x" from="88%" to="66%" dur="3s" repeatCount="indefinite" />
                       <animate attributeName="y" from="85%" to="85%" dur="3s" repeatCount="indefinite" />
@@ -7390,7 +8102,7 @@ return (
             {/* 📍 7.2 โหนดเสาอากาศ (SRC ซ้าย) ขยับที่ 46% */}
             <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '46%', top: '55%', zIndex: 20 }}>
               <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300eaff" className="n-icon" alt="Antenna" />
-              <div className="n-title">{GROUND_STATION.id}</div>
+              <div className="n-title">{activeStation.id}</div>
               <div className="n-sub">S-BAND ANTENNA</div>
               {linkActive && (<>
                 <div className="conn-dot" style={{ top: 'calc(50% - 30px)', left: '0%' }}></div>
@@ -7401,7 +8113,7 @@ return (
             {/* 📍 7.3 โหนดเสาอากาศ (SRC ขวา) ขยับที่ 54% */}
             <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '54%', top: '55%', zIndex: 20, borderColor: linkActive ? 'var(--green)' : '' }}>
               <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300ff66" className="n-icon" alt="Antenna" />
-              <div className="n-title">{GROUND_STATION.id}</div>
+              <div className="n-title">{activeStation.id}</div>
               <div className="n-sub">X-BAND ANTENNA</div>
               {linkActive && (<div className="conn-dot" style={{ top: '50%', left: '100%' }}></div>)}
             </div>
@@ -7456,7 +8168,7 @@ return (
                 <span style={{ color: '#000', background: linkActive ? 'var(--cyan)' : 'rgba(255,255,255,0.3)', fontSize: '9px', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 6px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--cyan)' : 'none' }}>70 MHz IF</span>
               </div>
               <div style={{ display: 'flex', width: '100%', flex: 1, gap: '6px', minHeight: 0 }}>
-                <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justify: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
@@ -7501,7 +8213,7 @@ return (
                 <span style={{ color: '#000', background: linkActive ? 'var(--gold)' : 'rgba(255,255,255,0.3)', fontSize: '9px', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 6px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--gold)' : 'none' }}>720 MHz</span>
               </div>
               <div style={{ display: 'flex', width: '100%', flex: 1, gap: '6px', minHeight: 0 }}>
-                <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justify: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
@@ -7537,5 +8249,13 @@ return (
   </div>
 )}
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <SatOrbitErrorBoundary>
+      <SatOrbitCore />
+    </SatOrbitErrorBoundary>
   );
 }
