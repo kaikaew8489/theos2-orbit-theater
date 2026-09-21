@@ -6220,6 +6220,60 @@ return (
                 >PASS SCHEDULE</button>
               </div>
           </div>
+
+          {/* 📍 SIMULATION STATUS - Summary panel for current SAT-ORBIT operating state */}
+          <div className="panel-box" style={{
+            marginTop: '10px',
+            padding: '10px 14px',
+            background: 'linear-gradient(145deg, rgba(0, 18, 30, 0.88), rgba(0, 7, 15, 0.96))',
+            border: '1px solid var(--cyan)'
+          }}>
+            <div style={{
+              fontFamily: 'Orbitron',
+              fontSize: 'clamp(11px, 1vw, 13px)',
+              color: 'var(--cyan)',
+              fontWeight: '900',
+              letterSpacing: '1.4px',
+              marginBottom: '8px',
+              paddingBottom: '6px',
+              borderBottom: '1px dashed rgba(0,234,255,0.35)'
+            }}>
+              SIMULATION STATUS
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '14px', rowGap: '6px' }}>
+              {[
+                ['TARGET', targetConfig.displayName, 'var(--cyan)'],
+                ['STATION', activeStation.id, 'var(--green)'],
+                ['MODE', (Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive) ? 'REAL-TIME' : (Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying ? 'LIVE' : 'SIM'), (Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive) ? 'var(--green)' : (Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying ? 'var(--green)' : 'var(--gold)')],
+                ['SPEED', `${speedMult}X`, 'var(--gold)'],
+                ['TLE', isUpdatingTle ? 'SYNCING' : (!tles[selectedCatnr] ? 'NO TLE' : (selectedTleIsStale ? 'STALE' : 'SYNCED')), isUpdatingTle ? 'var(--gold)' : (!tles[selectedCatnr] || selectedTleIsStale ? 'var(--red)' : 'var(--green)')],
+                ['ANTENNA', linkActive ? 'TRACKING' : 'STANDBY', linkActive ? 'var(--green)' : 'var(--gold)']
+              ].map(([label, value, color]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minWidth: 0, gap: '8px' }}>
+                  <span style={{
+                    fontFamily: 'Rajdhani',
+                    fontSize: 'clamp(10px, 0.9vw, 12px)',
+                    fontWeight: '800',
+                    color: 'rgba(255,255,255,0.55)',
+                    letterSpacing: '0.8px',
+                    whiteSpace: 'nowrap'
+                  }}>{label}</span>
+                  <strong style={{
+                    fontFamily: 'Orbitron',
+                    fontSize: 'clamp(10px, 0.9vw, 12px)',
+                    fontWeight: '900',
+                    color,
+                    letterSpacing: '0.5px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}>{value}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+
          {/* 📍 เครดิตลิขสิทธิ์และผู้พัฒนา (อัปเดตปีอัตโนมัติ และบีบพื้นที่แนวตั้งขั้นสุด) */}
          <div style={{ textAlign: 'center', marginTop: '4px', fontSize: '16px', color: 'rgba(255, 255, 255, 0.6)', fontFamily: 'Rajdhani', letterSpacing: '1px', lineHeight: '1.2', paddingBottom: '2px' }}>
              © {new Date().getFullYear()} Ground System Engineering Division:GSE <br />
