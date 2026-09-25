@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Thailand Satellite Orbit — OK20.4 FINAL VERCEL BUILD FIX
+// Thailand Satellite Orbit — OK20.8 CLASSIC VECTOR ANTENNA FINAL
 
 import React, { useEffect, useMemo, useRef, useState, startTransition } from 'react';
 import Globe from 'react-globe.gl';
@@ -1067,6 +1067,1133 @@ const FreqLabel = ({ linkType, freq, active }) => {
     </div>
   );
 };
+
+
+// =========================================================================
+// INTERNAL VECTOR ANTENNA 3D SIMULATOR
+// - Embedded inside SAT-ORBIT (no external window required)
+// - Reuses SAT-ORBIT master clock / AZ / EL / SIM rate
+// - Vector/wireframe reflector + feed + pedestal, preserving the original concept
+// =========================================================================
+const CLASSIC_VECTOR_ANTENNA_BASE_PATH = `M158,679L158,683L157,684L157,692L156,693L156,699L155,700L155,707L154,708L154,713L153,714L153,720L152,721L152,728L151,729L151,737L150,738L150,745L149,746L149,753L148,754L148,762L147,763L147,772L146,773L146,780L145,781L145,788L144,789L144,795L143,796L143,803L142,804L142,813L141,814L141,823L144,823L145,824L146,824L147,823L147,820L148,819L148,812L149,811L149,806L150,805L150,798L151,797L151,789L153,787L154,788L160,788L162,790L161,791L161,798L160,799L160,806L159,807L159,815L158,816L158,832L157,833L157,852L155,854L148,854L146,852L146,833L140,833L140,1040L146,1040L147,1039L147,1021L149,1019L156,1019L157,1020L157,1034L158,1035L158,1044L157,1045L157,1047L156,1048L155,1051L153,1053L153,1054L152,1055L150,1055L148,1053L145,1052L143,1050L143,1047L142,1047L141,1046L140,1046L139,1047L136,1046L136,1047L134,1049L133,1052L131,1054L131,1055L130,1056L129,1059L127,1061L127,1062L126,1063L125,1066L123,1068L122,1071L120,1073L120,1074L119,1075L118,1078L116,1080L115,1083L113,1085L112,1088L110,1090L109,1093L107,1095L107,1096L106,1097L106,1098L105,1099L104,1102L102,1104L102,1105L101,1106L101,1107L100,1108L100,1109L99,1110L99,1111L98,1112L98,1113L97,1114L96,1117L99,1120L102,1119L104,1121L105,1121L107,1123L108,1123L111,1126L111,1133L110,1134L106,1134L105,1135L102,1135L100,1133L100,1126L99,1125L98,1125L97,1126L93,1126L93,1138L92,1139L93,1140L93,1142L92,1143L92,1326L93,1327L99,1327L101,1325L110,1325L111,1326L111,1332L316,1332L316,1327L317,1326L317,1322L316,1321L316,1289L317,1288L317,1284L318,1283L332,1283L334,1281L334,1130L333,1129L318,1129L317,1128L317,1126L316,1125L315,1122L313,1120L312,1117L310,1115L310,1114L309,1113L309,1112L308,1111L307,1108L305,1106L305,1105L304,1104L304,1103L303,1102L302,1099L300,1097L299,1094L297,1092L296,1089L294,1087L294,1086L293,1085L292,1082L290,1080L290,1079L289,1078L288,1075L286,1073L286,1072L285,1071L284,1068L282,1066L282,1065L281,1064L281,1063L280,1062L279,1059L277,1057L277,1056L276,1055L276,1054L274,1052L274,1051L273,1050L272,1047L270,1045L270,981L272,979L283,979L283,978L284,977L284,975L283,974L283,973L271,973L270,972L270,870L274,866L277,865L279,863L280,863L282,861L283,861L284,860L284,856L272,856L271,855L271,826L272,825L272,817L274,815L275,815L275,810L276,809L276,803L277,802L277,795L278,794L278,787L279,786L279,778L280,777L280,771L281,770L281,762L282,761L282,753L283,752L283,745L284,744L284,737L285,736L285,730L283,728L283,725L284,724L284,721L285,720L285,719L289,715L290,715L294,711L294,710L293,709L287,709L286,708L286,701L287,700L287,696L285,696L285,700L284,701L284,707L282,709L204,709L203,708L196,708L195,709L194,709L194,711L195,712L199,712L200,713L200,715L201,716L201,720L202,721L204,721L205,720L204,719L204,716L203,715L203,713L204,712L233,712L234,713L234,716L233,717L233,721L236,721L236,717L237,716L237,713L238,712L265,712L266,713L265,714L265,715L263,718L263,720L264,721L265,721L266,720L266,719L267,718L267,717L268,716L268,715L270,712L282,712L283,713L283,717L282,718L282,726L280,728L273,728L272,729L272,734L271,735L271,742L270,743L270,749L269,750L269,756L268,757L268,763L267,764L267,772L266,773L266,780L265,781L265,790L264,791L264,798L263,799L263,810L262,811L262,816L260,818L253,818L252,817L245,817L244,816L238,816L237,815L231,815L230,814L224,814L223,813L216,813L215,812L208,812L207,811L200,811L199,810L191,810L190,809L183,809L182,808L175,808L174,807L167,807L166,806L163,806L162,805L162,799L163,798L163,791L165,789L165,788L166,787L166,782L167,781L167,780L165,778L165,775L166,774L166,767L167,766L167,760L168,759L168,752L169,751L169,744L170,743L170,737L171,736L171,727L172,726L172,720L173,719L173,714L175,712L175,711L176,710L176,703L175,702L175,694L176,693L176,687L177,686L177,680L178,679L183,679L184,680L184,685L183,686L183,691L184,691L185,692L194,692L194,683L196,681L198,681L199,682L205,682L206,683L213,683L214,684L221,684L222,685L229,685L230,686L235,686L230,686L229,685L225,685L224,684L220,684L219,683L214,683L213,682L209,682L208,681L204,681L203,680L198,680L197,679L193,679L193,690L192,691L190,691L189,690L189,687L190,686L190,679L189,678L189,682L188,683L188,689L187,690L186,690L185,689L185,683L186,682L186,678L178,678L177,677L176,677L176,680L175,681L175,688L174,689L174,696L173,697L173,702L172,703L171,703L170,702L164,702L162,700L163,699L163,691L164,690L164,683L165,682L165,680L164,679ZM113,1330L114,1329L313,1329L314,1330L313,1331L114,1331ZM95,1316L96,1315L110,1315L111,1316L111,1322L110,1323L96,1323L95,1322ZM95,1312L96,1311L97,1311L98,1312L97,1313L96,1313ZM96,1286L98,1288L98,1308L97,1309L96,1309L95,1308L95,1287ZM96,1261L97,1261L98,1262L98,1283L97,1284L96,1284L95,1283L95,1262ZM96,1235L97,1235L98,1236L98,1257L97,1258L96,1258L95,1257L95,1236ZM101,1230L110,1230L111,1231L111,1312L110,1313L101,1313L100,1312L100,1231ZM95,1230L96,1229L97,1229L98,1230L98,1231L97,1232L96,1232L95,1231ZM95,1221L97,1219L109,1219L111,1221L111,1226L109,1228L108,1227L96,1227L95,1226ZM97,1209L98,1210L98,1216L96,1218L95,1217L95,1210L96,1209ZM96,1183L98,1185L98,1205L97,1206L96,1206L95,1205L95,1184ZM96,1157L97,1157L98,1158L98,1179L97,1180L96,1180L95,1179L95,1158ZM96,1147L97,1147L98,1148L98,1153L97,1154L96,1154L95,1153L95,1148ZM102,1146L109,1146L111,1148L111,1216L109,1218L102,1218L100,1216L100,1148ZM95,1137L96,1136L109,1136L111,1138L111,1143L110,1144L96,1144L95,1143ZM269,1131L330,1131L331,1132L331,1279L330,1280L269,1280L268,1279L268,1132ZM247,1131L264,1131L266,1133L266,1279L265,1280L247,1280L246,1279L246,1132ZM96,1128L97,1128L98,1129L98,1133L97,1134L96,1134L95,1133L95,1129ZM113,1128L114,1127L314,1127L315,1128L314,1129L245,1129L244,1130L244,1282L245,1283L313,1283L314,1284L314,1327L313,1328L233,1328L232,1327L230,1327L229,1328L140,1328L139,1327L136,1327L135,1328L115,1328L113,1326ZM126,1187L125,1188L125,1305L126,1306L196,1306L196,1305L197,1304L197,1303L196,1302L196,1301L197,1300L196,1299L196,1298L197,1297L197,1291L196,1290L196,1265L197,1264L197,1223L196,1222L196,1199L197,1198L197,1189L196,1188L196,1187ZM192,1189L194,1189L195,1190L195,1303L194,1304L193,1304L192,1303L192,1297L191,1296L191,1269L192,1268L191,1267L191,1265L192,1264L192,1258L191,1257L191,1216L192,1215L192,1202L191,1201L191,1190ZM128,1189L189,1189L190,1190L190,1303L189,1304L128,1304L126,1302L126,1297L127,1296L127,1222L126,1221L126,1202L127,1201L127,1192L126,1191ZM130,1192L130,1301L186,1301L187,1300L187,1238L186,1237L186,1234L187,1233L187,1193L186,1192ZM132,1194L184,1194L185,1195L185,1299L184,1300L132,1300L131,1299L131,1195ZM147,1169L147,1177L148,1178L169,1178L170,1177L170,1169L169,1168L148,1168ZM160,1171L161,1170L167,1170L168,1171L168,1175L167,1176L161,1176L160,1175ZM149,1171L150,1170L156,1170L157,1171L157,1175L156,1176L150,1176L149,1175ZM155,1139L155,1146L162,1146L162,1140L161,1139ZM157,1142L158,1141L159,1141L160,1142L160,1144L159,1145L158,1145L157,1144ZM103,1109L105,1109L106,1110L107,1110L109,1112L110,1112L111,1113L112,1113L115,1115L115,1117L114,1118L114,1119L112,1122L110,1122L107,1119L106,1119L104,1117L103,1117L100,1115L100,1113L101,1112L101,1111ZM105,1107L106,1106L107,1107L106,1108ZM119,1084L120,1085L120,1086L119,1087L118,1090L116,1092L115,1095L113,1097L113,1098L112,1099L111,1102L109,1104L108,1104L107,1103L107,1101L108,1100L109,1097L111,1095L111,1094L112,1093L112,1092L114,1090L115,1087L118,1084ZM138,1061L140,1063L143,1064L145,1066L145,1067L143,1069L142,1072L140,1074L139,1077L137,1079L137,1080L136,1081L136,1082L134,1084L134,1085L133,1086L132,1089L130,1091L130,1092L129,1093L129,1094L127,1096L126,1099L122,1104L122,1105L121,1106L121,1107L119,1109L118,1112L117,1113L116,1113L115,1112L112,1111L110,1109L110,1108L111,1107L112,1104L114,1102L114,1101L115,1100L116,1097L118,1095L118,1094L119,1093L120,1090L122,1088L122,1087L123,1086L124,1083L126,1081L126,1080L127,1079L128,1076L130,1074L131,1071L133,1069L133,1068L134,1067L135,1064ZM132,1061L133,1062L133,1064L132,1065L132,1066L130,1068L129,1071L127,1073L127,1074L126,1075L125,1078L123,1080L123,1081L122,1082L121,1082L119,1080L120,1079L120,1078L122,1076L123,1073L125,1071L125,1070L126,1069L126,1068L128,1066L129,1063L131,1061ZM137,1050L139,1050L144,1054L147,1055L150,1058L150,1059L146,1064L145,1063L144,1063L142,1061L141,1061L139,1059L136,1058L134,1056L134,1054L135,1053L135,1052ZM114,1123L116,1121L117,1118L119,1116L120,1113L122,1111L123,1108L125,1106L125,1105L126,1104L126,1103L127,1102L128,1099L132,1094L133,1091L135,1089L136,1086L138,1084L139,1081L141,1079L141,1078L142,1077L143,1074L145,1072L146,1069L148,1067L148,1066L149,1065L150,1062L152,1060L152,1059L154,1057L155,1054L157,1052L158,1049L160,1047L268,1047L270,1049L270,1050L271,1051L272,1054L274,1056L274,1057L275,1058L276,1061L278,1063L278,1064L279,1065L280,1068L282,1070L282,1071L283,1072L284,1075L286,1077L286,1078L287,1079L288,1082L290,1084L291,1087L293,1089L293,1090L294,1091L294,1092L295,1093L296,1096L298,1098L298,1099L299,1100L300,1103L302,1105L303,1108L305,1110L305,1111L306,1112L307,1115L309,1117L309,1118L310,1119L310,1120L312,1123L311,1124L255,1124L254,1125L251,1125L250,1124L233,1124L232,1125L223,1125L222,1124L217,1124L216,1125L214,1125L213,1124L212,1125L211,1124L200,1124L199,1125L198,1124L197,1124L196,1125L195,1124L194,1125L193,1124L192,1125L191,1124L176,1124L175,1125L141,1125L140,1124L134,1124L133,1125L116,1125ZM160,1044L161,1043L267,1043L268,1044L267,1045L161,1045ZM160,1041L160,1040L161,1039L267,1039L268,1040L266,1042L161,1042ZM143,1031L144,1031L145,1032L145,1037L144,1038L143,1038L142,1037L142,1032ZM143,1020L144,1020L145,1021L145,1025L144,1026L143,1026L142,1025L142,1021ZM141,1012L143,1010L158,1010L160,1012L160,1016L158,1018L143,1018L141,1016ZM144,1003L145,1004L145,1007L143,1009L141,1007L141,1005L143,1003ZM148,980L157,980L158,981L158,1007L156,1009L149,1009L147,1007L147,981ZM160,981L161,980L211,980L212,979L266,979L267,980L267,987L268,988L268,1013L267,1014L268,1015L268,1017L267,1018L267,1033L268,1034L268,1036L266,1038L161,1038L160,1037L160,1020L161,1019L161,1013L162,1012L162,1011L160,1008ZM145,977L147,975L281,975L282,976L282,977L281,978L146,978ZM143,953L144,953L145,954L145,973L144,974L144,979L145,980L145,999L144,1000L143,1000L142,999L142,990L141,989L141,955ZM148,943L157,943L158,944L158,972L157,973L148,973L147,972L147,944ZM143,943L144,943L145,944L145,948L144,949L142,949L141,948L141,945ZM141,935L142,934L159,934L160,935L160,940L159,941L142,941L141,940ZM143,926L145,928L145,931L144,932L142,932L141,931L141,928ZM147,873L148,874L148,909L147,910L146,909L146,874ZM143,873L144,873L145,874L145,923L144,924L143,924L141,922L141,875ZM146,867L147,866L148,867L148,868L147,869L146,868ZM151,865L157,865L158,866L158,931L157,932L151,932L150,931L150,866ZM143,865L144,865L145,866L145,869L144,870L142,870L141,869L141,867ZM270,866L270,862L271,861L277,861L278,862L277,863L276,863L274,865L273,865L271,867ZM162,861L267,861L268,862L268,943L267,944L267,967L268,968L268,972L267,973L161,973L160,972L160,943L162,941L162,934L160,932L160,863ZM147,862L148,861L158,861L159,862L158,863L148,863ZM147,858L148,857L281,857L282,858L282,859L281,860L148,860L147,859ZM270,855L269,856L160,856L159,855L160,854L238,854L239,853L258,853L259,854L266,854L267,853L268,853ZM143,848L144,848L145,849L145,862L144,863L142,863L141,862L141,857L142,856L142,849ZM158,841L159,840L269,840L270,841L270,851L268,853L159,853L158,852ZM143,834L144,834L145,835L145,844L144,845L142,845L141,844L141,837ZM159,829L160,828L168,828L169,829L184,829L185,830L199,830L200,831L216,831L217,832L231,832L232,833L243,833L244,834L254,834L255,835L261,835L262,836L267,836L269,838L268,839L160,839L159,838ZM262,818L264,816L270,816L271,817L271,819L270,820L265,820ZM159,824L160,823L160,817L162,815L163,816L170,816L171,817L179,817L180,818L187,818L188,819L195,819L196,820L202,820L203,821L210,821L211,822L218,822L219,823L226,823L227,824L233,824L234,825L239,825L240,826L247,826L248,827L255,827L256,828L263,828L264,829L268,829L269,830L269,835L268,836L267,835L263,835L262,834L259,834L258,833L244,833L243,832L232,832L231,831L218,831L217,830L205,830L204,829L189,829L188,828L174,828L173,827L161,827L159,825ZM161,812L162,811L165,811L166,812L173,812L174,813L181,813L182,814L188,814L189,815L196,815L197,816L204,816L205,817L212,817L213,818L220,818L221,819L228,819L229,820L235,820L236,821L242,821L243,822L250,822L251,823L256,823L257,824L263,824L264,825L268,825L270,827L269,828L265,828L264,827L257,827L256,826L250,826L249,825L242,825L241,824L236,824L235,823L228,823L227,822L220,822L219,821L213,821L212,820L205,820L204,819L197,819L196,818L189,818L188,817L181,817L180,816L174,816L173,815L167,815L166,814L162,814L161,813ZM161,809L163,807L164,808L171,808L172,809L180,809L181,810L188,810L189,811L197,811L198,812L204,812L205,813L213,813L214,814L220,814L221,815L228,815L229,816L235,816L236,817L243,817L244,818L251,818L252,819L256,819L257,820L262,820L263,821L269,821L270,822L270,823L269,824L264,824L263,823L258,823L257,822L251,822L250,821L244,821L243,820L236,820L235,819L228,819L227,818L220,818L219,817L213,817L212,816L205,816L204,815L198,815L197,814L190,814L189,813L182,813L181,812L174,812L173,811L166,811L165,810L162,810ZM147,797L148,798L148,805L147,806L147,814L146,815L146,819L144,821L143,820L143,811L144,810L144,804L145,803L145,798L146,797ZM147,787L149,787L150,788L150,790L148,793L147,793L146,792L146,788ZM147,780L148,779L158,779L159,780L164,780L165,781L165,785L163,787L160,787L159,786L152,786L151,785L148,785L147,784ZM149,771L151,771L152,772L152,773L151,774L151,776L150,777L149,777L148,776L148,772ZM154,745L155,746L155,750L154,751L154,758L153,759L153,765L152,766L152,767L151,768L150,768L149,767L149,763L150,762L150,755L151,754L151,747L153,745ZM276,729L277,730L282,730L283,731L283,733L282,734L282,742L281,743L281,750L280,751L280,759L279,760L279,767L278,768L278,776L277,777L277,784L276,785L276,792L275,793L275,800L274,801L274,809L273,810L273,813L272,814L266,814L264,812L264,808L265,807L265,799L266,798L266,790L267,789L267,782L268,781L268,774L269,773L269,767L270,766L270,759L271,758L271,750L272,749L272,741L273,740L273,732ZM156,719L158,721L158,726L157,727L157,736L156,737L156,741L155,742L154,742L152,740L152,738L153,737L153,730L154,729L154,722ZM289,711L290,712L286,716L285,715L285,713L287,711ZM170,712L171,713L171,720L170,721L170,728L169,729L169,735L168,736L168,743L167,744L167,751L166,752L166,759L165,760L165,768L164,769L164,775L162,778L155,778L153,776L153,773L154,772L154,765L155,764L155,758L156,757L156,750L157,749L157,742L158,741L158,733L159,732L159,726L160,725L160,717L161,716L161,712L162,711L164,711L165,712ZM158,711L159,712L159,715L157,717L155,715L155,713L157,711ZM156,705L158,702L159,702L160,703L168,703L169,704L173,704L174,705L174,710L173,711L170,711L169,710L161,710L160,709L157,709L156,708ZM158,694L160,694L161,695L161,700L160,701L158,701L157,700L157,695ZM162,680L163,681L163,686L162,687L162,690L161,691L159,691L158,690L158,689L159,688L159,682L161,680Z`;
+
+function Antenna3DSimulatorModal({
+  open,
+  onClose,
+  targetData,
+  targetConfig,
+  linkActive,
+  speedMult,
+  isPlaying,
+  stationMask,
+  stationId,
+  satelliteTextureUrl,
+  windowZIndex,
+  onFocus,
+  simulatedTimeMs,
+  nextPassTimeMs
+}) {
+  // STOW/PARK visual position: reflector-up, AZ 0 deg / EL 90 deg.
+  // Keep the vector geometry and all tracking/orbit logic unchanged.
+  const STOW_PARK_AZ_DEG = 0;
+  const STOW_PARK_EL_DEG = 90;
+
+  const [isMaximized, setIsMaximized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [showGrid, setShowGrid] = useState(false);
+  const [showGuides, setShowGuides] = useState(true);
+  const [showOrbit, setShowOrbit] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+  const [windowRect, setWindowRect] = useState({ x: 90, y: 72, width: 1180, height: 720 });
+  const [visualPointing, setVisualPointing] = useState({ az: STOW_PARK_AZ_DEG, el: STOW_PARK_EL_DEG });
+  const [visualSignalVisible, setVisualSignalVisible] = useState(false);
+  const frameRef = useRef(null);
+  const dragRef = useRef({ offsetX: 0, offsetY: 0 });
+  const initializedWindowRef = useRef(false);
+  const servoRef = useRef({
+    az: STOW_PARK_AZ_DEG,
+    el: STOW_PARK_EL_DEG,
+    azVel: 0,
+    elVel: 0,
+    lastTs: null,
+    lastLinkActive: false,
+    signalReadyAt: 0,
+    losAt: 0
+  });
+  const servoInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) {
+      setIsMaximized(false);
+      setIsMinimized(false);
+      setIsDragging(false);
+      return;
+    }
+
+    const fitRectToViewport = (rect) => {
+      const vw = Math.max(320, window.innerWidth);
+      const vh = Math.max(240, window.innerHeight);
+      const maxW = Math.max(520, vw - 16);
+      const maxH = Math.max(360, vh - 16);
+      const width = Math.min(Math.max(620, rect.width), maxW);
+      const height = Math.min(Math.max(440, rect.height), maxH);
+      const x = Math.min(Math.max(8, rect.x), Math.max(8, vw - width - 8));
+      const y = Math.min(Math.max(8, rect.y), Math.max(8, vh - height - 8));
+      return { x, y, width, height };
+    };
+
+    if (!initializedWindowRef.current) {
+      const vw = Math.max(320, window.innerWidth);
+      const vh = Math.max(240, window.innerHeight);
+      const width = Math.min(1360, Math.max(760, vw * 0.74), vw - 24);
+      const height = Math.min(840, Math.max(540, vh * 0.78), vh - 24);
+      setWindowRect({
+        x: Math.max(12, (vw - width) / 2),
+        y: Math.max(12, (vh - height) / 2),
+        width,
+        height
+      });
+      initializedWindowRef.current = true;
+    } else {
+      setWindowRect((rect) => fitRectToViewport(rect));
+    }
+
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      if (isMaximized) setIsMaximized(false);
+      else if (isMinimized) setIsMinimized(false);
+      else onClose();
+    };
+    const onResize = () => {
+      if (isMaximized) return;
+      setWindowRect((rect) => fitRectToViewport(rect));
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [open, isMaximized, isMinimized, onClose]);
+
+  useEffect(() => {
+    if (!open || !isDragging) return;
+
+    const onPointerMove = (event) => {
+      const vw = Math.max(320, window.innerWidth);
+      const vh = Math.max(240, window.innerHeight);
+      setWindowRect((rect) => {
+        const x = Math.min(Math.max(0, event.clientX - dragRef.current.offsetX), Math.max(0, vw - rect.width));
+        const effectiveHeight = isMinimized ? 58 : rect.height;
+        const y = Math.min(Math.max(0, event.clientY - dragRef.current.offsetY), Math.max(0, vh - effectiveHeight));
+        return { ...rect, x, y };
+      });
+    };
+    const onPointerUp = () => setIsDragging(false);
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+  }, [open, isDragging, isMinimized]);
+
+  useEffect(() => {
+    if (!open || isMaximized || isMinimized || !frameRef.current || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.target?.getBoundingClientRect?.();
+      if (!rect) return;
+      setWindowRect((current) => {
+        if (Math.abs(current.width - rect.width) < 1 && Math.abs(current.height - rect.height) < 1) return current;
+        return { ...current, width: rect.width, height: rect.height };
+      });
+    });
+    observer.observe(frameRef.current);
+    return () => observer.disconnect();
+  }, [open, isMaximized, isMinimized]);
+
+  const startWindowDrag = (event) => {
+    if (isMaximized || event.button !== 0) return;
+    if (event.target?.closest?.('button, input, label')) return;
+    const rect = frameRef.current?.getBoundingClientRect?.();
+    if (!rect) return;
+    dragRef.current = { offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
+    setIsDragging(true);
+    event.preventDefault();
+  };
+
+  const validAz = Number.isFinite(targetData?.azimuthDeg);
+  const validEl = Number.isFinite(targetData?.elevationDeg);
+  const wrappedAz = validAz ? (((targetData.azimuthDeg % 360) + 360) % 360) : 0;
+  const rawEl = validEl ? targetData.elevationDeg : 0;
+
+  // Visual servo model only. SAT-ORBIT remains the source of truth for orbit/AZ/EL.
+  // At 1X, the model uses LEO-class visual rates (AZ 15 deg/s, EL 12 deg/s),
+  // pre-slews shortly before AOS, waits 3 seconds for acquisition, then tracks.
+  // After LOS the RF/satellite disappears, the dish holds briefly, then returns
+  // to STOW/PARK more gently (AZ 12 deg/s, EL 9 deg/s).
+  servoInputRef.current = {
+    validAz,
+    validEl,
+    wrappedAz,
+    rawEl,
+    linkActive: Boolean(linkActive),
+    speedMult: Math.max(1, Number(speedMult) || 1),
+    isPlaying: Boolean(isPlaying),
+    stationMask: Math.max(0, Number(stationMask) || 0),
+    simulatedTimeMs: Number(simulatedTimeMs),
+    nextPassTimeMs: Number(nextPassTimeMs)
+  };
+
+  useEffect(() => {
+    if (!open) {
+      const servo = servoRef.current;
+      servo.az = STOW_PARK_AZ_DEG;
+      servo.el = STOW_PARK_EL_DEG;
+      servo.azVel = 0;
+      servo.elVel = 0;
+      servo.lastTs = null;
+      servo.lastLinkActive = false;
+      servo.signalReadyAt = 0;
+      servo.losAt = 0;
+      setVisualPointing({ az: STOW_PARK_AZ_DEG, el: STOW_PARK_EL_DEG });
+      setVisualSignalVisible(false);
+      return;
+    }
+
+    let rafId = 0;
+    const PRE_SLEW_LEAD_SIM_MS = 9000;
+    const ACQUIRE_WAIT_REAL_MS = 3000;
+    const POST_LOS_HOLD_REAL_MS = 1200;
+
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const shortestAzError = (target, current) => ((target - current + 540) % 360) - 180;
+    const approachVelocity = (velocity, desired, maxDelta) => {
+      if (velocity < desired) return Math.min(desired, velocity + maxDelta);
+      if (velocity > desired) return Math.max(desired, velocity - maxDelta);
+      return velocity;
+    };
+
+    const stepLinearAxis = (current, velocity, target, maxRate, accel, dt) => {
+      const error = target - current;
+      if (Math.abs(error) < 0.01 && Math.abs(velocity) < 0.05) return { value: target, velocity: 0 };
+      const desiredVelocity = clamp(error * 2.1, -maxRate, maxRate);
+      let nextVelocity = approachVelocity(velocity, desiredVelocity, accel * dt);
+      let step = nextVelocity * dt;
+      if (Math.abs(step) > Math.abs(error)) {
+        step = error;
+        nextVelocity = 0;
+      }
+      return { value: current + step, velocity: nextVelocity };
+    };
+
+    const stepAzAxis = (current, velocity, target, maxRate, accel, dt) => {
+      const error = shortestAzError(target, current);
+      if (Math.abs(error) < 0.01 && Math.abs(velocity) < 0.05) return { value: (target + 360) % 360, velocity: 0 };
+      const desiredVelocity = clamp(error * 2.1, -maxRate, maxRate);
+      let nextVelocity = approachVelocity(velocity, desiredVelocity, accel * dt);
+      let step = nextVelocity * dt;
+      if (Math.abs(step) > Math.abs(error)) {
+        step = error;
+        nextVelocity = 0;
+      }
+      return { value: ((current + step) % 360 + 360) % 360, velocity: nextVelocity };
+    };
+
+    const animate = (ts) => {
+      const input = servoInputRef.current;
+      const servo = servoRef.current;
+      if (!input) {
+        rafId = requestAnimationFrame(animate);
+        return;
+      }
+
+      const dt = servo.lastTs === null ? 0 : clamp((ts - servo.lastTs) / 1000, 0, 0.05);
+      servo.lastTs = ts;
+      const speed = input.isPlaying ? input.speedMult : 0;
+      const veryFastSim = speed > 60;
+      const motionScale = speed > 0 ? speed : 0;
+
+      if (input.linkActive && !servo.lastLinkActive) {
+        servo.signalReadyAt = ts + (veryFastSim ? 0 : ACQUIRE_WAIT_REAL_MS / Math.max(1, motionScale));
+        servo.losAt = 0;
+        setVisualSignalVisible(false);
+      } else if (!input.linkActive && servo.lastLinkActive) {
+        servo.losAt = ts;
+        servo.signalReadyAt = 0;
+        setVisualSignalVisible(false);
+      }
+      servo.lastLinkActive = input.linkActive;
+
+      const simNow = Number.isFinite(input.simulatedTimeMs) ? input.simulatedTimeMs : 0;
+      const passAt = Number.isFinite(input.nextPassTimeMs) ? input.nextPassTimeMs : 0;
+      const timeToAos = passAt > 0 ? passAt - simNow : Infinity;
+      const preSlew = Boolean(
+        input.isPlaying && !input.linkActive && input.validAz &&
+        timeToAos > 0 && timeToAos <= PRE_SLEW_LEAD_SIM_MS
+      );
+      const holdingAfterLos = Boolean(
+        !input.linkActive && servo.losAt > 0 &&
+        ts - servo.losAt < (veryFastSim ? 0 : POST_LOS_HOLD_REAL_MS / Math.max(1, motionScale))
+      );
+
+      let targetAz = STOW_PARK_AZ_DEG;
+      let targetEl = STOW_PARK_EL_DEG;
+      let maxAzRate = 12;
+      let maxElRate = 9;
+      let azAccel = 20;
+      let elAccel = 18;
+
+      if (input.linkActive && input.validAz && input.validEl) {
+        targetAz = input.wrappedAz;
+        targetEl = clamp(input.rawEl, 0, 90);
+        maxAzRate = 15;
+        maxElRate = 12;
+        azAccel = 30;
+        elAccel = 24;
+      } else if (preSlew) {
+        targetAz = input.wrappedAz;
+        targetEl = clamp(input.stationMask, 0, 90);
+        maxAzRate = 15;
+        maxElRate = 12;
+        azAccel = 30;
+        elAccel = 24;
+      } else if (holdingAfterLos) {
+        targetAz = servo.az;
+        targetEl = servo.el;
+        maxAzRate = 0;
+        maxElRate = 0;
+        azAccel = 0;
+        elAccel = 0;
+      }
+
+      if (veryFastSim && input.linkActive && input.validAz && input.validEl) {
+        servo.az = targetAz;
+        servo.el = targetEl;
+        servo.azVel = 0;
+        servo.elVel = 0;
+      } else if (dt > 0 && motionScale > 0) {
+        const azStep = stepAzAxis(servo.az, servo.azVel, targetAz, maxAzRate * motionScale, azAccel * motionScale * motionScale, dt);
+        const elStep = stepLinearAxis(servo.el, servo.elVel, targetEl, maxElRate * motionScale, elAccel * motionScale * motionScale, dt);
+        servo.az = azStep.value;
+        servo.azVel = azStep.velocity;
+        servo.el = clamp(elStep.value, 0, 90);
+        servo.elVel = elStep.velocity;
+      }
+
+      const pointingError = input.linkActive && input.validAz && input.validEl
+        ? Math.max(Math.abs(shortestAzError(input.wrappedAz, servo.az)), Math.abs(clamp(input.rawEl, 0, 90) - servo.el))
+        : Infinity;
+      const signalShouldShow = Boolean(
+        input.linkActive && input.validAz && input.validEl &&
+        (veryFastSim || ts >= servo.signalReadyAt) &&
+        pointingError <= (veryFastSim ? 999 : 2.5)
+      );
+
+      // Once acquisition is achieved, keep the satellite/RF visualization latched
+      // for the remainder of the active pass. Near zenith the apparent azimuth can
+      // change very quickly (especially at accelerated SIM rates), so a transient
+      // servo pointing error must not make the satellite disappear from the scene.
+      // The latch is cleared only when linkActive becomes false (LOS) or the view closes.
+      setVisualSignalVisible((current) => {
+        if (!input.linkActive) return false;
+        if (current) return true;
+        return signalShouldShow;
+      });
+      setVisualPointing((current) => {
+        if (Math.abs(shortestAzError(servo.az, current.az)) < 0.015 && Math.abs(servo.el - current.el) < 0.015) return current;
+        return { az: servo.az, el: servo.el };
+      });
+
+      rafId = requestAnimationFrame(animate);
+    };
+
+    rafId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafId);
+  }, [open]);
+
+  const displayAz = visualPointing.az;
+  const displayEl = visualPointing.el;
+
+  // The antenna below is the same Classic Vector geometry/projection model used
+  // by GISTDA Mission Simulator v2.4.14.  SAT-ORBIT remains the master clock;
+  // only the visual renderer is reused here.  No extra TLE/orbit engine is added.
+  const classicVector = useMemo(() => {
+    const TAU = Math.PI * 2;
+    const ANT = {
+      R: 507,
+      vertexX: 55,
+      focusX: 458,
+      rimDepth: 160,
+      hubX: -86,
+      hubR: 70,
+      subX: 455,
+      subR: 58,
+      supportR: 27,
+      panelCount: 24,
+      feedTipX: 500
+    };
+
+    const styleDefs = {
+      surface: { stroke: '#2c5f78', width: 1.00, opacity: 0.58 },
+      truss: { stroke: '#204e67', width: 1.20, opacity: 0.82 },
+      major: { stroke: '#103c55', width: 1.78, opacity: 1.00 },
+      feed: { stroke: '#075a75', width: 1.60, opacity: 0.98 },
+      balance: { stroke: '#17465f', width: 1.52, opacity: 0.92, bands: { back: 0.18, mid: 0.62, front: 1.00 } },
+      xfeed: { stroke: '#0d667d', width: 1.40, opacity: 0.92, bands: { back: 0.24, mid: 0.70, front: 1.00 } },
+      depth: { stroke: '#426f82', width: 0.88, opacity: 0.42 }
+    };
+
+    const v3 = (x, y, z) => ({ x, y, z });
+    const dishPoint = (r, t) => {
+      const q = r / ANT.R;
+      return v3(ANT.vertexX + ANT.rimDepth * q * q, r * Math.cos(t), r * Math.sin(t));
+    };
+    const rearPoint = (r, t) => {
+      const q = r / ANT.R;
+      const front = dishPoint(r, t);
+      const back = 54 + 62 * (1 - q);
+      return v3(front.x - back, front.y, front.z);
+    };
+    const ring3 = (radius, xFn, n = ANT.panelCount, phase = 0) => {
+      const points = [];
+      for (let i = 0; i < n; i++) {
+        const t = phase + TAU * i / n;
+        points.push(typeof xFn === 'function'
+          ? v3(xFn(radius, t), radius * Math.cos(t), radius * Math.sin(t))
+          : v3(xFn, radius * Math.cos(t), radius * Math.sin(t)));
+      }
+      points.push(points[0]);
+      return points;
+    };
+    const circleAxisX = (x, r, n = 24, phase = 0) => ring3(r, x, n, phase);
+    const geometry = { surface: [], truss: [], major: [], feed: [], balance: [], xfeed: [], depth: [] };
+    const seg = (layer, a, b) => geometry[layer].push([a, b]);
+    const poly = (layer, points) => {
+      for (let i = 1; i < points.length; i++) seg(layer, points[i - 1], points[i]);
+    };
+    const PH = Math.PI / 24;
+
+    // Main reflector: 24-panel faceted rim and restrained contour lines.
+    const frontRim = ring3(ANT.R, (r, t) => dishPoint(r, t).x, ANT.panelCount, PH);
+    poly('major', frontRim);
+    [0.30, 0.52, 0.73, 0.88].forEach((frac) => {
+      poly('surface', ring3(ANT.R * frac, (r, t) => dishPoint(r, t).x, ANT.panelCount, PH));
+    });
+    const surfaceRib = (t, steps = 10) => {
+      const points = [];
+      for (let j = 0; j <= steps; j++) points.push(dishPoint(ANT.R * j / steps, t));
+      return points;
+    };
+    for (let i = 0; i < ANT.panelCount; i++) {
+      const t = PH + TAU * i / ANT.panelCount;
+      poly(i % 6 === 0 ? 'truss' : 'surface', surfaceRib(t, 10));
+    }
+    poly('major', surfaceRib(0, 12));
+    poly('major', surfaceRib(Math.PI, 12));
+
+    // Rear reflector space frame.
+    const rearOuter = ring3(ANT.R, (r, t) => rearPoint(r, t).x, ANT.panelCount, PH);
+    const r82 = ANT.R * 0.82;
+    const r60 = ANT.R * 0.60;
+    const r36 = ANT.R * 0.36;
+    const rear82 = ring3(r82, (r, t) => rearPoint(r, t).x, ANT.panelCount, PH);
+    const rear60 = ring3(r60, (r, t) => rearPoint(r, t).x, ANT.panelCount, PH);
+    const rear36 = ring3(r36, (r, t) => rearPoint(r, t).x, ANT.panelCount, PH);
+    const hubRing = circleAxisX(ANT.hubX, ANT.hubR, 12, Math.PI / 12);
+    poly('major', rearOuter);
+    poly('truss', rear82);
+    poly('truss', rear60);
+    poly('truss', rear36);
+    poly('major', hubRing);
+
+    for (let i = 0; i < ANT.panelCount; i++) {
+      const next = (i + 1) % ANT.panelCount;
+      seg('truss', frontRim[i], rearOuter[i]);
+      seg(i % 2 === 0 ? 'truss' : 'depth', frontRim[i], rearOuter[next]);
+      seg('truss', rearOuter[i], rear82[i]);
+      seg('truss', rear82[i], rear60[i]);
+      seg('truss', rear60[i], rear36[i]);
+      const h = Math.floor(i / 2) % 12;
+      seg(i % 2 === 0 ? 'major' : 'truss', rear36[i], hubRing[h]);
+      seg(i % 2 === 0 ? 'truss' : 'depth', rearOuter[i], rear82[next]);
+      seg(i % 2 === 0 ? 'truss' : 'depth', rear82[i], rear60[next]);
+      seg(i % 2 === 0 ? 'truss' : 'depth', rear60[i], rear36[next]);
+    }
+
+    // Central hub / elevation interface.
+    poly('major', circleAxisX(ANT.vertexX - 18, 86, 20, Math.PI / 20));
+    poly('major', circleAxisX(ANT.hubX, 48, 18, 0));
+    for (let i = 0; i < 12; i++) {
+      const t = TAU * i / 12;
+      seg('truss', hubRing[i], v3(ANT.vertexX - 18, 86 * Math.cos(t), 86 * Math.sin(t)));
+    }
+
+    const boxWire = (layer, x0, x1, hy, hz) => {
+      const a = [v3(x0, -hy, -hz), v3(x0, hy, -hz), v3(x0, hy, hz), v3(x0, -hy, hz)];
+      const b = [v3(x1, -hy, -hz), v3(x1, hy, -hz), v3(x1, hy, hz), v3(x1, -hy, hz)];
+      poly(layer, [...a, a[0]]);
+      poly(layer, [...b, b[0]]);
+      for (let i = 0; i < 4; i++) seg(layer, a[i], b[i]);
+    };
+
+    // Elevation yoke.
+    [-58, 58].forEach((z) => {
+      seg('major', v3(-128, -40, z), v3(-18, -40, z));
+      seg('major', v3(-128, 40, z), v3(-18, 40, z));
+      seg('truss', v3(-128, -40, z), v3(-128, 40, z));
+      seg('truss', v3(-18, -40, z), v3(-18, 40, z));
+    });
+
+    // Counterweight / balance assembly.
+    boxWire('balance', -255, -112, 28, 22);
+    seg('balance', v3(-112, -28, -22), v3(-255, 28, 22));
+    seg('balance', v3(-112, 28, 22), v3(-255, -28, -22));
+    seg('balance', v3(-112, -28, 22), v3(-255, 28, -22));
+    seg('balance', v3(-112, 28, -22), v3(-255, -28, 22));
+    boxWire('balance', -300, -255, 38, 34);
+    seg('balance', v3(-255, -28, -22), v3(-300, -38, -34));
+    seg('balance', v3(-255, 28, 22), v3(-300, 38, 34));
+    seg('balance', v3(-255, -28, 22), v3(-300, -38, 34));
+    seg('balance', v3(-255, 28, -22), v3(-300, 38, -34));
+    boxWire('major', -392, -300, 54, 74);
+    for (let x = -384; x <= -308; x += 8) {
+      poly('balance', [v3(x, -58, -78), v3(x, 58, -78), v3(x, 58, 78), v3(x, -58, 78), v3(x, -58, -78)]);
+    }
+    boxWire('balance', -408, -392, 56, 76);
+    [-54, 54].forEach((y) => [-74, 74].forEach((z) => seg('balance', v3(-300, y, z), v3(-408, y, z))));
+    seg('balance', v3(-300, -38, -34), v3(-392, -54, -74));
+    seg('balance', v3(-300, 38, 34), v3(-392, 54, 74));
+    seg('balance', v3(-300, -38, 34), v3(-392, -54, 74));
+    seg('balance', v3(-300, 38, -34), v3(-392, 54, -74));
+
+    // Central X-band feed.
+    const xFeedStations = [
+      { x: ANT.vertexX + 8, r: 16.5 },
+      { x: 98, r: 16.5 },
+      { x: 129, r: 15.0 },
+      { x: 160, r: 13.5 },
+      { x: 190, r: 12.2 },
+      { x: 218, r: 10.2 },
+      { x: 240, r: 8.5 }
+    ];
+    for (let i = 1; i < xFeedStations.length; i++) {
+      const a = xFeedStations[i - 1];
+      const b = xFeedStations[i];
+      [0, Math.PI / 2, Math.PI, Math.PI * 1.5].forEach((t) => {
+        seg('xfeed', v3(a.x, a.r * Math.cos(t), a.r * Math.sin(t)), v3(b.x, b.r * Math.cos(t), b.r * Math.sin(t)));
+      });
+      poly('xfeed', circleAxisX(b.x, b.r, 16));
+    }
+    [{ x: 96, r: 21 }, { x: 156, r: 18.5 }, { x: 216, r: 15.5 }].forEach((c) => {
+      poly('xfeed', circleAxisX(c.x, c.r, 16));
+      poly('depth', circleAxisX(c.x + 7, c.r, 16));
+      [0, Math.PI / 2, Math.PI, Math.PI * 1.5].forEach((t) => {
+        seg('xfeed', v3(c.x, c.r * Math.cos(t), c.r * Math.sin(t)), v3(c.x + 7, c.r * Math.cos(t), c.r * Math.sin(t)));
+      });
+    });
+    poly('xfeed', circleAxisX(244, 7.0, 16));
+    [0, Math.PI / 2, Math.PI, Math.PI * 1.5].forEach((t) => {
+      seg('xfeed', v3(240, 8.5 * Math.cos(t), 8.5 * Math.sin(t)), v3(244, 7.0 * Math.cos(t), 7.0 * Math.sin(t)));
+    });
+
+    // Four-point feed / subreflector support.
+    const feedSupportPoints = [
+      { rim: 3 * Math.PI / 4, hub: v3(ANT.subX - 16, -14, 18) },
+      { rim: Math.PI / 4, hub: v3(ANT.subX - 16, 14, 18) },
+      { rim: 5 * Math.PI / 4, hub: v3(ANT.subX - 16, -14, -18) },
+      { rim: 7 * Math.PI / 4, hub: v3(ANT.subX - 16, 14, -18) }
+    ];
+    feedSupportPoints.forEach((support) => {
+      const a = dishPoint(ANT.R * 0.965, support.rim);
+      const b = support.hub;
+      seg('major', a, b);
+      const dt = 0.012;
+      seg('depth', dishPoint(ANT.R * 0.965, support.rim + dt), v3(b.x, b.y * 1.02, b.z * 1.02));
+    });
+
+    // Dichroic subreflector / S-band feed region.
+    poly('major', circleAxisX(ANT.subX, ANT.subR, 28, Math.PI / 28));
+    poly('surface', circleAxisX(ANT.subX + 12, ANT.subR * 0.72, 24, 0));
+    for (let i = 0; i < 12; i++) {
+      const t = TAU * i / 12;
+      seg('surface',
+        v3(ANT.subX, ANT.subR * Math.cos(t), ANT.subR * Math.sin(t)),
+        v3(ANT.subX + 12, ANT.subR * 0.72 * Math.cos(t), ANT.subR * 0.72 * Math.sin(t))
+      );
+    }
+    [0, Math.PI / 2, Math.PI, Math.PI * 1.5].forEach((t) => {
+      seg('feed',
+        v3(ANT.subX + 18, 17 * Math.cos(t), 17 * Math.sin(t)),
+        v3(ANT.feedTipX - 15, 17 * Math.cos(t), 17 * Math.sin(t))
+      );
+      seg('feed',
+        v3(ANT.feedTipX - 15, 17 * Math.cos(t), 17 * Math.sin(t)),
+        v3(ANT.feedTipX, 23 * Math.cos(t), 23 * Math.sin(t))
+      );
+    });
+    poly('feed', circleAxisX(ANT.subX + 18, 17, 16));
+    poly('feed', circleAxisX(ANT.feedTipX, 23, 18));
+
+    return { ANT, geometry, styleDefs };
+  }, []);
+
+  const vectorScene = useMemo(() => {
+    const P = { x: 800, y: 438 };
+    const S = 0.515;
+    const CAMERA = 180;
+    const D = Math.PI / 180;
+    const { ANT, geometry, styleDefs } = classicVector;
+
+    const alpha = Math.cos((displayAz - CAMERA) * D);
+    const beta = Math.sin((CAMERA - displayAz) * D);
+    const el = displayEl * D;
+    const q = {
+      a: alpha * Math.cos(el),
+      b: -Math.sin(el),
+      c: alpha * Math.sin(el),
+      d: Math.cos(el),
+      alpha,
+      beta
+    };
+
+    const proj3 = (p) => ({
+      x: P.x + S * (q.a * p.x + q.c * p.y + q.beta * p.z),
+      y: P.y + S * (q.b * p.x + q.d * p.y)
+    });
+    const viewDepth = (p) => (-q.beta * q.d) * p.x + (q.beta * q.b) * p.y + (q.a * q.d - q.c * q.b) * p.z;
+
+    const allDepths = [];
+    Object.values(geometry).forEach((segments) => segments.forEach(([a, b]) => {
+      allDepths.push((viewDepth(a) + viewDepth(b)) / 2);
+    }));
+    let minDepth = Math.min(...allDepths);
+    let maxDepth = Math.max(...allDepths);
+    if (!Number.isFinite(minDepth) || !Number.isFinite(maxDepth) || maxDepth - minDepth < 1e-6) {
+      minDepth = -1;
+      maxDepth = 1;
+    }
+    const t1 = minDepth + (maxDepth - minDepth) * 0.38;
+    const t2 = minDepth + (maxDepth - minDepth) * 0.67;
+    const paths = {};
+    Object.keys(styleDefs).forEach((kind) => { paths[kind] = { back: '', mid: '', front: '' }; });
+
+    Object.entries(geometry).forEach(([kind, segments]) => {
+      segments.forEach(([a, b]) => {
+        const A = proj3(a);
+        const B = proj3(b);
+        const z = (viewDepth(a) + viewDepth(b)) / 2;
+        const band = z < t1 ? 'back' : (z < t2 ? 'mid' : 'front');
+        paths[kind][band] += `M${A.x.toFixed(2)} ${A.y.toFixed(2)}L${B.x.toFixed(2)} ${B.y.toFixed(2)}`;
+      });
+    });
+
+    const feed = proj3({ x: ANT.feedTipX, y: 0, z: 0 });
+    const len = Math.hypot(q.a, q.b);
+    const nx = len < 1e-7 ? 0 : q.a / len;
+    const ny = len < 1e-7 ? -1 : q.b / len;
+    // Visual satellite placement only: keep the true AZ/EL ray, but place the
+    // satellite farther away from the dish while keeping its centre inside a
+    // safe screen envelope. This changes no orbit/pointing calculation.
+    const visualRx = 760;
+    const visualRy = 400;
+    const desiredRadius = 1 / Math.hypot(nx / visualRx, ny / visualRy);
+    const safeLeft = 110;
+    const safeRight = 1490;
+    const safeTop = 72;
+    const safeBottom = 760;
+    const safeCandidates = [];
+    if (nx > 1e-7) safeCandidates.push((safeRight - P.x) / nx);
+    else if (nx < -1e-7) safeCandidates.push((safeLeft - P.x) / nx);
+    if (ny > 1e-7) safeCandidates.push((safeBottom - P.y) / ny);
+    else if (ny < -1e-7) safeCandidates.push((safeTop - P.y) / ny);
+    const safeRadius = Math.min(...safeCandidates.filter((value) => Number.isFinite(value) && value > 0));
+    const radius = Number.isFinite(safeRadius) ? Math.min(desiredRadius, safeRadius) : desiredRadius;
+    const target = { x: P.x + nx * radius, y: P.y + ny * radius };
+
+    const vx = feed.x - target.x;
+    const vy = feed.y - target.y;
+    const vl = Math.hypot(vx, vy) || 1;
+    const ux = vx / vl;
+    const uy = vy / vl;
+    const px = -uy;
+    const py = ux;
+    const chevrons = [0.22, 0.40, 0.58, 0.76].map((t) => {
+      const x = target.x + vx * t;
+      const y = target.y + vy * t;
+      const backX = x - ux * 14;
+      const backY = y - uy * 14;
+      return `M${(backX + px * 7).toFixed(2)} ${(backY + py * 7).toFixed(2)}L${x.toFixed(2)} ${y.toFixed(2)}L${(backX - px * 7).toFixed(2)} ${(backY - py * 7).toFixed(2)}`;
+    });
+
+    const satAngle = Math.atan2(vy, vx) / D + 90;
+    const baseTransform = `matrix(${S} 0 0 ${S} ${P.x - S * 242} ${P.y - S * 600})`;
+    const bridgePath = `M${P.x - 18} ${P.y + 34}L${P.x - 9} ${P.y + 7}M${P.x + 5} ${P.y + 30}L${P.x + 10} ${P.y + 7}`;
+
+    return { P, S, paths, styleDefs, feed, target, chevrons, satAngle, baseTransform, bridgePath };
+  }, [classicVector, displayAz, displayEl]);
+
+  if (!open) return null;
+
+  const effectiveWidth = isMinimized ? Math.min(Math.max(430, windowRect.width), 720) : windowRect.width;
+  const frameStyle = isMaximized
+    ? {
+        position: 'fixed', left: 0, top: 0, width: '100vw', height: '100vh',
+        borderRadius: 0, borderWidth: 0, resize: 'none', pointerEvents: 'auto'
+      }
+    : {
+        position: 'fixed', left: `${windowRect.x}px`, top: `${windowRect.y}px`,
+        width: `${effectiveWidth}px`, height: isMinimized ? '58px' : `${windowRect.height}px`,
+        borderRadius: '12px', borderWidth: '2px', resize: isMinimized ? 'none' : 'both',
+        minWidth: isMinimized ? '430px' : 'min(660px, calc(100vw - 16px))',
+        minHeight: isMinimized ? '58px' : 'min(460px, calc(100vh - 16px))',
+        maxWidth: 'calc(100vw - 8px)', maxHeight: 'calc(100vh - 8px)',
+        pointerEvents: 'auto'
+      };
+
+  const beamDuration = Math.max(0.28, 1.15 / (1 + Math.log10(Math.max(1, Number(speedMult) || 1)) * 0.55));
+  const satW = 230;
+  const satH = 156;
+  return (
+    <div
+      className="sat-antenna3d-overlay"
+      style={{ position: 'fixed', inset: 0, zIndex: Number(windowZIndex) || 10004, pointerEvents: 'none' }}
+    >
+      <style>{`
+        .sat-antenna3d-frame {
+          overflow: hidden;
+          box-sizing: border-box;
+          border-style: solid;
+          border-color: var(--green);
+          box-shadow: 0 0 36px rgba(0,255,102,0.28), 0 18px 60px rgba(0,0,0,0.35), inset 0 0 26px rgba(0,234,255,0.07);
+          background: #a8d8eb;
+          isolation: isolate;
+          container-type: inline-size;
+          container-name: antenna3d;
+        }
+        .sat-antenna3d-header {
+          position: absolute;
+          inset: 0 0 auto 0;
+          height: 58px;
+          z-index: 12;
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: clamp(8px, 1.1cqw, 16px);
+          padding: clamp(10px, 1.1cqw, 14px) clamp(10px, 1.35cqw, 20px) 0;
+          background: transparent;
+          border-bottom: 0;
+          box-shadow: none;
+          user-select: none;
+          box-sizing: border-box;
+        }
+        .sat-antenna3d-title-wrap {
+          min-width: 0;
+          flex: 1 1 auto;
+          pointer-events: none;
+        }
+        .sat-antenna3d-title {
+          font-family: Orbitron, sans-serif;
+          font-weight: 900;
+          letter-spacing: clamp(0.5px, 0.10cqw, 1.2px);
+          color: var(--green);
+          font-size: clamp(13px, 1.55cqw, 19px);
+          line-height: 1;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          text-shadow: 0 2px 4px rgba(3,24,35,0.96), 0 0 10px rgba(0,255,102,0.22);
+        }
+        .sat-antenna3d-header-right {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: clamp(8px, 1.2cqw, 16px);
+          flex: 0 0 auto;
+          min-width: 0;
+        }
+        .sat-antenna3d-target {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: clamp(6px, 0.75cqw, 10px);
+          min-width: 0;
+          pointer-events: none;
+          color: #fff;
+          font: 900 clamp(11px, 1.35cqw, 16px)/1 Orbitron, sans-serif;
+          letter-spacing: clamp(0.4px, 0.08cqw, 1px);
+          white-space: nowrap;
+          text-shadow: 0 2px 4px rgba(3,24,35,0.96), 0 0 10px rgba(0,0,0,0.45);
+        }
+        .sat-antenna3d-target img {
+          width: clamp(24px, 2.8cqw, 34px);
+          height: auto;
+          border-radius: 3px;
+          box-shadow: 0 0 8px rgba(255,255,255,0.28);
+          flex: 0 0 auto;
+        }
+        .sat-antenna3d-target-name {
+          max-width: clamp(92px, 15cqw, 190px);
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .sat-antenna3d-window-controls {
+          display: flex;
+          align-items: center;
+          gap: clamp(5px, 0.65cqw, 8px);
+          flex: 0 0 auto;
+        }
+        .sat-antenna3d-stage {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          background: #bfe3ec;
+        }
+        .sat-antenna3d-landscape,
+        .sat-antenna3d-vector {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          display: block;
+        }
+        .sat-antenna3d-landscape { z-index: 1; }
+        .sat-antenna3d-vector { z-index: 2; pointer-events: none; }
+        .sat-antenna3d-toolbar {
+          position: absolute;
+          z-index: 11;
+          left: clamp(10px, 1.25cqw, 18px);
+          right: auto;
+          bottom: clamp(9px, 1.05cqw, 14px);
+          width: auto;
+          height: auto;
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          padding: 0;
+          background: transparent;
+          border-top: 0;
+          box-shadow: none;
+          box-sizing: border-box;
+        }
+        .sat-antenna3d-toolbar-left {
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          gap: clamp(8px, 1.35cqw, 16px);
+          min-width: 0;
+          max-width: 100%;
+        }
+        .sat-antenna3d-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: clamp(4px, 0.55cqw, 7px);
+          color: rgba(255,255,255,0.72);
+          font: 800 clamp(8px, 0.82cqw, 10px) Rajdhani, sans-serif;
+          letter-spacing: 0.8px;
+          white-space: nowrap;
+          text-shadow: 0 1px 3px rgba(4,25,37,0.95);
+        }
+        .sat-antenna3d-toggle button {
+          min-width: clamp(44px, 5.4cqw, 55px);
+          height: clamp(22px, 2.5cqw, 25px);
+          border-radius: 999px;
+          padding: 0 clamp(6px, 0.8cqw, 9px);
+          border: 1px solid rgba(255,255,255,0.18);
+          background: rgba(255,255,255,0.06);
+          color: rgba(255,255,255,0.56);
+          font: 900 clamp(8px, 0.76cqw, 9px) Orbitron, sans-serif;
+          cursor: pointer;
+        }
+        .sat-antenna3d-toggle button.active {
+          border-color: var(--green);
+          color: #041b12;
+          background: var(--green);
+          box-shadow: 0 0 12px rgba(0,255,102,0.28);
+        }
+        .sat-antenna3d-control-btn {
+          width: clamp(32px, 3.35cqw, 40px);
+          height: clamp(30px, 3.0cqw, 36px);
+          border-radius: 6px;
+          font: 900 clamp(14px, 1.45cqw, 18px) Orbitron, sans-serif;
+          cursor: pointer;
+          flex: 0 0 auto;
+          padding: 0;
+        }
+        .sat-antenna3d-rf {
+          animation: satAntennaRfFlow var(--ant-beam-dur, 0.8s) linear infinite;
+        }
+        .sat-antenna3d-resize-grip {
+          position: absolute;
+          right: 3px;
+          bottom: 3px;
+          z-index: 20;
+          color: rgba(0,255,102,0.55);
+          font: 900 14px/1 monospace;
+          pointer-events: none;
+        }
+        @keyframes satAntennaRfFlow {
+          from { stroke-dashoffset: 0; }
+          to { stroke-dashoffset: -48; }
+        }
+        @container antenna3d (max-width: 900px) {
+          .sat-antenna3d-header { gap: 10px; padding-inline: 10px; }
+          .sat-antenna3d-title { font-size: clamp(13px, 1.9cqw, 16px); }
+          .sat-antenna3d-target { font-size: clamp(10px, 1.55cqw, 13px); }
+          .sat-antenna3d-target-name { max-width: 130px; }
+          .sat-antenna3d-window-controls { gap: 5px; }
+          .sat-antenna3d-toolbar-left { gap: 10px; }
+        }
+        @container antenna3d (max-width: 740px) {
+          .sat-antenna3d-header { padding-inline: 8px; }
+          .sat-antenna3d-title { font-size: 12px; letter-spacing: 0.4px; }
+          .sat-antenna3d-target { gap: 5px; font-size: 10px; }
+          .sat-antenna3d-target img { width: 22px; }
+          .sat-antenna3d-target-name { max-width: 100px; }
+          .sat-antenna3d-control-btn { width: 30px; height: 29px; font-size: 13px; }
+          .sat-antenna3d-toolbar { left: 8px; bottom: 8px; }
+          .sat-antenna3d-toolbar-left { gap: 7px; }
+          .sat-antenna3d-toggle { gap: 3px; font-size: 8px; letter-spacing: 0.4px; }
+          .sat-antenna3d-toggle button { min-width: 42px; height: 22px; padding-inline: 5px; font-size: 8px; }
+        }
+      `}</style>
+
+      <div
+        ref={frameRef}
+        className="sat-antenna3d-frame"
+        style={frameStyle}
+        onPointerDownCapture={() => onFocus?.()}
+      >
+        <div
+          className="sat-antenna3d-header"
+          onPointerDown={startWindowDrag}
+          style={{ cursor: isMaximized ? 'default' : (isDragging ? 'grabbing' : 'grab') }}
+        >
+          <div className="sat-antenna3d-title-wrap">
+            <div className="sat-antenna3d-title">ANTENNA 3D TRACKING SIMULATOR</div>
+          </div>
+
+          <div className="sat-antenna3d-header-right">
+            <div className="sat-antenna3d-target" title={targetConfig?.displayName || 'THEOS-2'}>
+              {targetConfig?.flag ? (
+                <img src={`https://flagcdn.com/w40/${targetConfig.flag.toLowerCase()}.png`} alt="flag" />
+              ) : (
+                <span aria-hidden="true">🛰️</span>
+              )}
+              <span className="sat-antenna3d-target-name">{targetConfig?.displayName || 'THEOS-2'}</span>
+            </div>
+
+            <div className="sat-antenna3d-window-controls">
+            <button
+              className="sat-antenna3d-control-btn"
+              onClick={() => {
+                if (isMaximized) setIsMaximized(false);
+                setIsMinimized((value) => !value);
+              }}
+              title={isMinimized ? 'Restore window' : 'Minimize'}
+              style={{ border: '1px solid rgba(0,234,255,0.62)', color: 'var(--cyan)', background: 'rgba(0,234,255,0.06)' }}
+            >
+              {isMinimized ? '\u25a1' : '\u2212'}
+            </button>
+            <button
+              className="sat-antenna3d-control-btn"
+              onClick={() => {
+                setIsMinimized(false);
+                setIsMaximized((value) => !value);
+              }}
+              title={isMaximized ? 'Restore window' : 'Maximize'}
+              style={{ border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,234,255,0.08)' }}
+            >
+              {isMaximized ? '\u2750' : '\u25a1'}
+            </button>
+            <button
+              className="sat-antenna3d-control-btn"
+              onClick={onClose}
+              title="Close"
+              style={{ border: '1px solid var(--red)', color: 'var(--red)', background: 'rgba(255,51,51,0.08)' }}
+            >
+              x
+            </button>
+            </div>
+          </div>
+        </div>
+
+        {!isMinimized && (
+          <>
+            <div className="sat-antenna3d-stage">
+              <svg className="sat-antenna3d-landscape" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <linearGradient id="antSky" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#61acd4" />
+                    <stop offset="58%" stopColor="#b8dfe8" />
+                    <stop offset="100%" stopColor="#e7efe8" />
+                  </linearGradient>
+                  <radialGradient id="antSunGlow" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="#fff7bd" stopOpacity="0.95" />
+                    <stop offset="34%" stopColor="#fff2a6" stopOpacity="0.40" />
+                    <stop offset="100%" stopColor="#fff2a6" stopOpacity="0" />
+                  </radialGradient>
+                  <filter id="antCloudBlur"><feGaussianBlur stdDeviation="2.8" /></filter>
+                  <pattern id="antEngineeringGrid" width="80" height="60" patternUnits="userSpaceOnUse">
+                    <path d="M80 0H0V60" fill="none" stroke="#3d7488" strokeOpacity="0.16" strokeWidth="1" />
+                    <circle cx="0" cy="0" r="1.2" fill="#3d7488" opacity="0.18" />
+                  </pattern>
+                </defs>
+
+                <rect width="1600" height="900" fill="url(#antSky)" />
+                {showGrid && <rect width="1600" height="900" fill="url(#antEngineeringGrid)" />}
+                <circle cx="1360" cy="116" r="78" fill="url(#antSunGlow)" />
+                <circle cx="1360" cy="116" r="13" fill="#fff4bd" opacity="0.96" />
+
+                <g fill="#e9f5f7" opacity="0.58" filter="url(#antCloudBlur)">
+                  <path d="M70 190 C110 145 165 160 186 188 C215 152 268 163 286 206 L70 206 Z" />
+                  <path d="M390 230 C423 194 466 199 488 229 C516 205 557 209 576 242 L390 242 Z" />
+                  <path d="M1120 228 C1155 191 1204 198 1226 227 C1254 203 1300 210 1320 245 L1120 245 Z" />
+                </g>
+
+                <path d="M0 650 C140 595 240 612 350 653 C470 697 570 601 705 646 C835 689 945 600 1082 647 C1210 691 1328 607 1600 654 L1600 900 L0 900 Z" fill="#8fbfc0" opacity="0.28" />
+                <path d="M0 704 C142 648 257 671 362 713 C475 758 591 665 719 711 C838 753 955 669 1082 716 C1216 764 1347 677 1600 720 L1600 900 L0 900 Z" fill="#7cabaa" opacity="0.24" />
+                <path d="M0 770 C145 710 255 733 374 780 C495 827 603 732 726 779 C844 824 962 740 1090 783 C1226 829 1361 747 1600 790 L1600 900 L0 900 Z" fill="#719e92" opacity="0.21" />
+
+                <g fill="#709b8e" opacity="0.21">
+                  <circle cx="115" cy="813" r="18" /><circle cx="152" cy="811" r="15" />
+                  <circle cx="258" cy="833" r="20" /><circle cx="302" cy="831" r="16" />
+                  <circle cx="1160" cy="824" r="19" /><circle cx="1204" cy="821" r="16" />
+                  <circle cx="1370" cy="842" r="22" /><circle cx="1422" cy="840" r="17" />
+                </g>
+
+                {showGuides && (
+                  <g>
+                    <line x1="64" y1="590" x2="1536" y2="590" stroke="#6fa1b3" strokeOpacity="0.48" strokeWidth="2" strokeDasharray="9 11" />
+                    <line x1="800" y1="82" x2="800" y2="590" stroke="#7aa7b7" strokeOpacity="0.24" strokeWidth="1.5" strokeDasharray="5 10" />
+                  </g>
+                )}
+                {showOrbit && (
+                  <path
+                    d="M45 590 Q800 -360 1555 590"
+                    fill="none"
+                    stroke={visualSignalVisible ? '#9f8737' : '#6f9fb2'}
+                    strokeOpacity={visualSignalVisible ? '0.68' : '0.52'}
+                    strokeWidth="1.8"
+                    strokeDasharray={visualSignalVisible ? undefined : '9 10'}
+                  />
+                )}
+              </svg>
+
+              <svg className="sat-antenna3d-vector" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax meet" aria-label="Classic vector antenna tracking view">
+                <defs>
+                  <filter id="classicVectorGlow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur stdDeviation="7" result="blur" />
+                    <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                  </filter>
+                  <radialGradient id="classicSatHalo" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="#e5fbff" stopOpacity="0.34" />
+                    <stop offset="48%" stopColor="#c8f1ff" stopOpacity="0.18" />
+                    <stop offset="100%" stopColor="#c8f1ff" stopOpacity="0" />
+                  </radialGradient>
+                  <linearGradient id="antConcreteTop" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#d9e4e0" />
+                    <stop offset="100%" stopColor="#b9ceca" />
+                  </linearGradient>
+                </defs>
+
+                <g aria-label="Concrete antenna foundation" vectorEffect="non-scaling-stroke">
+                  <path d="M620 805 L980 805 L1018 823 L582 823 Z" fill="url(#antConcreteTop)" stroke="#315c6e" strokeWidth="2.2" />
+                  <rect x="582" y="823" width="436" height="38" rx="2" fill="#b5cbc8" stroke="#315c6e" strokeWidth="2.2" />
+                  <line x1="690" y1="823" x2="690" y2="861" stroke="#5d7f87" strokeWidth="1.2" opacity="0.72" />
+                  <line x1="910" y1="823" x2="910" y2="861" stroke="#5d7f87" strokeWidth="1.2" opacity="0.72" />
+                </g>
+
+                <g transform={vectorScene.baseTransform} fill="rgba(19,64,82,0.035)" fillRule="evenodd" stroke="#103c55" strokeWidth="1.10" strokeLinejoin="round" vectorEffect="non-scaling-stroke">
+                  <path d={CLASSIC_VECTOR_ANTENNA_BASE_PATH} />
+                </g>
+                <path d={vectorScene.bridgePath} fill="none" stroke="#21495f" strokeWidth="2.0" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+
+                {Object.entries(vectorScene.styleDefs).flatMap(([kind, def]) => ['back', 'mid', 'front'].map((band) => {
+                  const mult = def.bands?.[band] ?? (band === 'front' ? 1 : (band === 'mid' ? 0.76 : 0.40));
+                  const widthMult = band === 'front' ? 1 : (band === 'mid' ? 0.94 : 0.84);
+                  return (
+                    <path
+                      key={`${kind}-${band}`}
+                      d={vectorScene.paths[kind][band]}
+                      fill="none"
+                      stroke={def.stroke}
+                      strokeWidth={(def.width * widthMult * 1.35).toFixed(2)}
+                      strokeOpacity={(def.opacity * mult).toFixed(3)}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  );
+                }))}
+
+                {visualSignalVisible && (
+                  <g>
+                    <circle cx={vectorScene.target.x} cy={vectorScene.target.y} r="108" fill="url(#classicSatHalo)" />
+                    <line
+                      className="sat-antenna3d-rf"
+                      x1={vectorScene.target.x}
+                      y1={vectorScene.target.y}
+                      x2={vectorScene.feed.x}
+                      y2={vectorScene.feed.y}
+                      stroke="#5cff8a"
+                      strokeWidth="3.4"
+                      strokeDasharray="14 10"
+                      strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"
+                      style={{ '--ant-beam-dur': `${beamDuration}s`, filter: 'drop-shadow(0 0 5px rgba(92,255,138,0.72))' }}
+                    />
+                    {vectorScene.chevrons.map((d, index) => (
+                      <path key={index} d={d} fill="none" stroke="#eaffef" strokeWidth="3.0" strokeLinecap="round" strokeLinejoin="round" opacity={0.96 - index * 0.09} vectorEffect="non-scaling-stroke" />
+                    ))}
+                    <g transform={`rotate(${vectorScene.satAngle.toFixed(2)} ${vectorScene.target.x} ${vectorScene.target.y})`}>
+                      <image
+                        href={satelliteTextureUrl || '/textures/THEOS-2.webp'}
+                        x={vectorScene.target.x - satW / 2}
+                        y={vectorScene.target.y - satH / 2}
+                        width={satW}
+                        height={satH}
+                        preserveAspectRatio="xMidYMid meet"
+                        style={{ filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.38))' }}
+                      />
+                    </g>
+                  </g>
+                )}
+              </svg>
+            </div>
+
+            <div className="sat-antenna3d-toolbar">
+              <div className="sat-antenna3d-toolbar-left">
+                <div className="sat-antenna3d-toggle">
+                  <span>GRID</span>
+                  <button className={showGrid ? 'active' : ''} onClick={() => setShowGrid((value) => !value)} title="Toggle engineering grid">
+                    {showGrid ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+                <div className="sat-antenna3d-toggle">
+                  <span>GUIDES</span>
+                  <button className={showGuides ? 'active' : ''} onClick={() => setShowGuides((value) => !value)} title="Toggle horizon / elevation guides">
+                    {showGuides ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+                <div className="sat-antenna3d-toggle">
+                  <span>ORBIT</span>
+                  <button className={showOrbit ? 'active' : ''} onClick={() => setShowOrbit((value) => !value)} title="Toggle orbit arc">
+                    {showOrbit ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {!isMaximized && <div className="sat-antenna3d-resize-grip">&#8991;</div>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 
 // =========================================================================
@@ -2322,6 +3449,901 @@ const handleRuntimeImageError = (event, fallbackSrc = null) => {
 // ==========================================
 // 4. MAIN APP
 // ==========================================
+
+
+// =========================================================================
+// GROUND STATION WEATHER CENTER
+// - Lazy-loads detailed weather only while the popup is open
+// - Uses Open-Meteo point forecast for station conditions / 24 h / 5 day
+// - Regional map uses Leaflet + OpenStreetMap with NASA GIBS cloud/rain overlays
+// - No weather-map engine runs while this popup is closed
+// =========================================================================
+// Lightweight interactive regional map for Weather Center only.
+// Leaflet is lazy-loaded when the Weather Center opens, so the main SAT-ORBIT view carries no map-engine cost.
+let weatherLeafletPromise = null;
+function loadWeatherLeaflet() {
+  if (typeof window === 'undefined') return Promise.reject(new Error('Leaflet requires a browser'));
+  if (window.L) return Promise.resolve(window.L);
+  if (weatherLeafletPromise) return weatherLeafletPromise;
+
+  weatherLeafletPromise = new Promise((resolve, reject) => {
+    if (!document.getElementById('sat-orbit-leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'sat-orbit-leaflet-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+
+    const existing = document.getElementById('sat-orbit-leaflet-js');
+    if (existing) {
+      const started = Date.now();
+      const waitForLeaflet = () => {
+        if (window.L) return resolve(window.L);
+        if (Date.now() - started > 10000) return reject(new Error('Leaflet load timeout'));
+        setTimeout(waitForLeaflet, 50);
+      };
+      waitForLeaflet();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'sat-orbit-leaflet-js';
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.async = true;
+    script.onload = () => window.L ? resolve(window.L) : reject(new Error('Leaflet unavailable after load'));
+    script.onerror = () => reject(new Error('Leaflet script failed to load'));
+    document.head.appendChild(script);
+  }).catch((error) => {
+    weatherLeafletPromise = null;
+    throw error;
+  });
+
+  return weatherLeafletPromise;
+}
+
+function WeatherInteractiveMap({ station, fmt, cloudCover, precipitationNow }) {
+  const hostRef = useRef(null);
+  const mapRef = useRef(null);
+  const weatherLayerRef = useRef(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState('');
+  const [layerMode, setLayerMode] = useState('CLOUD');
+
+  const lat = Number(station?.lat || 0);
+  const lng = Number(station?.lng || 0);
+  const stationId = station?.id || 'SRC';
+
+  // FINAL READY WEATHER MAP SOURCES (no client API key required)
+  // CLOUD     : NASA GIBS / MODIS Aqua Cloud Fraction (global daily cloud fraction)
+  // RAIN      : NASA GIBS / GPM IMERG V07 30-minute precipitation rate (global; limited boxes only near the poles)
+  // SATELLITE : NASA GIBS / MODIS Terra Corrected Reflectance True Color (global daily imagery)
+  // Layers are requested lazily only while Weather Center is open.
+  const nasaGibsWms = 'https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi';
+
+  useEffect(() => {
+    let cancelled = false;
+    let resizeTimer = null;
+    setMapReady(false);
+    setMapError('');
+    setLayerMode('CLOUD');
+
+    loadWeatherLeaflet()
+      .then((L) => {
+        if (cancelled || !hostRef.current) return;
+        if (mapRef.current) {
+          try { mapRef.current.remove(); } catch (_) {}
+          mapRef.current = null;
+        }
+
+        // Map interaction: wheel zooms the map while the pointer is over the map;
+        // scrolling outside the map continues to scroll the Weather Center.
+        const map = L.map(hostRef.current, {
+          zoomControl: false,
+          attributionControl: true,
+          scrollWheelZoom: true,
+          wheelDebounceTime: 35,
+          wheelPxPerZoomLevel: 60,
+          doubleClickZoom: true,
+          dragging: true,
+          touchZoom: true,
+          boxZoom: true,
+          keyboard: false,
+          worldCopyJump: true,
+          minZoom: 2
+        }).setView([lat, lng], 6);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 18,
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        L.circle([lat, lng], {
+          radius: 17000,
+          color: '#00ff66',
+          weight: 1,
+          opacity: 0.55,
+          fillColor: '#00ff66',
+          fillOpacity: 0.06,
+          interactive: false
+        }).addTo(map);
+
+        const marker = L.circleMarker([lat, lng], {
+          radius: 7,
+          color: '#00ff66',
+          weight: 2,
+          fillColor: '#ffcc00',
+          fillOpacity: 0.95
+        }).addTo(map);
+        marker.bindTooltip(`${stationId} GROUND STATION`, { permanent: false, direction: 'top', opacity: 0.9 });
+
+        mapRef.current = map;
+        setMapReady(true);
+        resizeTimer = setTimeout(() => {
+          try { map.invalidateSize(false); } catch (_) {}
+        }, 80);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('[WeatherCenter] interactive map unavailable:', error);
+        setMapError('INTERACTIVE MAP OFFLINE');
+      });
+
+    return () => {
+      cancelled = true;
+      if (resizeTimer) clearTimeout(resizeTimer);
+      if (weatherLayerRef.current) {
+        try { weatherLayerRef.current.remove(); } catch (_) {}
+        weatherLayerRef.current = null;
+      }
+      if (mapRef.current) {
+        try { mapRef.current.remove(); } catch (_) {}
+        mapRef.current = null;
+      }
+    };
+  }, [stationId, lat, lng]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = typeof window !== 'undefined' ? window.L : null;
+    if (!map || !L) return;
+
+    if (weatherLayerRef.current) {
+      try { map.removeLayer(weatherLayerRef.current); } catch (_) {}
+      weatherLayerRef.current = null;
+    }
+
+    if (layerMode === 'BASE') return;
+
+    // Global weather imagery. CLOUD is intentionally a visible-cloud view rather
+    // than the MODIS Cloud Fraction science overlay: the fraction product can be
+    // sparse/day-only and may look blank at some locations/times. VIIRS true-color
+    // daily imagery makes the cloud field directly visible while remaining global.
+    const isCloudLayer = layerMode === 'CLOUD';
+    const layerConfig = layerMode === 'RAIN'
+      ? {
+          layers: 'IMERG_Precipitation_Rate_30min',
+          opacity: 0.70,
+          attribution: 'NASA GIBS / GPM IMERG',
+          error: 'RAIN LAYER TEMPORARILY UNAVAILABLE',
+          format: 'image/png',
+          transparent: true,
+          pane: undefined
+        }
+      : layerMode === 'SATELLITE'
+        ? {
+            layers: 'VIIRS_NOAA20_CorrectedReflectance_TrueColor',
+            opacity: 0.88,
+            attribution: 'NASA GIBS / VIIRS NOAA-20 True Color',
+            error: 'SATELLITE LAYER TEMPORARILY UNAVAILABLE',
+            format: 'image/jpeg',
+            transparent: false,
+            pane: undefined
+          }
+        : {
+            layers: 'VIIRS_NOAA20_CorrectedReflectance_TrueColor',
+            opacity: 0.58,
+            attribution: 'NASA GIBS / VIIRS NOAA-20 Visible Cloud',
+            error: 'CLOUD LAYER TEMPORARILY UNAVAILABLE',
+            format: 'image/jpeg',
+            transparent: false,
+            pane: 'weatherCloudPane'
+          };
+
+    if (isCloudLayer && !map.getPane('weatherCloudPane')) {
+      const pane = map.createPane('weatherCloudPane');
+      pane.style.zIndex = '420';
+      // Keep geographic context visible while making bright cloud masses pop.
+      pane.style.filter = 'grayscale(1) saturate(0) brightness(1.28) contrast(1.20)';
+    }
+
+    const layer = L.tileLayer.wms(nasaGibsWms, {
+      layers: layerConfig.layers,
+      styles: 'default',
+      format: layerConfig.format,
+      transparent: layerConfig.transparent,
+      version: '1.1.1',
+      time: 'default',
+      opacity: layerConfig.opacity,
+      attribution: layerConfig.attribution,
+      ...(layerConfig.pane ? { pane: layerConfig.pane } : {})
+    });
+
+    layer.on('tileerror', () => {
+      setMapError(layerConfig.error);
+    });
+    layer.on('load', () => setMapError(''));
+    layer.addTo(map);
+    weatherLayerRef.current = layer;
+  }, [layerMode, mapReady]);
+
+  const zoomBy = (delta) => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (delta > 0) map.zoomIn(); else map.zoomOut();
+  };
+
+  const cloudPct = Number.isFinite(Number(cloudCover)) ? Math.max(0, Math.min(100, Number(cloudCover))) : null;
+  const rainNow = Number.isFinite(Number(precipitationNow)) ? Math.max(0, Number(precipitationNow)) : null;
+
+  return (
+    <div className="weather-map-shell">
+      <div ref={hostRef} className="weather-leaflet-host" />
+      <div className="weather-map-overlay" />
+      <div className="weather-map-label">GLOBAL WEATHER MAP • {stationId}</div>
+      <div className="weather-map-actions">
+        <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => zoomBy(1)} disabled={!mapReady} title="Zoom in">+</button>
+        <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => zoomBy(-1)} disabled={!mapReady} title="Zoom out">−</button>
+      </div>
+      <div className="weather-map-layers">
+        <button type="button" className={layerMode === 'BASE' ? 'active base' : 'base'} onPointerDown={(e) => e.stopPropagation()} onClick={() => setLayerMode('BASE')}>BASE</button>
+        <button
+          type="button"
+          className={layerMode === 'CLOUD' ? 'active cloud' : 'cloud'}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => setLayerMode('CLOUD')}
+          title="Global visible cloud imagery • NASA GIBS / VIIRS NOAA-20"
+        >CLOUD</button>
+        <button
+          type="button"
+          className={layerMode === 'RAIN' ? 'active rain' : 'rain'}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => setLayerMode('RAIN')}
+          title="Global precipitation rate • NASA GIBS / GPM IMERG V07 30-minute"
+        >RAIN</button>
+        <button
+          type="button"
+          className={layerMode === 'SATELLITE' ? 'active satellite' : 'satellite'}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => setLayerMode('SATELLITE')}
+          title="Global satellite true color • NASA GIBS / MODIS Terra"
+        >SATELLITE</button>
+      </div>
+      {mapError ? <div className="weather-map-error">{mapError}</div> : null}
+      <div className="weather-map-coord">LAT {fmt(lat,4)}° • LON {fmt(lng,4)}° • ALT {fmt(station?.alt,0)} m</div>
+      <div className="weather-map-legend">
+        <div className="weather-map-legend-row">
+          <span>CLOUD COVER</span>
+          <strong>{cloudPct == null ? '--' : `${Math.round(cloudPct)}%`}</strong>
+        </div>
+        <div className="weather-cloud-scale"><i/><i/><i/><i/><i/></div>
+        <div className="weather-map-legend-row">
+          <span>RAIN NOW</span>
+          <strong>{rainNow == null ? '--' : `${rainNow.toFixed(1)} mm`}</strong>
+        </div>
+        <small>{layerMode === 'CLOUD' ? 'CLOUD: VIIRS NOAA-20 VISIBLE CLOUD • NASA GIBS' : layerMode === 'RAIN' ? 'RAIN: GPM IMERG V07 30-MIN GLOBAL • NASA GIBS' : layerMode === 'SATELLITE' ? 'SATELLITE: MODIS TERRA TRUE COLOR • NASA GIBS' : 'BASE: OPENSTREETMAP'}</small>
+      </div>
+    </div>
+  );
+}
+
+function WeatherCenterModal({
+  open,
+  onClose,
+  station,
+  zIndex = 10005,
+  onFocus,
+  summaryCloudCover,
+  summaryMode
+}) {
+  const [isMaximized, setIsMaximized] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [windowRect, setWindowRect] = useState({ x: 210, y: 95, width: 1120, height: 720 });
+  const [weatherData, setWeatherData] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const frameRef = useRef(null);
+  const dragRef = useRef({ offsetX: 0, offsetY: 0 });
+  const initializedRef = useRef(false);
+
+  const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+  const finite = (v) => Number.isFinite(Number(v));
+  const fmt = (v, digits = 0, fallback = '--') => finite(v) ? Number(v).toFixed(digits) : fallback;
+  const parseUtc = (value) => {
+    if (!value) return NaN;
+    const s = String(value);
+    return new Date(/(?:Z|[+-]\d{2}:?\d{2})$/.test(s) ? s : `${s}Z`).getTime();
+  };
+  const formatUtcHour = (value) => {
+    const ms = parseUtc(value);
+    if (!Number.isFinite(ms)) return '--:--';
+    return new Date(ms).toISOString().slice(11, 16);
+  };
+  const formatUtcDate = (value) => {
+    const ms = parseUtc(value);
+    if (!Number.isFinite(ms)) return '--';
+    return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' }).format(new Date(ms)).toUpperCase();
+  };
+  const weatherLabel = (code) => {
+    const c = Number(code);
+    if (!Number.isFinite(c)) return 'NO DATA';
+    if (c === 0) return 'CLEAR SKY';
+    if (c <= 2) return 'PARTLY CLOUDY';
+    if (c === 3) return 'OVERCAST';
+    if (c === 45 || c === 48) return 'FOG';
+    if (c >= 51 && c <= 57) return 'DRIZZLE';
+    if (c >= 61 && c <= 67) return 'RAIN';
+    if (c >= 71 && c <= 77) return 'SNOW';
+    if (c >= 80 && c <= 82) return 'RAIN SHOWERS';
+    if (c >= 85 && c <= 86) return 'SNOW SHOWERS';
+    if (c >= 95) return 'THUNDERSTORM';
+    return 'VARIABLE';
+  };
+  const weatherIcon = (code) => {
+    const c = Number(code);
+    if (!Number.isFinite(c)) return '◌';
+    if (c === 0) return '☀';
+    if (c <= 2) return '🌤';
+    if (c === 3) return '☁';
+    if (c === 45 || c === 48) return '≋';
+    if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) return '🌧';
+    if ((c >= 71 && c <= 77) || (c >= 85 && c <= 86)) return '❄';
+    if (c >= 95) return '⛈';
+    return '☁';
+  };
+  const windCardinal = (deg) => {
+    if (!finite(deg)) return '--';
+    const names = ['N','NE','E','SE','S','SW','W','NW'];
+    return names[Math.round((((Number(deg) % 360) + 360) % 360) / 45) % 8];
+  };
+
+  useEffect(() => {
+    if (!open) {
+      setIsDragging(false);
+      return;
+    }
+    if (!initializedRef.current) {
+      const vw = Math.max(800, window.innerWidth);
+      const vh = Math.max(600, window.innerHeight);
+      const width = Math.min(1220, Math.max(900, vw * 0.72), vw - 32);
+      const height = Math.min(790, Math.max(610, vh * 0.78), vh - 32);
+      setWindowRect({ x: Math.max(16, (vw - width) / 2), y: Math.max(16, (vh - height) / 2), width, height });
+      initializedRef.current = true;
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || isMaximized || !frameRef.current || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.target?.getBoundingClientRect?.();
+      if (!rect) return;
+      setWindowRect((current) => {
+        if (Math.abs(current.width - rect.width) < 1 && Math.abs(current.height - rect.height) < 1) return current;
+        return { ...current, width: rect.width, height: rect.height };
+      });
+    });
+    observer.observe(frameRef.current);
+    return () => observer.disconnect();
+  }, [open, isMaximized]);
+
+  useEffect(() => {
+    if (!open || !isDragging) return;
+    const onMove = (event) => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      setWindowRect((rect) => ({
+        ...rect,
+        x: clamp(event.clientX - dragRef.current.offsetX, 0, Math.max(0, vw - rect.width)),
+        y: clamp(event.clientY - dragRef.current.offsetY, 0, Math.max(0, vh - rect.height))
+      }));
+    };
+    const onUp = () => setIsDragging(false);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [open, isDragging]);
+
+  useEffect(() => {
+    if (!open || !station || !finite(station.lat) || !finite(station.lng)) return;
+    const controller = new AbortController();
+    let active = true;
+    setIsLoading(true);
+    setWeatherError(null);
+
+    const currentFields = [
+      'temperature_2m','relative_humidity_2m','apparent_temperature','precipitation','rain',
+      'weather_code','cloud_cover','cloud_cover_low','cloud_cover_mid','cloud_cover_high','surface_pressure','wind_speed_10m','wind_direction_10m','wind_gusts_10m','is_day'
+    ].join(',');
+    const hourlyFields = [
+      'temperature_2m','relative_humidity_2m','precipitation_probability','precipitation','rain','weather_code',
+      'cloud_cover','cloud_cover_low','cloud_cover_mid','cloud_cover_high','visibility','surface_pressure','wind_speed_10m','wind_direction_10m','wind_gusts_10m'
+    ].join(',');
+    const dailyFields = [
+      'weather_code','temperature_2m_max','temperature_2m_min','precipitation_sum','precipitation_probability_max',
+      'wind_speed_10m_max','wind_gusts_10m_max','sunrise','sunset'
+    ].join(',');
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${station.lat}&longitude=${station.lng}&current=${currentFields}&hourly=${hourlyFields}&daily=${dailyFields}&past_hours=6&forecast_days=6&timezone=UTC&wind_speed_unit=kmh&precipitation_unit=mm`;
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+    fetch(url, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Weather HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((data) => {
+        if (!active) return;
+        setWeatherData(data || null);
+        setWeatherError(null);
+      })
+      .catch((error) => {
+        if (!active) return;
+        if (error?.name !== 'AbortError') console.warn('[WeatherCenter] forecast fetch failed:', error);
+        setWeatherError(error?.name === 'AbortError' ? 'REQUEST TIMEOUT' : 'WEATHER DATA OFFLINE');
+      })
+      .finally(() => {
+        clearTimeout(timeoutId);
+        if (active) setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [open, station?.id, station?.lat, station?.lng, refreshKey]);
+
+  if (!open) return null;
+
+  const current = weatherData?.current || {};
+  const hourly = weatherData?.hourly || {};
+  const daily = weatherData?.daily || {};
+  const currentMs = parseUtc(current?.time) || Date.now();
+  const hourTimes = Array.isArray(hourly.time) ? hourly.time : [];
+  let nearestHour = 0;
+  let nearestDiff = Infinity;
+  hourTimes.forEach((time, index) => {
+    const ms = parseUtc(time);
+    const diff = Math.abs(ms - currentMs);
+    if (Number.isFinite(ms) && diff < nearestDiff) { nearestDiff = diff; nearestHour = index; }
+  });
+  const hourlyAt = (key, index = nearestHour) => Array.isArray(hourly?.[key]) ? hourly[key][index] : null;
+  const visibilityKm = finite(hourlyAt('visibility')) ? Number(hourlyAt('visibility')) / 1000 : null;
+  const popNow = hourlyAt('precipitation_probability');
+  const thunderstormNow = Number(current.weather_code) >= 95;
+  const next24 = [];
+  for (let i = nearestHour; i < Math.min(hourTimes.length, nearestHour + 24); i += 3) {
+    next24.push({
+      time: hourTimes[i],
+      code: hourly.weather_code?.[i],
+      temp: hourly.temperature_2m?.[i],
+      cloud: hourly.cloud_cover?.[i],
+      pop: hourly.precipitation_probability?.[i],
+      rain: hourly.precipitation?.[i],
+      wind: hourly.wind_speed_10m?.[i]
+    });
+  }
+  const dailyCards = (daily.time || []).slice(0, 5).map((time, index) => ({
+    time,
+    code: daily.weather_code?.[index],
+    tMax: daily.temperature_2m_max?.[index],
+    tMin: daily.temperature_2m_min?.[index],
+    pop: daily.precipitation_probability_max?.[index],
+    rain: daily.precipitation_sum?.[index],
+    wind: daily.wind_speed_10m_max?.[index],
+    gust: daily.wind_gusts_10m_max?.[index]
+  }));
+
+  const clampPct = (value) => finite(value) ? Math.max(0, Math.min(100, Number(value))) : 0;
+  const cloudPct = clampPct(current.cloud_cover);
+  const cloudState = cloudPct >= 90 ? 'OVERCAST' : cloudPct >= 70 ? 'CLOUDY' : cloudPct >= 40 ? 'BROKEN CLOUDS' : cloudPct >= 15 ? 'PARTLY CLOUDY' : 'CLEAR / FEW CLOUDS';
+  const cloudLevelColor = (pct) => {
+    const v = clampPct(pct);
+    if (v <= 20) return '#24475f';
+    if (v <= 40) return '#4f89a8';
+    if (v <= 60) return '#83b8d0';
+    if (v <= 80) return '#bfd8e6';
+    return '#f4fbff';
+  };
+  // Conventional meteorological thermal ramp (there is no single universal palette):
+  // colder values use blue/cyan; warm values move through green/yellow/orange to red.
+  const temperatureColor = (value) => {
+    const t = Number(value);
+    if (!Number.isFinite(t)) return '#ffffff';
+    if (t < 0) return '#5b7cff';
+    if (t < 10) return '#39a8ff';
+    if (t < 20) return '#2bd9e9';
+    if (t < 25) return '#55e06f';
+    if (t < 30) return '#ffd23f';
+    if (t < 35) return '#ff982e';
+    if (t < 40) return '#ff5a3d';
+    return '#ff365d';
+  };
+  const cloudHeroColor = cloudLevelColor(cloudPct);
+  const cloudOperationalLabel = cloudPct <= 20 ? 'CLEAR • OPTICAL FAVORABLE' : cloudPct <= 40 ? 'LOW CLOUD • GENERALLY FAVORABLE' : cloudPct <= 60 ? 'PARTLY CLOUDY • REVIEW TARGET' : cloudPct <= 80 ? 'CLOUDY • DEGRADED' : 'OVERCAST • OPTICAL DEGRADED';
+  const precipNow = finite(current.rain ?? current.precipitation) ? Number(current.rain ?? current.precipitation) : 0;
+  const windDirection = finite(current.wind_direction_10m) ? ((Number(current.wind_direction_10m) % 360) + 360) % 360 : 0;
+  const windFlowDirection = (windDirection + 180) % 360;
+
+  const rainHistory6 = [];
+  for (let i = Math.max(0, nearestHour - 5); i <= nearestHour; i += 1) {
+    rainHistory6.push({
+      time: hourTimes[i],
+      rain: finite(hourly.precipitation?.[i]) ? Number(hourly.precipitation[i]) : 0
+    });
+  }
+  const rainHistoryMax = Math.max(0.1, ...rainHistory6.map((item) => item.rain || 0));
+  const rainHistoryTotal = rainHistory6.reduce((sum, item) => sum + (item.rain || 0), 0);
+
+  const precipNext6 = [];
+  for (let i = nearestHour; i < Math.min(hourTimes.length, nearestHour + 6); i += 1) {
+    precipNext6.push({
+      time: hourTimes[i],
+      rain: finite(hourly.precipitation?.[i]) ? Number(hourly.precipitation[i]) : 0,
+      pop: finite(hourly.precipitation_probability?.[i]) ? Number(hourly.precipitation_probability[i]) : 0
+    });
+  }
+  const precipNext6Max = Math.max(0.1, ...precipNext6.map((item) => item.rain || 0));
+  const precipNext6Total = precipNext6.reduce((sum, item) => sum + (item.rain || 0), 0);
+  const precipNext6Pop = precipNext6.length ? Math.max(...precipNext6.map((item) => item.pop || 0)) : 0;
+
+  const cloudNext6 = [];
+  for (let i = nearestHour; i < Math.min(hourTimes.length, nearestHour + 6); i += 1) {
+    cloudNext6.push({
+      time: hourTimes[i],
+      cloud: clampPct(hourly.cloud_cover?.[i])
+    });
+  }
+
+  const weatherAccent = (code) => {
+    const c = Number(code);
+    if (c >= 95) return '#ff3b5c';
+    if ((c >= 61 && c <= 82) || (c >= 51 && c <= 57)) return '#ffb000';
+    if (c === 3 || c === 45 || c === 48) return '#00d9ff';
+    return '#00ff8a';
+  };
+
+  const lat = Number(station?.lat || 0);
+  const lng = Number(station?.lng || 0);
+
+  const frameStyle = isMaximized ? {
+    position: 'fixed', inset: 0, width: '100vw', height: '100vh', borderRadius: 0, resize: 'none'
+  } : {
+    position: 'fixed', left: `${windowRect.x}px`, top: `${windowRect.y}px`, width: `${windowRect.width}px`, height: `${windowRect.height}px`,
+    minWidth: 'min(820px, calc(100vw - 16px))', minHeight: 'min(560px, calc(100vh - 16px))',
+    maxWidth: 'calc(100vw - 8px)', maxHeight: 'calc(100vh - 8px)', borderRadius: '12px', resize: 'both'
+  };
+
+  const startDrag = (event) => {
+    if (isMaximized || event.button !== 0 || event.target?.closest?.('button')) return;
+    const rect = frameRef.current?.getBoundingClientRect?.();
+    if (!rect) return;
+    dragRef.current = { offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
+    setIsDragging(true);
+    event.preventDefault();
+  };
+
+  const metric = (label, value, unit = '', accent = '#fff', extraClass = '') => (
+    <div className={`weather-center-metric ${extraClass}`.trim()}>
+      <span>{label}</span>
+      <strong style={{ color: accent }}>{value}{unit}</strong>
+    </div>
+  );
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex, pointerEvents: 'none' }}>
+      <style>{`
+        .weather-center-frame { box-sizing: border-box; overflow: hidden; pointer-events: auto; background: rgba(2,9,16,0.985); border: 2px solid var(--cyan); box-shadow: 0 0 42px rgba(0,234,255,0.24), 0 22px 70px rgba(0,0,0,0.55); display: flex; flex-direction: column; container-type: inline-size; }
+        .weather-center-header { height: 66px; flex: 0 0 66px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; background: linear-gradient(180deg, rgba(3,25,38,0.98), rgba(2,12,22,0.98)); border-bottom: 1px solid rgba(0,234,255,0.28); user-select: none; }
+        .weather-center-title { font-family: Orbitron, sans-serif; font-size: clamp(17px, 2.0cqw, 25px); font-weight: 900; color: var(--cyan); letter-spacing: 1.3px; white-space: nowrap; text-shadow: 0 0 14px rgba(0,234,255,.18); }
+        .weather-center-sub { font: 800 clamp(10px,1.0cqw,13px) Rajdhani, sans-serif; color: rgba(255,255,255,0.64); letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .weather-center-btn { width: 44px; height: 38px; border-radius: 6px; cursor: pointer; font: 900 17px Orbitron, sans-serif; background: rgba(0,234,255,0.06); color: var(--cyan); border: 1px solid var(--cyan); }
+        .weather-center-body { min-height: 0; flex: 1; overflow: auto; padding: 14px; display: grid; grid-template-rows: minmax(390px, 1fr) auto auto; gap: 12px; scrollbar-width: none; -ms-overflow-style: none; }
+        .weather-center-body::-webkit-scrollbar { width: 0; height: 0; display: none; }
+        .weather-center-top { min-height: 0; display: grid; grid-template-columns: minmax(470px, 1.18fr) minmax(360px, .82fr); gap: 12px; }
+        .weather-center-panel { position: relative; min-width: 0; overflow: hidden; border: 1px solid rgba(0,234,255,0.28); border-radius: 9px; background: linear-gradient(145deg, rgba(0,19,31,0.92), rgba(0,8,16,0.97)); box-shadow: inset 0 0 18px rgba(0,234,255,0.04); }
+        .weather-map-shell { position: absolute; inset: 0; overflow: hidden; background: #09161a; }
+        .weather-leaflet-host { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; filter: saturate(0.90) brightness(0.70) contrast(1.14); }
+        .weather-map-overlay { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: linear-gradient(180deg, rgba(0,16,27,0.10), rgba(0,4,8,0.04)); }
+        .weather-map-label { position: absolute; z-index: 5; top: 12px; left: 12px; padding: 7px 10px; border: 1px solid rgba(0,255,102,0.55); border-radius: 5px; background: rgba(0,12,18,0.84); color: var(--green); font: 900 11px Orbitron, sans-serif; letter-spacing: .9px; pointer-events: none; box-shadow: 0 0 12px rgba(0,255,102,.08); }
+        .weather-map-coord { position: absolute; z-index: 5; bottom: 12px; left: 12px; padding: 6px 9px; border-radius: 5px; background: rgba(0,8,14,0.84); color: #fff; font: 800 11px Rajdhani, sans-serif; letter-spacing: .7px; pointer-events: none; }
+        .weather-map-actions { position: absolute; z-index: 6; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 4px; }
+        .weather-map-actions button { width: 34px; height: 34px; border: 1px solid rgba(0,234,255,0.65); border-radius: 5px; background: rgba(0,12,18,0.90); color: #fff; font: 900 20px/1 Orbitron, sans-serif; cursor: pointer; box-shadow: 0 0 10px rgba(0,234,255,0.12); }
+        .weather-map-actions button:hover:not(:disabled) { background: var(--cyan); color: #001018; }
+        .weather-map-actions button:disabled { opacity: .38; cursor: default; }
+        .weather-map-layers { position: absolute; z-index: 6; top: 12px; right: 54px; display: flex; gap: 5px; }
+        .weather-map-layers button { height: 31px; padding: 0 10px; border: 1px solid rgba(0,234,255,0.45); border-radius: 5px; background: rgba(0,12,18,0.88); color: var(--cyan); font: 900 clamp(9px,.78cqw,11px) Orbitron, sans-serif; letter-spacing: .6px; cursor: pointer; }
+        .weather-map-layers button.base.active { border-color: var(--green); color: var(--green); box-shadow: 0 0 10px rgba(0,255,102,0.22); }
+        .weather-map-layers button.cloud.active { border-color: var(--cyan); color: #001018; background: var(--cyan); box-shadow: 0 0 14px rgba(0,234,255,0.28); }
+        .weather-map-layers button.rain.active { border-color: var(--gold); color: #001018; background: var(--gold); box-shadow: 0 0 14px rgba(255,204,0,0.28); }
+        .weather-map-layers button.satellite.active { border-color: #d7ecff; color: #001018; background: #d7ecff; box-shadow: 0 0 14px rgba(215,236,255,0.25); }
+        .weather-map-layers button:disabled { opacity: .34; cursor: not-allowed; }
+        .weather-map-error { position: absolute; z-index: 7; left: 50%; top: 50%; transform: translate(-50%,-50%); padding: 10px 14px; border: 1px solid var(--red); border-radius: 5px; background: rgba(18,0,0,.88); color: #ff7777; font: 900 10px Orbitron, sans-serif; letter-spacing: .7px; pointer-events: none; }
+        .weather-map-legend { position: absolute; z-index: 5; right: 55px; bottom: 12px; width: min(255px, 42%); padding: 8px 9px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; background: rgba(0,8,14,.82); backdrop-filter: blur(4px); pointer-events: none; }
+        .weather-map-legend-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; color: rgba(255,255,255,.78); font: 800 clamp(9px,.78cqw,11px) Rajdhani, sans-serif; letter-spacing: .6px; }
+        .weather-map-legend-row strong { font: 900 clamp(10px,.88cqw,12px) Orbitron, sans-serif; color: var(--gold); }
+        .weather-map-legend small { display: block; margin-top: 5px; color: rgba(255,255,255,.50); font: 800 clamp(8px,.68cqw,10px) Rajdhani, sans-serif; letter-spacing: .45px; }
+        .weather-cloud-scale { display: grid; grid-template-columns: repeat(5,1fr); gap: 2px; margin: 5px 0 7px; height: 5px; }
+        .weather-cloud-scale i { display: block; border-radius: 3px; background: #24475f; }
+        .weather-cloud-scale i:nth-child(2) { background: #4f89a8; }
+        .weather-cloud-scale i:nth-child(3) { background: #83b8d0; }
+        .weather-cloud-scale i:nth-child(4) { background: #bfd8e6; }
+        .weather-cloud-scale i:nth-child(5) { background: #f4fbff; }
+
+        .weather-center-current { padding: 14px; display: flex; flex-direction: column; gap: 10px; overflow: auto; scrollbar-width: none; -ms-overflow-style: none; }
+        .weather-center-current::-webkit-scrollbar { width: 0; height: 0; display: none; }
+        .weather-current-hero { position: relative; flex: 0 0 auto; min-height: 82px; display: flex; align-items: stretch; justify-content: space-between; gap: 12px; padding: 10px 12px 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; overflow: hidden; background: linear-gradient(112deg,rgba(0,217,255,.08) 0%,rgba(79,137,168,.06) 42%,rgba(191,216,230,.07) 72%,rgba(244,251,255,.07) 100%); }
+        .weather-current-hero::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: linear-gradient(90deg,#00d9ff 0 20%,#00ff8a 20% 40%,#ffe600 40% 60%,#ff9800 60% 80%,#ff3b81 80% 100%); opacity: .95; }
+        .weather-current-cloud-kicker { color: rgba(255,255,255,.72); font: 900 clamp(10px,.90cqw,12px) Orbitron,sans-serif; letter-spacing: 1px; }
+        .weather-current-cloud-row { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 10px; row-gap: 2px; margin-top: 4px; min-width: 0; }
+        .weather-current-cloud-value { flex: 0 0 auto; font: 900 clamp(34px,4.25cqw,54px)/.96 Orbitron,sans-serif; letter-spacing: -1.5px; color: #fff; text-shadow: 0 0 12px rgba(255,255,255,.12); white-space: nowrap; }
+        .weather-current-cloud-state { min-width: 0; font: 900 clamp(11px,1.05cqw,14px) Orbitron,sans-serif; letter-spacing: .75px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .weather-current-cloud-op { margin-top: 4px; color: rgba(255,255,255,.68); font: 800 clamp(9px,.82cqw,11px) Rajdhani,sans-serif; letter-spacing: .55px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .weather-current-side { flex: 0 0 auto; min-width: 92px; max-width: 118px; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; text-align: right; padding-bottom: 5px; }
+        .weather-current-icon { font-size: clamp(32px,4.0cqw,48px); line-height: 1; filter: drop-shadow(0 0 12px rgba(255,255,255,0.18)); }
+        .weather-current-condition { margin-top: 6px; color: var(--green); font: 900 clamp(10px,.90cqw,12px) Orbitron, sans-serif; letter-spacing: .75px; white-space: nowrap; }
+        .weather-center-metrics { flex: 0 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+        .weather-center-metric { min-width: 0; padding: 8px 9px; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; background: rgba(255,255,255,0.025); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .weather-center-metric span { flex: 1 1 auto; min-width: 0; color: rgba(255,255,255,0.66); font: 800 clamp(10px,.90cqw,12px) Rajdhani, sans-serif; letter-spacing: .65px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .weather-center-metric strong { flex: 0 0 auto; max-width: 58%; font: 900 clamp(12px,1.05cqw,14px) Orbitron, sans-serif; white-space: nowrap; text-align: right; }
+        .weather-center-metric.temperature-highlight { border-color: rgba(255,255,255,.18); background: linear-gradient(90deg,rgba(255,255,255,.065),rgba(255,255,255,.018)); }
+        .weather-center-metric.temperature-highlight strong { font-size: clamp(15px,1.25cqw,17px); }
+        .weather-center-metric.cloud-highlight { border-color: rgba(255,204,0,.62); background: linear-gradient(90deg,rgba(255,204,0,.10),rgba(255,204,0,.025)); box-shadow: inset 3px 0 0 rgba(255,204,0,.75); }
+        .weather-center-metric.rain-highlight { border-color: rgba(255,128,0,.35); background: rgba(255,128,0,.035); }
+        .weather-center-metric.alert-highlight { border-color: rgba(255,51,81,.40); background: rgba(255,51,81,.035); }
+
+        .weather-ops-grid { flex: 0 0 auto; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(112px,1fr); gap: 8px; }
+        .weather-ops-card { position: relative; min-width: 0; min-height: 0; padding: 9px; border-radius: 7px; border: 1px solid rgba(0,234,255,.20); background: linear-gradient(145deg,rgba(0,18,30,.86),rgba(0,8,16,.92)); overflow: hidden; }
+        .weather-ops-card.cloud-card { border-color: rgba(191,216,230,.34); }
+        .weather-ops-card.rain-card { border-color: rgba(255,128,0,.30); }
+        .weather-ops-card.wind-card { border-color: rgba(0,234,255,.30); }
+        .weather-ops-card.history-card { border-color: rgba(202,0,255,.24); }
+        .weather-ops-title { color: rgba(255,255,255,.78); font: 900 clamp(9px,.82cqw,11px) Orbitron,sans-serif; letter-spacing: .6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .weather-cloud-card-body { height: calc(100% - 18px); display: grid; grid-template-rows: auto minmax(0,1fr); gap: 6px; align-items: stretch; }
+        .weather-cloud-trend-legend { display: grid; grid-template-columns: auto minmax(70px,1fr) auto; align-items: center; gap: 6px; color: rgba(255,255,255,.56); font: 800 clamp(8px,.64cqw,9px) Rajdhani,sans-serif; letter-spacing: .35px; }
+        .weather-cloud-gradient { height: 6px; border-radius: 5px; margin: 0; background: linear-gradient(90deg,#24475f 0 20%,#4f89a8 20% 40%,#83b8d0 40% 60%,#bfd8e6 60% 80%,#f4fbff 80% 100%); box-shadow: 0 0 9px rgba(255,255,255,.06); }
+        .weather-cloud-trend { height: 70px; display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid rgba(255,255,255,.08); }
+        .weather-cloud-trend-wrap { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
+        .weather-cloud-trend-value { margin-bottom: 2px; text-align: center; color: #fff; font: 900 clamp(8px,.66cqw,10px) Orbitron,sans-serif; line-height: 1; white-space: nowrap; }
+        .weather-cloud-trend-bar { min-height: 4px; border-radius: 3px 3px 0 0; box-shadow: 0 0 6px color-mix(in srgb,currentColor 25%,transparent); }
+        .weather-cloud-trend-time { margin-top: 3px; text-align: center; color: rgba(255,255,255,.58); font: 800 clamp(7px,.60cqw,9px) Rajdhani,sans-serif; }
+        .weather-mini-bars { height: 68px; display: flex; align-items: flex-end; gap: 4px; margin-top: 6px; }
+        .weather-mini-bar-wrap { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; }
+        .weather-mini-bar { min-height: 3px; border-radius: 3px 3px 1px 1px; background: linear-gradient(180deg,#ff3b5c,#ffb000 58%,#00d9ff); box-shadow: 0 0 7px rgba(255,176,0,.12); }
+        .weather-mini-bar-time { margin-top: 3px; text-align: center; color: rgba(255,255,255,.58); font: 800 clamp(8px,.62cqw,9px) Rajdhani,sans-serif; }
+        .weather-rain-summary { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 4px; }
+        .weather-rain-summary strong { color: var(--gold); font: 900 12px Orbitron,sans-serif; }
+        .weather-rain-summary span { color: rgba(255,255,255,.62); font: 800 clamp(8px,.66cqw,10px) Rajdhani,sans-serif; }
+        .weather-wind-body { height: calc(100% - 18px); display: grid; grid-template-columns: 88px 1fr; gap: 8px; align-items: center; }
+        .weather-compass { position: relative; width: 78px; height: 78px; margin: auto; border: 1px solid rgba(0,234,255,.38); border-radius: 50%; box-shadow: inset 0 0 18px rgba(0,234,255,.08); }
+        .weather-compass .cardinal { position: absolute; color: rgba(255,255,255,.78); font: 900 clamp(8px,.66cqw,10px) Orbitron,sans-serif; }
+        .weather-compass .n { top: 2px; left: 50%; transform: translateX(-50%); }
+        .weather-compass .s { bottom: 2px; left: 50%; transform: translateX(-50%); }
+        .weather-compass .w { left: 4px; top: 50%; transform: translateY(-50%); }
+        .weather-compass .e { right: 4px; top: 50%; transform: translateY(-50%); }
+        .weather-compass-arrow { position: absolute; inset: 13px; transform-origin: 50% 50%; display: flex; align-items: flex-start; justify-content: center; }
+        .weather-compass-arrow::before { content: ''; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 19px solid var(--cyan); filter: drop-shadow(0 0 6px rgba(0,234,255,.35)); }
+        .weather-wind-copy strong { display: block; color: var(--cyan); font: 900 15px Orbitron,sans-serif; }
+        .weather-wind-copy span { display: block; margin-top: 5px; color: rgba(255,255,255,.66); font: 800 clamp(8px,.68cqw,10px) Rajdhani,sans-serif; line-height: 1.35; }
+        .weather-history-bars { height: 68px; display: flex; align-items: flex-end; gap: 5px; margin-top: 7px; border-bottom: 1px solid rgba(255,255,255,.08); }
+        .weather-history-bar { flex: 1; min-width: 0; border-radius: 3px 3px 0 0; background: linear-gradient(180deg,#c000ff,#00d9ff); box-shadow: 0 0 7px rgba(192,0,255,.10); }
+        .weather-history-summary { display: flex; justify-content: space-between; gap: 8px; margin-top: 5px; color: rgba(255,255,255,.62); font: 800 clamp(8px,.66cqw,10px) Rajdhani,sans-serif; }
+        .weather-history-summary strong { color: #e9a6ff; font: 900 clamp(10px,.78cqw,12px) Orbitron,sans-serif; }
+
+        .weather-strip { display: grid; grid-template-columns: repeat(8, minmax(88px,1fr)); gap: 7px; }
+        .weather-hour { min-width: 0; padding: 9px 6px; border: 1px solid rgba(0,234,255,0.16); border-top-width: 2px; border-radius: 7px; background: rgba(0,18,30,0.74); text-align: center; box-shadow: inset 0 0 10px rgba(0,234,255,.02); }
+        .weather-hour time { display: block; color: var(--cyan); font: 900 clamp(10px,.80cqw,12px) Orbitron, sans-serif; }
+        .weather-hour .ico { font-size: 21px; line-height: 1.15; margin: 5px 0; }
+        .weather-hour strong { display: block; font: 900 clamp(16px,1.45cqw,19px) Orbitron, sans-serif; text-shadow: 0 0 8px currentColor; }
+        .weather-hour small { display: block; margin-top: 4px; color: rgba(255,255,255,0.68); font: 800 clamp(9px,.72cqw,11px) Rajdhani, sans-serif; line-height: 1.25; }
+        .weather-days { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+        .weather-day { min-width: 0; padding: 10px; border: 1px solid rgba(0,255,102,0.16); border-left-width: 2px; border-radius: 7px; background: linear-gradient(145deg,rgba(0,22,23,0.68),rgba(0,13,20,.68)); display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; }
+        .weather-day .ico { grid-row: 1 / span 2; font-size: 27px; }
+        .weather-day strong { color: #fff; font: 900 clamp(11px,.84cqw,13px) Orbitron, sans-serif; white-space: nowrap; }
+        .weather-day small { color: rgba(255,255,255,0.70); font: 800 clamp(9px,.70cqw,11px) Rajdhani, sans-serif; line-height: 1.25; }
+        .weather-section-label { margin: 0 0 7px; color: rgba(255,255,255,0.74); font: 900 clamp(10px,.82cqw,12px) Orbitron, sans-serif; letter-spacing: .85px; }
+        .weather-center-footer { height: 29px; flex: 0 0 29px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-top: 1px solid rgba(0,234,255,0.18); color: rgba(255,255,255,0.52); font: 800 clamp(9px,.66cqw,10px) Rajdhani, sans-serif; letter-spacing: .55px; }
+        @container (max-width: 980px) {
+          .weather-center-body { grid-template-rows: minmax(360px,1fr) auto auto; }
+          .weather-center-top { grid-template-columns: minmax(440px,1.12fr) minmax(330px,.88fr); }
+          .weather-ops-grid { grid-auto-rows: minmax(100px,1fr); }
+          .weather-cloud-trend { height: 62px; }
+          .weather-current-cloud-value { font-size: clamp(32px,4.0cqw,48px); }
+          .weather-current-side { min-width: 82px; max-width: 100px; }
+          .weather-center-metric strong { max-width: 54%; font-size: clamp(12px,1.0cqw,14px); }
+          .weather-center-metric.temperature-highlight strong { font-size: clamp(15px,1.2cqw,17px); }
+          .weather-compass { width: 66px; height: 66px; }
+          .weather-wind-body { grid-template-columns: 72px 1fr; }
+        }
+        @container (max-width: 900px) { .weather-center-top { grid-template-columns: 1fr; grid-template-rows: 300px auto; } .weather-strip { grid-template-columns: repeat(4, 1fr); } .weather-days { grid-template-columns: repeat(3, 1fr); } }
+        @container (max-width: 680px) { .weather-center-header { padding: 0 10px; } .weather-center-sub { display: none; } .weather-center-body { padding: 8px; } .weather-center-top { grid-template-rows: 250px auto; } .weather-center-metrics { grid-template-columns: 1fr; } .weather-ops-grid { grid-template-columns: 1fr; } .weather-strip { grid-template-columns: repeat(2, 1fr); } .weather-days { grid-template-columns: 1fr 1fr; } .weather-map-legend { display:none; } }
+        @media (max-height: 900px) {
+          .weather-center-header { height: 58px; flex-basis: 58px; padding: 0 14px; }
+          .weather-center-body { padding: 10px; gap: 8px; grid-template-rows: minmax(315px,1fr) auto auto; }
+          .weather-center-top { gap: 8px; }
+          .weather-center-current { padding: 10px; gap: 7px; }
+          .weather-current-hero { min-height: 74px; padding-bottom: 7px; }
+          .weather-current-cloud-value { font-size: clamp(30px,3.8cqw,46px); }
+          .weather-current-icon { font-size: clamp(30px,3.8cqw,44px); }
+          .weather-center-metrics { gap: 5px; }
+          .weather-center-metric { padding: 6px 8px; }
+          .weather-ops-grid { grid-auto-rows: minmax(92px,1fr); gap: 6px; }
+          .weather-ops-card { padding: 7px; }
+          .weather-cloud-card-body { grid-template-rows: auto minmax(0,1fr); gap: 5px; }
+          .weather-cloud-trend { height: 52px; }
+          .weather-mini-bars, .weather-history-bars { height: 53px; }
+          .weather-compass { width: 60px; height: 60px; }
+          .weather-wind-body { grid-template-columns: 66px 1fr; gap: 6px; }
+          .weather-strip { gap: 5px; }
+          .weather-hour { padding: 7px 5px; }
+          .weather-day { padding: 8px; gap: 6px 8px; }
+          .weather-section-label { margin-bottom: 5px; }
+        }
+      `}</style>
+      <div ref={frameRef} className="weather-center-frame" style={frameStyle} onPointerDownCapture={onFocus}>
+        <div className="weather-center-header" onPointerDown={startDrag} style={{ cursor: isMaximized ? 'default' : (isDragging ? 'grabbing' : 'grab') }}>
+          <div style={{ minWidth: 0, pointerEvents: 'none' }}>
+            <div className="weather-center-title">WEATHER CENTER</div>
+            <div className="weather-center-sub">{station?.id || 'SRC'} GROUND STATION • LIVE FORECAST • REGIONAL OPERATIONS VIEW</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button className="weather-center-btn" onClick={() => setRefreshKey((v) => v + 1)} title="Refresh weather" style={{ color: 'var(--green)', borderColor: 'var(--green)' }}>↻</button>
+            <button className="weather-center-btn" onClick={() => setIsMaximized((v) => !v)} title={isMaximized ? 'Restore window' : 'Maximize'}>{isMaximized ? '❐' : '□'}</button>
+            <button className="weather-center-btn" onClick={onClose} title="Close" style={{ color: 'var(--red)', borderColor: 'var(--red)', background: 'rgba(255,51,51,0.06)' }}>×</button>
+          </div>
+        </div>
+
+        <div className="weather-center-body">
+          <div className="weather-center-top">
+            <div className="weather-center-panel">
+              <WeatherInteractiveMap station={station} fmt={fmt} cloudCover={current.cloud_cover} precipitationNow={precipNow} />
+            </div>
+
+            <div className="weather-center-panel weather-center-current">
+              {isLoading && !weatherData ? (
+                <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--cyan)', fontFamily: 'Orbitron', fontWeight: 900 }}>LOADING WEATHER DATA...</div>
+              ) : weatherError && !weatherData ? (
+                <div style={{ margin: 'auto', textAlign: 'center' }}>
+                  <div style={{ color: 'var(--red)', fontFamily: 'Orbitron', fontWeight: 900, marginBottom: '8px' }}>{weatherError}</div>
+                  <button className="weather-center-btn" onClick={() => setRefreshKey((v) => v + 1)} style={{ width: 'auto', padding: '0 12px', color: 'var(--gold)', borderColor: 'var(--gold)' }}>RETRY</button>
+                </div>
+              ) : (
+                <>
+                  <div className="weather-current-hero" style={{ boxShadow: `inset 4px 0 0 ${cloudHeroColor}, 0 0 20px ${cloudHeroColor}14` }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="weather-current-cloud-kicker">CLOUD COVER • UTC {formatUtcHour(current.time)}</div>
+                      <div className="weather-current-cloud-row">
+                        <span className="weather-current-cloud-value">{fmt(cloudPct,0)}%</span>
+                        <span className="weather-current-cloud-state" style={{ color: cloudHeroColor }}>{cloudState}</span>
+                      </div>
+                      <div className="weather-current-cloud-op">{cloudOperationalLabel}</div>
+                    </div>
+                    <div className="weather-current-side">
+                      <div className="weather-current-icon">{weatherIcon(current.weather_code)}</div>
+                      <div className="weather-current-condition">{weatherLabel(current.weather_code)}</div>
+                    </div>
+                  </div>
+                  <div className="weather-center-metrics">
+                    {metric('TEMPERATURE', fmt(current.temperature_2m,1), '°C', temperatureColor(current.temperature_2m), 'temperature-highlight')}
+                    {metric('FEELS LIKE', fmt(current.apparent_temperature,1), '°C', temperatureColor(current.apparent_temperature), 'temperature-highlight')}
+                    {metric('HUMIDITY', fmt(current.relative_humidity_2m,0), '%', 'var(--cyan)')}
+                    {metric('PRESSURE', fmt(current.surface_pressure,0), ' hPa', '#fff')}
+                    {metric('VISIBILITY', fmt(visibilityKm,1), ' km', finite(visibilityKm) && Number(visibilityKm) < 5 ? 'var(--gold)' : '#fff')}
+                    {metric('WIND', `${fmt(current.wind_speed_10m,0)} ${windCardinal(current.wind_direction_10m)}`, ' km/h', 'var(--cyan)')}
+                    {metric('WIND GUST', fmt(current.wind_gusts_10m,0), ' km/h', finite(current.wind_gusts_10m) && Number(current.wind_gusts_10m) >= 40 ? '#ff8a00' : '#fff')}
+                    {metric('RAIN NOW', fmt(precipNow,1), ' mm', precipNow > 0 ? '#ff9a00' : '#fff', 'rain-highlight')}
+                    {metric('RAIN PROB.', fmt(popNow,0), '%', finite(popNow) && Number(popNow) >= 60 ? 'var(--gold)' : '#fff', 'rain-highlight')}
+                    {metric('THUNDERSTORM', thunderstormNow ? 'DETECTED' : 'NO SIGNAL', '', thunderstormNow ? 'var(--red)' : 'var(--green)', thunderstormNow ? 'alert-highlight' : '')}
+                  </div>
+
+                  <div className="weather-ops-grid">
+                    <div className="weather-ops-card cloud-card">
+                      <div className="weather-ops-title">CLOUD TREND • NEXT 6 HOURS</div>
+                      <div className="weather-cloud-card-body">
+                        <div className="weather-cloud-trend-legend"><span>LOW</span><div className="weather-cloud-gradient" /><span>HIGH</span></div>
+                        <div className="weather-cloud-trend">
+                          {cloudNext6.map((item, index) => {
+                            const color = cloudLevelColor(item.cloud);
+                            return (
+                              <div className="weather-cloud-trend-wrap" key={`${item.time}-${index}`}>
+                                <div className="weather-cloud-trend-value">{fmt(item.cloud,0)}%</div>
+                                <div className="weather-cloud-trend-bar" style={{ height: `${Math.max(5, item.cloud)}%`, background: `linear-gradient(180deg,${color},${color}88)`, color }} />
+                                <div className="weather-cloud-trend-time">{formatUtcHour(item.time)}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="weather-ops-card rain-card">
+                      <div className="weather-ops-title">PRECIPITATION • NEXT 6 HOURS</div>
+                      <div className="weather-mini-bars">
+                        {precipNext6.map((item, index) => (
+                          <div className="weather-mini-bar-wrap" key={`${item.time}-${index}`}>
+                            <div className="weather-mini-bar" style={{ height: `${Math.max(5, Math.round((item.rain / precipNext6Max) * 100))}%` }} />
+                            <div className="weather-mini-bar-time">{formatUtcHour(item.time)}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="weather-rain-summary"><strong>{fmt(precipNext6Total,1)} mm</strong><span>MAX PROB {fmt(precipNext6Pop,0)}%</span></div>
+                    </div>
+
+                    <div className="weather-ops-card wind-card">
+                      <div className="weather-ops-title">WIND DIRECTION & SPEED</div>
+                      <div className="weather-wind-body">
+                        <div className="weather-compass">
+                          <span className="cardinal n">N</span><span className="cardinal s">S</span><span className="cardinal w">W</span><span className="cardinal e">E</span>
+                          <div className="weather-compass-arrow" style={{ transform: `rotate(${windFlowDirection}deg)` }} />
+                        </div>
+                        <div className="weather-wind-copy"><strong>{fmt(current.wind_speed_10m,0)} km/h</strong><span>FROM {windCardinal(windDirection)}<br/>({fmt(windDirection,0)}°) • GUST {fmt(current.wind_gusts_10m,0)} km/h</span></div>
+                      </div>
+                    </div>
+
+                    <div className="weather-ops-card history-card">
+                      <div className="weather-ops-title">RAINFALL TREND • LAST 6 HOURS</div>
+                      <div className="weather-history-bars">
+                        {rainHistory6.map((item, index) => <div key={`${item.time}-${index}`} className="weather-history-bar" style={{ height: `${Math.max(4, Math.round((item.rain / rainHistoryMax) * 100))}%` }} />)}
+                      </div>
+                      <div className="weather-history-summary"><span>6H TOTAL</span><strong>{fmt(rainHistoryTotal,1)} mm</strong></div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <div className="weather-section-label">NEXT 24 HOURS • 3-HOUR INTERVAL • UTC</div>
+            <div className="weather-strip">
+              {next24.length ? next24.map((item, index) => (
+                <div className="weather-hour" key={`${item.time}-${index}`} style={{ borderTopColor: weatherAccent(item.code) }}>
+                  <time>{formatUtcHour(item.time)}</time>
+                  <div className="ico">{weatherIcon(item.code)}</div>
+                  <strong style={{ color: temperatureColor(item.temp) }}>{fmt(item.temp,0)}°C</strong>
+                  <small>CLOUD {fmt(item.cloud,0)}%<br/>RAIN {fmt(item.pop,0)}% • {fmt(item.wind,0)} km/h</small>
+                </div>
+              )) : <div style={{ color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani' }}>Forecast unavailable.</div>}
+            </div>
+          </div>
+
+          <div>
+            <div className="weather-section-label">5-DAY FORECAST • STATION POINT FORECAST</div>
+            <div className="weather-days">
+              {dailyCards.length ? dailyCards.map((item, index) => (
+                <div className="weather-day" key={`${item.time}-${index}`} style={{ borderLeftColor: weatherAccent(item.code) }}>
+                  <div className="ico">{weatherIcon(item.code)}</div>
+                  <strong>{formatUtcDate(item.time)}</strong>
+                  <small>{fmt(item.tMin,0)}° / {fmt(item.tMax,0)}°C • RAIN {fmt(item.pop,0)}% ({fmt(item.rain,1)} mm)<br/>WIND {fmt(item.wind,0)} • GUST {fmt(item.gust,0)} km/h</small>
+                </div>
+              )) : <div style={{ color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani' }}>Daily forecast unavailable.</div>}
+            </div>
+          </div>
+        </div>
+
+        <div className="weather-center-footer">
+          <span>MODEL FORECAST: OPEN-METEO BEST MATCH • BASE: OPENSTREETMAP • CLOUD: NASA GIBS/VIIRS NOAA-20 • SATELLITE: NASA GIBS/VIIRS NOAA-20 • RAIN: NASA GIBS/GPM IMERG</span>
+          <span>{summaryMode === 'SIM' ? 'CLOUD SUMMARY: SIM-TIME' : 'CLOUD SUMMARY: LIVE WEATHER'}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function SatOrbitCore() {
   
   // 📍 ฟันธง: สร้างสมองกลควบคุมหน้าจอ Loading (Splash Screen) สไตล์ Sci-Fi
@@ -2578,6 +4600,7 @@ const [cloudCover, setCloudCover] = useState(null);
 const [isFetchingCloud, setIsFetchingCloud] = useState(false);
 const [cloudDataCache, setCloudDataCache] = useState(null);
 const [cloudDataOutOfRange, setCloudDataOutOfRange] = useState(false);
+const [cloudDataMode, setCloudDataMode] = useState('SIM');
 
 // 1. Request a 3-day forecast only when the selected station changes.
 useEffect(() => {
@@ -2589,8 +4612,9 @@ useEffect(() => {
   setCloudDataCache(null);
   setCloudCover(null);
   setCloudDataOutOfRange(false);
+  setCloudDataMode('SIM');
 
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=cloud_cover&forecast_days=3&timezone=UTC`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=cloud_cover&hourly=cloud_cover&past_days=7&forecast_days=7&timezone=UTC`;
   const timeoutId = setTimeout(() => controller.abort(), 10000);
   
   fetch(url, { signal: controller.signal })
@@ -2601,7 +4625,7 @@ useEffect(() => {
     .then(data => {
       if (!active) return;
       if (data && data.hourly && Array.isArray(data.hourly.time) && Array.isArray(data.hourly.cloud_cover)) {
-        setCloudDataCache(data.hourly);
+        setCloudDataCache({ hourly: data.hourly, current: data.current || null });
       }
       setIsFetchingCloud(false);
     })
@@ -2621,15 +4645,24 @@ useEffect(() => {
 
 // 2. Use forecast data only inside the actual forecast window. Seasonal validation dates must not display fake weather.
 useEffect(() => {
-  if (!cloudDataCache || !Array.isArray(cloudDataCache.time) || !Array.isArray(cloudDataCache.cloud_cover)) return;
+  const hourly = cloudDataCache?.hourly;
+  if (!hourly || !Array.isArray(hourly.time) || !Array.isArray(hourly.cloud_cover)) return;
 
-  const samples = cloudDataCache.time
-    .map((tStr, idx) => { const stamp = /(?:Z|[+-]\d{2}:?\d{2})$/.test(tStr) ? tStr : `${tStr}Z`; return { t: new Date(stamp).getTime(), value: cloudDataCache.cloud_cover[idx] }; })
+  const samples = hourly.time
+    .map((tStr, idx) => { const stamp = /(?:Z|[+-]\d{2}:?\d{2})$/.test(tStr) ? tStr : `${tStr}Z`; return { t: new Date(stamp).getTime(), value: hourly.cloud_cover[idx] }; })
     .filter(s => Number.isFinite(s.t) && Number.isFinite(Number(s.value)));
 
+  const liveFallback = Number(cloudDataCache?.current?.cloud_cover);
   if (samples.length === 0) {
-    setCloudCover(null);
-    setCloudDataOutOfRange(true);
+    if (Number.isFinite(liveFallback)) {
+      setCloudCover(liveFallback);
+      setCloudDataMode('LIVE');
+      setCloudDataOutOfRange(false);
+    } else {
+      setCloudCover(null);
+      setCloudDataMode('OFFLINE');
+      setCloudDataOutOfRange(true);
+    }
     return;
   }
 
@@ -2639,8 +4672,17 @@ useEffect(() => {
   const lastMs = samples[samples.length - 1].t;
 
   if (nowMs < firstMs - FORECAST_TOLERANCE_MS || nowMs > lastMs + FORECAST_TOLERANCE_MS) {
-    setCloudCover(null);
-    setCloudDataOutOfRange(true);
+    // Do not fabricate weather for a far-away simulation date. Keep the panel useful
+    // by falling back to the station's current cloud cover and mark it as LIVE.
+    if (Number.isFinite(liveFallback)) {
+      setCloudCover(liveFallback);
+      setCloudDataMode('LIVE');
+      setCloudDataOutOfRange(false);
+    } else {
+      setCloudCover(null);
+      setCloudDataMode('OFFLINE');
+      setCloudDataOutOfRange(true);
+    }
     return;
   }
 
@@ -2655,6 +4697,7 @@ useEffect(() => {
   }
 
   setCloudDataOutOfRange(false);
+  setCloudDataMode('SIM');
   setCloudCover(Number(closest.value));
 }, [Math.floor(simulatedTimeMs / 3600000), cloudDataCache]);
 
@@ -2825,6 +4868,12 @@ useEffect(() => {
   // ฟันธง: ตัวแปรควบคุมการเปิดปิดหน้าจอ Radar Skyplot
   const [isRadarOpen, setIsRadarOpen] = useState(false);
 
+  // Internal vector antenna simulator popup (embedded in SAT-ORBIT).
+  const [isAntenna3DOpen, setIsAntenna3DOpen] = useState(false);
+
+  // Lightweight detailed weather popup. Detailed forecast/map load only when opened.
+  const [isWeatherOpen, setIsWeatherOpen] = useState(false);
+
   // 📍 ฟันธง 1: ตัวแปรควบคุมการเปิด/ปิดเสียง Radar
   const [isMuted, setIsMuted] = useState(false);
 
@@ -2883,7 +4932,7 @@ useEffect(() => {
   const [isDraggingPass, setIsDraggingPass] = useState(false);
   const dragPassRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
-  const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996, img: 10000, analyzer: 10001, angles: 10002, diagram: 10003 });
+  const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996, img: 10000, analyzer: 10001, angles: 10002, diagram: 10003, antenna3d: 10004, weather: 10005 });
   const [maximizedWins, setMaximizedWins] = useState({ radar: false, pass: false, db: false, img: false, gs: false, analyzer: false, angles: false });
 
   const toggleMaximize = (winName) => {
@@ -5489,11 +7538,11 @@ return (
           
           {/* 📍 ปลดล็อก Scrollbar ให้แผงซ้าย */}
           {isLeftPanelOpen && (
-          <div className="left-panel" style={{ width: '817px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '24px', flex: 1, overflowY: 'auto', paddingBottom: '30px', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+          <div className="left-panel" style={{ width: '817px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, overflowY: 'auto', paddingBottom: '8px', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
 
             <div className="panel-box mission-status">
               {/* 📍 ฟันธง: ขยายธงชาติให้กว้างขึ้น และขยายฟอนต์ชื่อดาวเทียมให้ใหญ่อลังการ */}
-              <div className="target-header" style={{ display: 'flex', gap: '15px', paddingBottom: '15px', marginBottom: '15px', justifyContent: 'center', alignItems: 'center' }}>
+              <div className="target-header" style={{ display: 'flex', gap: '12px', paddingBottom: '10px', marginBottom: '10px', justifyContent: 'center', alignItems: 'center' }}>
                 {targetConfig.flag ? <img src={`https://flagcdn.com/w80/${targetConfig.flag}.png`} alt="flag" style={{ width: 'clamp(45px, 4.5vw, 60px)', borderRadius: '4px', border: '2px solid var(--cyan)', boxShadow: '0 0 15px rgba(0,234,255,0.4)' }} /> : <span style={{fontSize: 'clamp(35px, 4vw, 50px)', filter: 'drop-shadow(0 0 10px var(--cyan))'}}>🛰️</span>}
                 <h2 style={{ fontSize: 'clamp(20px, 2.2vw, 26px)', textShadow: '0 0 15px rgba(255,255,255,0.6)', letterSpacing: '2px', whiteSpace: 'nowrap', margin: 0 }}>{targetConfig.displayName}</h2>
               </div>
@@ -5508,7 +7557,7 @@ return (
               `}</style>
 
              {/* 📍 ฟันธง: กรอบเวลานับถอยหลัง - ปิดแสงแฟลร์, แยกกล่องตัวเลขแบบ Fixed Width ป้องกันการดิ้นซ้ายขวา 100% */}
-             <div className={`status-banner ${linkActive ? 'active' : 'standby'}`} style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '15px 10px', textAlign: 'center', borderRadius: '8px', marginBottom: '18px', border: linkActive ? '1px solid var(--green)' : '1px solid #ff4400', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+             <div className={`status-banner ${linkActive ? 'active' : 'standby'}`} style={{ display: 'flex', flexDirection: 'column', gap: '5px', padding: '12px 10px', textAlign: 'center', borderRadius: '8px', marginBottom: '12px', border: linkActive ? '1px solid var(--green)' : '1px solid #ff4400', backgroundColor: 'rgba(0,0,0,0.2)' }}>
               {linkActive ? (
               <>
                 <span style={{ fontSize: 'clamp(11px, 1.1vw, 14px)', fontWeight: '900', color: 'rgba(255,255,255,0.9)', letterSpacing: '1.5px' }}>SIGNAL ACQUIRED</span>
@@ -5580,11 +7629,12 @@ return (
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
                 <li>
                   <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', flex: '1 1 auto', minWidth: 0 }}>
                     <strong style={{ 
-                      /* 📍 ฟันธง: ถ้าอัปเดตพังให้เป็นสีแดง ถ้าสำเร็จให้เป็นสีเขียว */
+                      /* TV 65-inch: keep the TLE source on one line and reserve fixed space for SYNC TLE */
                       color: tleSource.includes('Failed') ? 'var(--red)' : (tleSource.includes('Fallback') || tleSource.includes('DEGRADED') || selectedTleIsStale ? 'var(--gold)' : 'var(--green)'), 
-                      fontWeight: '900', textAlign: 'right', textShadow: 'none' 
+                      fontWeight: '900', textAlign: 'right', textShadow: 'none', flex: '1 1 auto', minWidth: 0,
+                      fontSize: 'clamp(9px, 0.72vw, 11px)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.1
                     }}>
                       {tleSource}{selectedTleIsStale ? ` • STALE ${Math.floor(selectedTleAgeDays)}d` : ''}
                     </strong>
@@ -5594,9 +7644,10 @@ return (
                       disabled={isUpdatingTle}
                       style={{ 
                         background: 'rgba(0, 234, 255, 0.1)', border: '1px solid var(--cyan)', color: 'var(--cyan)', 
-                        padding: '2px 8px', borderRadius: '4px', cursor: isUpdatingTle ? 'wait' : 'pointer', 
-                        fontSize: '10px', fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '1px',
-                        opacity: isUpdatingTle ? 0.5 : 1, transition: 'all 0.2s', boxShadow: '0 0 5px rgba(0,234,255,0.2)'
+                        padding: '4px 6px', borderRadius: '4px', cursor: isUpdatingTle ? 'wait' : 'pointer', 
+                        fontSize: '10px', fontFamily: 'Orbitron', fontWeight: 'bold', letterSpacing: '0.7px',
+                        opacity: isUpdatingTle ? 0.5 : 1, transition: 'all 0.2s', boxShadow: '0 0 5px rgba(0,234,255,0.2)',
+                        whiteSpace: 'nowrap', flex: '0 0 76px', minWidth: '76px', lineHeight: 1.05
                       }}
                       onMouseOver={(e) => { e.currentTarget.style.background = 'var(--cyan)'; e.currentTarget.style.color = '#000'; }}
                       onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(0, 234, 255, 0.1)'; e.currentTarget.style.color = 'var(--cyan)'; }}
@@ -5610,18 +7661,18 @@ return (
             
         {/* 📍 ANTENNA TELEMETRY - ย้ายมาไว้ฝั่งซ้ายเหนือ LOCAL WEATHER ตาม Mission/Tracking Status */}
         {/* 📍 คง Logic, สี, ขนาด, AZ/EL, TRACKING/STANDBY และ 3D SIMULATOR เดิมทั้งหมด */}
-              <div className="panel-box" style={{ padding: '12px 15px', background: 'linear-gradient(145deg, rgba(0, 25, 15, 0.85), rgba(0, 10, 5, 0.95))', border: '1px solid var(--green)', marginBottom: '6px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,255,102,0.3)', paddingBottom: '6px', gap: '4px' }}>
+              <div className="panel-box" style={{ padding: '8px 12px', background: 'linear-gradient(145deg, rgba(0, 25, 15, 0.85), rgba(0, 10, 5, 0.95))', border: '1px solid var(--green)', marginBottom: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', borderBottom: '1px dashed rgba(0,255,102,0.3)', paddingBottom: '4px', gap: '4px' }}>
                 <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(12px, 1.2vw, 14px)', color: 'var(--green)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap' }}>ANTENNA TELEMETRY</span>
                 <span className={`status-badge ${linkActive ? 'live' : 'sim'}`} style={{ fontSize: 'clamp(9px, 0.9vw, 11px)', color: linkActive ? 'var(--green)' : 'var(--gold)', fontFamily: 'Orbitron', fontWeight: '900', padding: '2px 6px', background: linkActive ? 'rgba(0,255,102,0.1)' : 'rgba(255,204,0,0.1)', borderRadius: '4px', border: `1px solid ${linkActive ? 'var(--green)' : 'var(--gold)'}`, margin: 0 }}>
                   {linkActive ? 'TRACKING' : 'STANDBY'}
                 </span>
               </div>
               
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '15px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
                 
                {/* ค่าองศาจานรับสัญญาณ (จำลองการทำงานจานจริง: นิ่งตอน Standby, หมุนตอน Tracking) */}
-               <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+               <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 'clamp(10px, 1vw, 11px)', color: 'rgba(255,255,255,0.6)', fontFamily: 'Orbitron', letterSpacing: '1px' }}>AZIMUTH</span>
                     <strong style={{ fontSize: 'clamp(14px, 1.4vw, 18px)', color: linkActive ? 'var(--cyan)' : 'rgba(255,255,255,0.3)', fontFamily: 'Orbitron', textShadow: 'none', fontVariantNumeric: 'tabular-nums' }}>
@@ -5638,123 +7689,43 @@ return (
                   </div>
                 </div>
                 
-               {/* 📡 GISTDA Antenna Bridge Controller */}
+               {/* 📡 INTERNAL VECTOR ANTENNA 3D SIMULATOR */}
 <button
-  onClick={() => {
-
-    if (
-      bridgeState.bridgeStatus === 'OFF' ||
-      bridgeState.bridgeStatus === 'LOST'
-    ) {
-      bridgeState.connectAntenna();
-      return;
-    }
-
-    if (
-      bridgeState.bridgeStatus === 'LINKED'
-    ) {
-      bridgeState.disconnectAntenna();
-    }
-
-  }}
-
-  disabled={
-    bridgeState.bridgeStatus === 'OPENING'
-  }
-
+  onClick={() => { setIsAntenna3DOpen(true); bringToFront('antenna3d'); }}
   style={{
     flex: '0 0 auto',
-
-    background:
-      bridgeState.bridgeStatus === 'LINKED'
-        ? 'linear-gradient(135deg, rgba(0,255,102,0.18) 0%, rgba(0,0,0,0.8) 100%)'
-        : bridgeState.bridgeStatus === 'LOST'
-        ? 'linear-gradient(135deg, rgba(255,51,51,0.18) 0%, rgba(0,0,0,0.8) 100%)'
-        : 'linear-gradient(135deg, rgba(0,255,102,0.15) 0%, rgba(0,0,0,0.8) 100%)',
-
-    border:
-      bridgeState.bridgeStatus === 'LOST'
-        ? '1px solid var(--red)'
-        : '1px solid var(--green)',
-
-    color:
-      bridgeState.bridgeStatus === 'LOST'
-        ? 'var(--red)'
-        : 'var(--green)',
-
-    padding: '8px 12px',
+    background: 'linear-gradient(135deg, rgba(0,255,102,0.15) 0%, rgba(0,0,0,0.8) 100%)',
+    border: '1px solid var(--green)',
+    color: 'var(--green)',
+    padding: '5px 9px',
     borderRadius: '6px',
-
     fontFamily: 'Rajdhani',
-    fontSize: 'clamp(11px, 1.1vw, 14px)',
+    fontSize: 'clamp(10px, 0.95vw, 12px)',
     fontWeight: '900',
     letterSpacing: '1px',
-
-    cursor:
-      bridgeState.bridgeStatus === 'OPENING'
-        ? 'wait'
-        : 'pointer',
-
-    opacity:
-      bridgeState.bridgeStatus === 'OPENING'
-        ? 0.75
-        : 1,
-
+    cursor: 'pointer',
+    opacity: 1,
     transition: 'all 0.3s ease',
-
-    boxShadow:
-      bridgeState.bridgeStatus === 'LINKED'
-        ? '0 0 15px rgba(0,255,102,0.35)'
-        : bridgeState.bridgeStatus === 'LOST'
-        ? '0 0 12px rgba(255,51,51,0.25)'
-        : '0 0 10px rgba(0,255,102,0.1)',
-
+    boxShadow: '0 0 10px rgba(0,255,102,0.1)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    lineHeight: '1.2',
-    minWidth: '105px'
+    lineHeight: '1.15',
+    minWidth: '92px'
   }}
 >
-
-  <span
-    style={{
-      fontSize: '18px',
-      filter: 'none',
-      textShadow: 'none'
-    }}
-  >
-    {
-      bridgeState.bridgeStatus === 'LINKED'
-        ? '✅'
-        : bridgeState.bridgeStatus === 'LOST'
-        ? '⚠️'
-        : '📡'
-    }
-  </span>
-
-  <span>
-    {
-      bridgeState.bridgeStatus === 'OFF'
-        ? '3D SIMULATOR'
-        : bridgeState.bridgeStatus === 'OPENING'
-        ? 'CONNECTING...'
-        : bridgeState.bridgeStatus === 'LINKED'
-        ? 'DISCONNECT'
-        : 'RECONNECT'
-    }
-  </span>
-
+  <span style={{ fontSize: '15px', filter: 'none', textShadow: 'none' }}>📡</span>
+  <span>3D SIMULATOR</span>
 </button>
                 
               </div>
             </div>
         {/* ☁️ CLOUD COVER FORECAST HUD */}
-        <div className="panel-box" style={{ padding: '12px 15px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)' }}>
+        <div className="panel-box" role="button" tabIndex={0} title="Open Weather Center" onClick={() => { setIsWeatherOpen(true); bringToFront('weather'); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { setIsWeatherOpen(true); bringToFront('weather'); } }} style={{ padding: '12px 15px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)', cursor: 'pointer' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px', gap: '4px' }}>
                 <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(12px, 1.2vw, 14px)', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>LOCAL WEATHER (METEO)</span>
-                <span style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'var(--gold)', fontFamily: 'Orbitron', fontWeight: '900', whiteSpace: 'nowrap', flexShrink: 0, padding: '2px 6px', background: 'rgba(255,204,0,0.1)', borderRadius: '4px', border: '1px solid rgba(255,204,0,0.4)', boxShadow: '0 0 8px rgba(255,204,0,0.2)' }}>{activeStation.id} STATION</span>
+                <span style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'var(--gold)', fontFamily: 'Orbitron', fontWeight: '900', whiteSpace: 'nowrap', flexShrink: 0, padding: '2px 6px', background: 'rgba(255,204,0,0.1)', borderRadius: '4px', border: '1px solid rgba(255,204,0,0.4)', boxShadow: '0 0 8px rgba(255,204,0,0.2)' }}>{activeStation.id} STATION ›</span>
               </div>
               
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
@@ -5775,14 +7746,14 @@ return (
                 <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
                   <div style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'rgba(255,255,255,0.7)', fontFamily: 'Rajdhani', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>CLOUD COVER / VISIBILITY</div>
                   <div style={{ fontSize: 'clamp(12px, 1.2vw, 16px)', fontFamily: 'Orbitron', fontWeight: '900', color: cloudCover === null ? '#fff' : (cloudCover <= 30 ? 'var(--green)' : (cloudCover <= 70 ? 'var(--gold)' : '#ffffff')), lineHeight: '1.2', textShadow: (cloudCover === null || cloudCover > 70) ? 'none' : `0 0 8px ${cloudCover <= 30 ? 'rgba(0,255,102,0.6)' : 'rgba(255,204,0,0.6)'}`, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {cloudDataOutOfRange ? 'OUT OF FORECAST RANGE' : (cloudCover === null ? 'ANALYZING...' : (cloudCover <= 30 ? 'CLEAR (OPTICAL OK)' : (cloudCover <= 70 ? 'PARTLY CLOUDY' : 'OVERCAST (DEGRADED)')))}
+                    {cloudCover === null ? (cloudDataMode === 'OFFLINE' ? 'WEATHER OFFLINE' : 'ANALYZING...') : `${cloudDataMode === 'LIVE' ? 'LIVE • ' : ''}${cloudCover <= 30 ? 'CLEAR (OPTICAL OK)' : (cloudCover <= 70 ? 'PARTLY CLOUDY' : 'OVERCAST (DEGRADED)')}`}
                   </div>
                 </div>
                 
                 <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '5px' }}>
                   {/* 📍 ฟันธง: ลบ textShadow ของตัวเลขเปอร์เซ็นต์เมฆออก */}
                   <div style={{ fontSize: 'clamp(22px, 2vw, 28px)', fontFamily: 'Orbitron', fontWeight: '900', color: cloudCover === null ? '#fff' : (cloudCover <= 30 ? 'var(--green)' : (cloudCover <= 70 ? 'var(--gold)' : '#ffffff')), textShadow: 'none', lineHeight: '1' }}>
-                    {isFetchingCloud ? '--' : (cloudDataOutOfRange || cloudCover === null ? 'N/A' : `${cloudCover}%`)}
+                    {isFetchingCloud ? '--' : (cloudCover === null ? '--' : `${cloudCover}%`)}
                   </div>
                 </div>
               </div>
@@ -6402,6 +8373,35 @@ return (
           </div>
         </div>
       )}
+
+
+    <Antenna3DSimulatorModal
+      open={isAntenna3DOpen}
+      onClose={() => setIsAntenna3DOpen(false)}
+      targetData={targetData}
+      targetConfig={targetConfig}
+      linkActive={linkActive}
+      speedMult={speedMult}
+      isPlaying={isPlaying}
+      stationMask={stationMask}
+      stationId={activeStation.id}
+      satelliteTextureUrl={runtimeAsset('/textures/THEOS-2.webp')}
+      windowZIndex={windowZ.antenna3d}
+      onFocus={() => bringToFront('antenna3d')}
+      simulatedTimeMs={simulatedTimeMs}
+      nextPassTimeMs={nextPassTimestamp?.time || null}
+    />
+
+
+    <WeatherCenterModal
+      open={isWeatherOpen}
+      onClose={() => setIsWeatherOpen(false)}
+      station={activeStation}
+      zIndex={windowZ.weather}
+      onFocus={() => bringToFront('weather')}
+      summaryCloudCover={cloudCover}
+      summaryMode={cloudDataMode}
+    />
 
 
     {/* --- SATELLITE DATABASE --- */}
