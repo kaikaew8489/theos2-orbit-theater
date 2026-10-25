@@ -1,7 +1,15 @@
 // @ts-nocheck
-// Thailand Satellite Orbit — OK20.8 CLASSIC VECTOR ANTENNA FINAL
+// Thailand Satellite Orbit — INTERNATIONAL MASTER v1.1 — ADAPTIVE HUD / MULTI-DISPLAY HARDENING — 2026-10-24
+// 2026-10-25 MASTER HOTFIX: detached Browser-X lifecycle rescue preserves live React/Canvas surfaces before child-window teardown.
+// MASTER DISPLAY REQUIREMENT (LOCKED):
+// - Presentation / Desktop / Compact Landscape / Narrow-Portrait viewport tiers.
+// - Equal left/right HUD baselines and adaptive vertical fill.
+// - Reserve a central 3D Globe Safe Zone; grow vertically before growing horizontally.
+// - Visual tools do not use scrollbars to solve layout; table tools follow their locked navigation rules.
+// - Resizing/rotating/moving windows must never reset clock, target, station, camera or simulation state.
 
 import React, { useEffect, useMemo, useRef, useState, startTransition } from 'react';
+import { createPortal } from 'react-dom';
 import Globe from 'react-globe.gl';
 import * as THREE from 'three';
 import * as satelliteJs from 'satellite.js';
@@ -127,6 +135,247 @@ function parsePlanText(text) {
 // =========================================================================
 
 // ==========================================
+// Mission imports preserve source geometry and use UTC consistently.
+function missionTimestamp(value) {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+  if (typeof value !== 'string' || !value.trim()) return NaN;
+  const text = value.trim().replace(/\.$/, '');
+  const plain = /^(\d{4})[/-](\d{2})[/-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?$/.exec(text);
+  if (plain) {
+    const [, ys, mos, ds, hs, mis, ss, fraction = ''] = plain;
+    const [year, month, day, hour, minute, second] = [ys, mos, ds, hs, mis, ss].map(Number);
+    const ms = Number(fraction.padEnd(3, '0').slice(0, 3));
+    const result = Date.UTC(year, month - 1, day, hour, minute, second, ms);
+    const check = new Date(result);
+    if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day || hour > 23 || minute > 59 || second > 59) return NaN;
+    return result;
+  }
+  // Require a timezone for other timestamp formats; never infer the workstation zone.
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text) ? Date.parse(text) : NaN;
+}
+
+function missionHash(value) {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+  return (hash >>> 0).toString(36);
+}
+
+function validMissionPoint(lat, lng) {
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+}
+
+function missionGeometryRings(geometry) {
+  if (geometry?.type === 'Polygon') return geometry.coordinates;
+  if (geometry?.type === 'MultiPolygon') return geometry.coordinates.flat();
+  return [];
+}
+
+function validateMissionGeometry(geometry) {
+  if (!geometry || !['Polygon', 'MultiPolygon'].includes(geometry.type)) throw new Error('Expected Polygon or MultiPolygon geometry');
+  const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+  if (!Array.isArray(polygons) || !polygons.length) throw new Error('Empty geometry');
+  const validated = polygons.map(polygon => {
+    if (!Array.isArray(polygon) || !polygon.length) throw new Error('Empty polygon');
+    return polygon.map(ring => {
+      if (!Array.isArray(ring) || ring.length < 3) throw new Error('Polygon ring needs at least three vertices');
+      const result = ring.map(point => {
+        if (!Array.isArray(point) || !validMissionPoint(point[1], point[0]) || point.slice(2).some(v => !Number.isFinite(v))) throw new Error('Invalid longitude/latitude');
+        return point.slice();
+      });
+      const first = result[0], last = result[result.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) result.push(first.slice());
+      if (result.length < 4) throw new Error('Invalid polygon ring');
+      return result;
+    });
+  });
+  return { ...geometry, type: geometry.type, coordinates: geometry.type === 'Polygon' ? validated[0] : validated };
+}
+
+function missionGeometryAnchors(geometry) {
+  const ring = missionGeometryRings(geometry)[0];
+  if (!ring?.length) return {};
+  const first = ring[0], opposite = ring[Math.floor((ring.length - 1) / 2)];
+  // These anchors frame the imported area in the viewer; they do not assert a flight direction.
+  return { startLat: first[1], startLng: first[0], endLat: opposite[1], endLng: opposite[0] };
+}
+
+function makeMissionPlan(record) {
+  const start = missionTimestamp(record.start), end = missionTimestamp(record.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new Error('Invalid acquisition interval');
+  const externalId = record.externalId === null || record.externalId === undefined ? null : String(record.externalId);
+  const geometryHash = record.geometry ? missionHash(record.geometry) : null;
+  return { ...record, start, end, duration: (end - start) / 1000, externalId, externalIds: externalId === null ? [] : [externalId], geometryHash,
+    id: record.id || `mission-${missionHash([externalId, start, end, geometryHash])}` };
+}
+
+function parseMissionGeoJson(data, sourceFile) {
+  const features = data?.type === 'Feature' ? [data] : data?.features;
+  if (!Array.isArray(features) || !features.length) throw new Error('No GeoJSON features found');
+  if (features.length > 5000) throw new Error('More than 5000 features in one file');
+  return features.map((feature, index) => {
+    try {
+      const properties = feature?.properties || {};
+      const geometry = validateMissionGeometry(feature?.geometry);
+      return makeMissionPlan({
+        externalId: properties.id ?? feature.id ?? properties.file_nb ?? properties.fileNb ?? properties.fileNumber,
+        start: properties.acqStart ?? properties.acq_start ?? properties.start,
+        end: properties.acqEnd ?? properties.acq_end ?? properties.end,
+        orbit: properties.orbit ?? properties.orbitNumber ?? properties.orbit_number ?? data.orbit ?? null,
+        geometry, properties, ...missionGeometryAnchors(geometry),
+        sourceKind: 'GEOJSON', timingSource: 'GEOJSON', sourceFiles: [sourceFile],
+      });
+    } catch (error) { throw new Error(`Feature ${index + 1}: ${error.message}`); }
+  });
+}
+
+function parseMissionPdfRecords(records, sourceFile) {
+  const parsed = records.map(record => {
+    const start = missionTimestamp(record.acq_start);
+    const statedEnd = missionTimestamp(record.acq_end);
+    const duration = Number(record.acq_duration_s);
+    const end = Number.isFinite(statedEnd) && statedEnd > start ? statedEnd : start + duration * 1000;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+    return makeMissionPlan({ externalId: record.file_nb, start, end, orbit: record.orbit ?? null,
+      sourceKind: 'PDF', timingSource: 'PDF', sourceFiles: [sourceFile] });
+  }).filter(Boolean);
+  if (!parsed.length) throw new Error('No valid imaging records found in PDF');
+  return parsed;
+}
+
+function mergeMissionPlans(records) {
+  const merged = [];
+  const spatialBuckets = new Map(), resultBuckets = new Map();
+  const inInterval = (a, b) => Math.abs(a.start - b.start) <= 1000 && Math.abs(a.end - b.end) <= 1000;
+  const candidateBucketKeys = plan => [-1, 0, 1].map(offset => Math.floor(plan.start / 1000) + offset);
+  for (const plan of records) {
+    if (!plan.geometry) continue;
+    const key = Math.floor(plan.start / 1000);
+    if (!spatialBuckets.has(key)) spatialBuckets.set(key, []);
+    spatialBuckets.get(key).push(plan);
+  }
+  const uniqueSpatialMatch = timingPlan => {
+    const candidates = candidateBucketKeys(timingPlan).flatMap(key => spatialBuckets.get(key) || []).filter(plan => inInterval(plan, timingPlan));
+    const byIdentifier = candidates.filter(plan => (plan.externalIds || []).some(id => (timingPlan.externalIds || []).includes(id)));
+    return new Set((byIdentifier.length ? byIdentifier : candidates).map(plan => plan.geometryHash || plan.id)).size === 1;
+  };
+  const indexResult = (plan, index) => {
+    const key = Math.floor(plan.start / 1000);
+    if (!resultBuckets.has(key)) resultBuckets.set(key, new Set());
+    resultBuckets.get(key).add(index);
+  };
+  for (const incoming of records) {
+    const identifiers = incoming.externalIds || (incoming.externalId == null ? [] : [String(incoming.externalId)]);
+    const candidateIndexes = [...new Set(candidateBucketKeys(incoming).flatMap(key => [...(resultBuckets.get(key) || [])]))];
+    const candidates = candidateIndexes.map(index => ({ plan: merged[index], index })).filter(({ plan }) => {
+      if (!inInterval(plan, incoming)) return false;
+      // Different supplied areas are distinct records even when upstream IDs repeat.
+      if (plan.geometry && incoming.geometry && plan.geometryHash !== incoming.geometryHash) return false;
+      const sameIdentifier = (plan.externalIds || []).some(id => identifiers.includes(id));
+      const sameGeometry = plan.geometryHash && plan.geometryHash === incoming.geometryHash;
+      const complementary = Boolean(plan.geometry) !== Boolean(incoming.geometry);
+      if (complementary && !uniqueSpatialMatch(plan.geometry ? incoming : plan)) return false;
+      return plan.id === incoming.id || sameIdentifier || sameGeometry || complementary;
+    });
+    const byIdentifier = candidates.filter(({ plan }) => (plan.externalIds || []).some(id => identifiers.includes(id)));
+    const byExactId = candidates.filter(({ plan }) => plan.id === incoming.id);
+    const matches = byExactId.length ? byExactId : byIdentifier.length ? byIdentifier : candidates;
+    // Ambiguous simultaneous areas remain separate instead of being silently combined.
+    if (matches.length !== 1) { indexResult(incoming, merged.length); merged.push({ ...incoming }); continue; }
+    const { plan, index } = matches[0];
+    const timing = incoming.timingSource === 'PDF' ? incoming : plan.timingSource === 'PDF' ? plan : incoming;
+    const spatial = incoming.geometry ? incoming : plan.geometry ? plan : null;
+    merged[index] = {
+      ...plan, ...incoming,
+      ...(spatial ? { geometry: spatial.geometry, geometryHash: spatial.geometryHash, properties: spatial.properties,
+        startLat: spatial.startLat, startLng: spatial.startLng, endLat: spatial.endLat, endLng: spatial.endLng, sourceKind: 'GEOJSON' } : {}),
+      id: plan.id, start: timing.start, end: timing.end, duration: (timing.end - timing.start) / 1000, timingSource: timing.timingSource,
+      orbit: incoming.orbit ?? plan.orbit ?? null,
+      externalIds: [...new Set([...(plan.externalIds || []), ...identifiers])],
+      sourceFiles: [...new Set([...(plan.sourceFiles || []), ...(incoming.sourceFiles || [])])],
+    };
+    indexResult(merged[index], index);
+  }
+  return merged.sort((a, b) => a.start - b.start || String(a.id).localeCompare(String(b.id)));
+}
+
+function missionPlanCoordinates(plan, rec, propagate) {
+  const anchors = plan.geometry ? missionGeometryAnchors(plan.geometry) : {};
+  const source = { ...plan,
+    startLat: validMissionPoint(plan.startLat, plan.startLng) ? plan.startLat : anchors.startLat,
+    startLng: validMissionPoint(plan.startLat, plan.startLng) ? plan.startLng : anchors.startLng,
+    endLat: validMissionPoint(plan.endLat, plan.endLng) ? plan.endLat : anchors.endLat,
+    endLng: validMissionPoint(plan.endLat, plan.endLng) ? plan.endLng : anchors.endLng };
+  const startProvided = validMissionPoint(source.startLat, source.startLng);
+  const endProvided = validMissionPoint(source.endLat, source.endLng);
+  const startPos = !startProvided && rec ? propagate(new Date(source.start), rec) : null;
+  const endPos = !endProvided && rec ? propagate(new Date(source.end), rec) : null;
+  return { ...source,
+    startLat: startProvided ? source.startLat : startPos?.lat, startLng: startProvided ? source.startLng : startPos?.lng,
+    endLat: endProvided ? source.endLat : endPos?.lat, endLng: endProvided ? source.endLng : endPos?.lng,
+    duration: (missionTimestamp(plan.end) - missionTimestamp(plan.start)) / 1000,
+    positionSource: plan.geometry ? 'GEOJSON' : startProvided && endProvided ? 'IMPORTED' : rec ? 'TLE ESTIMATE' : 'UNAVAILABLE',
+  };
+}
+
+function buildMissionPathData(plans, rec, propagate) {
+  return plans.map(plan => {
+    const start = missionTimestamp(plan.start), end = missionTimestamp(plan.end);
+    let paths = [];
+    if (plan.geometry) paths = missionGeometryRings(plan.geometry).map(ring => ring.map(([lng, lat]) => ({ lat, lng, alt: 0.002 })));
+    else if (validMissionPoint(plan.startLat, plan.startLng) && validMissionPoint(plan.endLat, plan.endLng)) {
+      paths = [[{ lat: plan.startLat, lng: plan.startLng, alt: 0.002 }, { lat: plan.endLat, lng: plan.endLng, alt: 0.002 }]];
+    } else if (rec && Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      const points = [], steps = Math.min(512, Math.max(1, Math.ceil((end - start) / 1000)));
+      for (let i = 0; i <= steps; i++) {
+        const position = propagate(new Date(start + (end - start) * i / steps), rec);
+        if (position && validMissionPoint(position.lat, position.lng)) points.push({ lat: position.lat, lng: position.lng, alt: 0.002 });
+      }
+      if (points.length > 1) paths = [points];
+    }
+    return { id: plan.id, start, end, importedGeometry: Boolean(plan.geometry), paths };
+  });
+}
+
+// Split equirectangular paths at ±180°, including boundary intersection points.
+// The same spherical footprint vertices now feed the 3D globe and 2D map.
+function splitMapPath(points) {
+  const segments = [];
+  let segment = [];
+  for (const point of points || []) {
+    if (!validMissionPoint(point?.lat, point?.lng)) {
+      if (segment.length > 1) segments.push(segment);
+      segment = []; continue;
+    }
+    const next = { lat: point.lat, lng: point.lng };
+    const previous = segment[segment.length - 1];
+    if (previous && Math.abs(next.lng - previous.lng) > 180) {
+      const crossingEast = next.lng < previous.lng;
+      const nextUnwrapped = next.lng + (crossingEast ? 360 : -360);
+      const boundary = crossingEast ? 180 : -180;
+      const fraction = (boundary - previous.lng) / (nextUnwrapped - previous.lng);
+      const latitude = previous.lat + fraction * (next.lat - previous.lat);
+      segment.push({ lng: boundary, lat: latitude });
+      if (segment.length > 1) segments.push(segment);
+      segment = [{ lng: -boundary, lat: latitude }];
+    }
+    segment.push(next);
+  }
+  if (segment.length > 1) segments.push(segment);
+  return segments;
+}
+
+function mapSegmentPoints(segment) {
+  return segment.map(point => `${(point.lng + 180) / 360 * 100},${(90 - point.lat) / 180 * 100}`).join(' ');
+}
+
+function formatPointingAngle(number) {
+  if (!Number.isFinite(number)) return 'N/A';
+  const rounded = Number(number.toFixed(3));
+  return `${rounded < 0 ? '-' : ''}${Math.abs(rounded).toFixed(3).padStart(rounded < 0 ? 6 : 7, '0')}`;
+}
+
 // 1. DATA & CONFIGURATION
 // ==========================================
 
@@ -147,11 +396,11 @@ const EARTH_RADIUS_KM = 6371;
 // 📍 ฟันธง 1: ฐานข้อมูลคิวถ่ายภาพ THEOS-2 (ดึงข้อมูลช่วงที่บินผ่านไทย จากไฟล์แผนการบิน Orbit 269)
 const THEOS2_IMAGING_PLAN = [
   // คิวที่ 1: ถ่ายภาพ 19 วินาที[cite: 1]
-  { start: Date.UTC(2026, 7, 1, 2, 46, 18), end: Date.UTC(2026, 7, 1, 2, 46, 37) }, 
+  { id: 'builtin-theos2-20260801-024618', sourceKind: 'BUILTIN', orbit: 269, start: Date.UTC(2026, 7, 1, 2, 46, 18), end: Date.UTC(2026, 7, 1, 2, 46, 37) }, 
   // คิวที่ 2: ถ่ายภาพ 19 วินาที[cite: 1]
-  { start: Date.UTC(2026, 7, 1, 2, 47, 10), end: Date.UTC(2026, 7, 1, 2, 47, 29) }, 
+  { id: 'builtin-theos2-20260801-024710', sourceKind: 'BUILTIN', orbit: 269, start: Date.UTC(2026, 7, 1, 2, 47, 10), end: Date.UTC(2026, 7, 1, 2, 47, 29) }, 
   // คิวที่ 3: ถ่ายภาพ 37 วินาที[cite: 1]
-  { start: Date.UTC(2026, 7, 1, 2, 49, 23), end: Date.UTC(2026, 7, 1, 2, 50,  0) },
+  { id: 'builtin-theos2-20260801-024923', sourceKind: 'BUILTIN', orbit: 269, start: Date.UTC(2026, 7, 1, 2, 49, 23), end: Date.UTC(2026, 7, 1, 2, 50,  0) },
 ];
 
 const SATELLITE_OPTIONS = [
@@ -440,14 +689,14 @@ const injectStyles = () => {
     .left-container { width: clamp(380px, 28vw, 460px) !important; display: flex; flex-direction: column; align-items: flex-start; pointer-events: none; max-height: 100%; z-index: 20; overflow: visible !important; }
     .right-container { width: clamp(380px, 28vw, 460px) !important; display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; max-height: 100%; z-index: 20; }
  
-    .menu-toggle-btn-left { width: 32px; height: 32px; background: linear-gradient(135deg, rgba(0,234,255,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--cyan); color: var(--cyan); font-size: 16px; cursor: pointer; border-radius: 6px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-right: 10px; box-shadow: 0 0 15px rgba(0,234,255,0.6), inset 0 0 10px rgba(0,234,255,0.3); flex-shrink: 0; }
+    .menu-toggle-btn-left { width: 36px; height: 36px; background: linear-gradient(135deg, rgba(0,234,255,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--cyan); color: var(--cyan); font-size: 18px; cursor: pointer; border-radius: 6px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-right: 10px; box-shadow: 0 0 15px rgba(0,234,255,0.6), inset 0 0 10px rgba(0,234,255,0.3); flex-shrink: 0; }
     .menu-toggle-btn-left:hover { background: var(--cyan); color: #000; box-shadow: 0 0 30px var(--cyan); transform: scale(1.1); }
     
     /* 📍 รีดไขมัน: เปลี่ยน gap และ padding-bottom เป็น vh */
     .left-panel { width: 100% !important; box-sizing: border-box !important; display: flex; flex-direction: column; gap: clamp(6px, 1.2vh, 12px); pointer-events: auto; flex: 1; min-height: 0; animation: slideInLeft 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); overflow-y: auto; scrollbar-width: none; overflow-x: hidden; padding-bottom: clamp(10px, 2vh, 20px); }
     .left-panel::-webkit-scrollbar { display: none; }
     /* 📍 ฟันธง: แก้ไขบรรทัดนี้! ขยายความกว้างแผงขวาจาก 380-460px เป็น 400-550px ให้สมมาตรกับฝั่งซ้าย 100% */
-    .right-container { width: clamp(400px, 32vw, 550px) !important; display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; max-height: 100%; z-index: 20; }
+    .right-container { width: clamp(380px, 28vw, 460px) !important; display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; max-height: 100%; z-index: 20; }
     
     .menu-toggle-btn { width: 36px; height: 36px; background: linear-gradient(135deg, rgba(255,204,0,0.2), rgba(0,0,0,0.8)); backdrop-filter: blur(12px); border: 2px solid var(--gold); color: var(--gold); font-size: 18px; cursor: pointer; border-radius: 6px; pointer-events: auto; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; margin-bottom: clamp(8px, 1.5vh, 12px); box-shadow: 0 0 10px rgba(255,204,0,0.6); flex-shrink: 0; }
     .menu-toggle-btn:hover { background: var(--gold); color: #000; box-shadow: 0 0 20px var(--gold); transform: scale(1.1); }
@@ -562,9 +811,9 @@ const injectStyles = () => {
     background: #010408; border-radius: 4px; border: 1px solid; 
     font-family: 'Orbitron', sans-serif; text-shadow: none !important;
   }
-  .control-group:nth-child(1) p { border-color: var(--gold); box-shadow: 0 0 10px rgba(255,204,0,0.4); }
-  .control-group:nth-child(2) p { border-color: var(--green); box-shadow: 0 0 10px rgba(0,255,102,0.4); }
-  .control-group:nth-child(3) p { border-color: var(--cyan); box-shadow: 0 0 10px rgba(0,234,255,0.4); }
+  .right-panel .sat-hud-page[data-section-index="0"] > .control-group p { border-color: var(--gold); box-shadow: 0 0 10px rgba(255,204,0,0.4); }
+  .right-panel .sat-hud-page[data-section-index="1"] > .control-group p { border-color: var(--green); box-shadow: 0 0 10px rgba(0,255,102,0.4); }
+  .right-panel .sat-hud-page[data-section-index="2"] > .control-group p { border-color: var(--cyan); box-shadow: 0 0 10px rgba(0,234,255,0.4); }
   
   /* 📍 รีดไขมัน: เปลี่ยน padding แนวตั้งและ margin ของปุ่มเป็น vh */
   .btn { display: block; width: 100%; background: rgba(0, 15, 30, 0.5); border: 1px solid rgba(0, 234, 255, 0.5); color: var(--cyan); padding: clamp(6px, 1.2vh, 12px) !important; margin-bottom: clamp(2px, 0.5vh, 6px); font-family: 'Rajdhani', sans-serif; font-size: clamp(12px, 1.2vw, 16px) !important; font-weight: 900; cursor: pointer; text-align: center; border-radius: 4px; transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); letter-spacing: 1.5px !important; text-transform: uppercase; box-shadow: 0 3px 8px rgba(0,0,0,0.4); overflow: hidden; }
@@ -603,39 +852,39 @@ const injectStyles = () => {
     }
     input[type=range].sci-fi-slider::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.2); }
 
-    .control-group:nth-child(1) { border-color: var(--gold); border-top-color: var(--gold); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(255, 204, 0, 0.15), inset 0 0 20px rgba(255, 204, 0, 0.05); }
-    .control-group:nth-child(1) p { color: var(--gold); border-bottom-color: rgba(255, 204, 0, 0.5); }
+    .right-panel .sat-hud-page[data-section-index="0"] > .control-group { border-color: var(--gold); border-top-color: var(--gold); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(255, 204, 0, 0.15), inset 0 0 20px rgba(255, 204, 0, 0.05); }
+    .right-panel .sat-hud-page[data-section-index="0"] > .control-group p { color: var(--gold); border-bottom-color: rgba(255, 204, 0, 0.5); }
     
     /* 📍 บังคับให้ปุ่มทุกตัวในกลุ่มนี้เป็นสีทอง ไม่มีแสงแฟลร์ */
-    .control-group:nth-child(1) .btn { border-color: rgba(255,204,0,0.4) !important; color: var(--gold) !important; text-shadow: none !important; background: rgba(255,204,0,0.05) !important; }
+    .right-panel .sat-hud-page[data-section-index="0"] > .control-group .btn { border-color: rgba(255,204,0,0.4) !important; color: var(--gold) !important; text-shadow: none !important; background: rgba(255,204,0,0.05) !important; }
     
-    .control-group:nth-child(1) .btn:hover { background: linear-gradient(135deg, #ffcc00, #ff6600) !important; color: #fff !important; border-color: #fff !important; box-shadow: 0 0 25px var(--gold) !important; text-shadow: none !important; transform: translateY(-2px); }
+    .right-panel .sat-hud-page[data-section-index="0"] > .control-group .btn:hover { background: linear-gradient(135deg, #ffcc00, #ff6600) !important; color: #fff !important; border-color: #fff !important; box-shadow: 0 0 25px var(--gold) !important; text-shadow: none !important; transform: translateY(-2px); }
     
-    .control-group:nth-child(1) .btn.active { background: linear-gradient(135deg, #ffcc00, #ff8800) !important; color: #fff !important; border-color: #fff !important; box-shadow: 0 0 25px var(--gold) !important; text-shadow: none !important; }
+    .right-panel .sat-hud-page[data-section-index="0"] > .control-group .btn.active { background: linear-gradient(135deg, #ffcc00, #ff8800) !important; color: #fff !important; border-color: #fff !important; box-shadow: 0 0 25px var(--gold) !important; text-shadow: none !important; }
 
     /* 📍 แยกเป้าหมายเฉพาะปุ่ม PAUSE ไม่มีแสงแฟลร์ */
-    .control-group:nth-child(1) .btn.btn-pause { border-color: rgba(255,51,51,0.6) !important; color: var(--red) !important; text-shadow: none !important; background: rgba(255,51,51,0.05) !important; }
-    .control-group:nth-child(1) .btn.btn-pause:hover, .control-group:nth-child(1) .btn.btn-pause.active { background: linear-gradient(135deg, #ff3333, #aa0000) !important; color: #fff !important; border-color: #fff !important; box-shadow: 0 0 25px var(--red) !important; text-shadow: none !important; }
+    .right-panel .sat-hud-page[data-section-index="0"] > .control-group .btn.btn-pause { border-color: rgba(255,51,51,0.6) !important; color: var(--red) !important; text-shadow: none !important; background: rgba(255,51,51,0.05) !important; }
+    .right-panel .sat-hud-page[data-section-index="0"] > .control-group .btn.btn-pause:hover, .right-panel .sat-hud-page[data-section-index="0"] > .control-group .btn.btn-pause.active { background: linear-gradient(135deg, #ff3333, #aa0000) !important; color: #fff !important; border-color: #fff !important; box-shadow: 0 0 25px var(--red) !important; text-shadow: none !important; }
 
     /* สไตล์ปุ่มเครื่องเล่นเทป (Media Controls) */
     .media-btn { display: flex !important; flex-direction: row; align-items: center; justify-content: center; padding: 14px !important; }
     .media-btn .icon { font-size: 44px; line-height: 1; filter: none !important; }
 
     /* 🖥️ กลุ่มที่ 2: DISPLAY CONTROLS (ขอบเขียว) */
-    .control-group:nth-child(2) { border-color: var(--green); border-top-color: var(--green); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(0, 255, 102, 0.15), inset 0 0 20px rgba(0, 255, 102, 0.05); }
-    .control-group:nth-child(2) p { color: var(--green); border-bottom-color: rgba(0, 255, 102, 0.4); }
+    .right-panel .sat-hud-page[data-section-index="1"] > .control-group { border-color: var(--green); border-top-color: var(--green); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(0, 255, 102, 0.15), inset 0 0 20px rgba(0, 255, 102, 0.05); }
+    .right-panel .sat-hud-page[data-section-index="1"] > .control-group p { color: var(--green); border-bottom-color: rgba(0, 255, 102, 0.4); }
 
     /* 🌟 เพิ่มคลาสปุ่มสีทอง (Gold) สำหรับ PASS SCHEDULE */
     .btn-gold { background: rgba(255, 204, 0, 0.05) !important; border: 1px solid rgba(255, 204, 0, 0.5) !important; color: var(--gold) !important; text-shadow: none !important; }
     .btn-gold:hover, .btn-gold.active { background: var(--gold) !important; color: #000 !important; border-color: #fff !important; text-shadow: none !important; box-shadow: 0 0 25px var(--gold) !important; transform: scale(1.02) !important; }
 
     /* 🛠️ กลุ่มที่ 3: DATA & TOOLS (ล้าง Hover สีส้มทิ้ง สร้างคลาสสีมาตรฐาน Invert Color) */
-    .control-group:nth-child(3) { border-color: var(--cyan); border-top-color: var(--cyan); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 30px rgba(0, 234, 255, 0.2), inset 0 0 20px rgba(0, 234, 255, 0.1); }
-    .control-group:nth-child(3) p { color: var(--cyan); border-bottom-color: rgba(0, 234, 255, 0.4); }
-    .control-group:nth-child(3) button { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important; }
+    .right-panel .sat-hud-page[data-section-index="2"] > .control-group { border-color: var(--cyan); border-top-color: var(--cyan); box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 30px rgba(0, 234, 255, 0.2), inset 0 0 20px rgba(0, 234, 255, 0.1); }
+    .right-panel .sat-hud-page[data-section-index="2"] > .control-group p { color: var(--cyan); border-bottom-color: rgba(0, 234, 255, 0.4); }
+    .right-panel .sat-hud-page[data-section-index="2"] > .control-group button { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important; }
     
     /* 📍 ฟันธง: สังหารเอฟเฟกต์แสงขาววิ่งผ่าน (Sweep Flare) ทิ้ง เฉพาะในกรอบ DATA & TOOLS เด็ดขาด! */
-    .control-group:nth-child(3) .btn::before { display: none !important; }
+    .right-panel .sat-hud-page[data-section-index="2"] > .control-group .btn::before { display: none !important; }
     
     .btn-cyan { background: rgba(0, 15, 30, 0.6) !important; border: 1px solid rgba(0, 234, 255, 0.5) !important; color: var(--cyan) !important; text-shadow: none !important; box-shadow: inset 0 0 10px rgba(0, 234, 255, 0.05) !important; }
     .btn-cyan:hover, .btn-cyan.active { background: var(--cyan) !important; color: #000 !important; border-color: #fff !important; text-shadow: none !important; box-shadow: 0 0 25px var(--cyan) !important; transform: scale(1.02) !important; }
@@ -1049,6 +1298,136 @@ const create3DLabel = (name, catnr) => {
   return sprite.clone();
 };
 
+// Self-contained hardware icons: available offline and in detached panel documents.
+function FlowHardwareIcon({ kind, color = 'var(--cyan)', label }) {
+  const paths = {
+    converter: 'M7 21V4m-4 4 4-4 4 4M17 3v17m-4-4 4 4 4-4',
+    antenna: 'M4 5a12 12 0 0 0 15 15L4 5Zm7 12-2 5m-4 0h10M12 12l7-7m-1-3a4 4 0 0 1 4 4m-6-2a6 6 0 0 1 6 6',
+    tuner: 'M12 7v15M8 22l4-11 4 11M7 10a7 7 0 0 1 0-8m10 0a7 7 0 0 1 0 8M9 8a4 4 0 0 1 0-4m6 0a4 4 0 0 1 0 4M10 6h4',
+    router: 'M3 14h18v7H3zM7 17h.01M11 17h.01M18 17h.01M8 14V9m8 5V9M6 5a9 9 0 0 1 12 0M9 8a4 4 0 0 1 6 0',
+    baseband: 'M4 2h16v6H4zM4 11h16v6H4zM7 5h.01M7 14h.01M12 17v4M4 23v-2h16v2M16 5h2m-2 9h2',
+  };
+  return (
+    <svg className="n-icon" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label={label || kind} focusable="false">
+      <path d={paths[kind] || paths.baseband} />
+    </svg>
+  );
+}
+
+// One audio owner for the controller and every panel host. stop() cuts both the
+// master gain and all already-playing oscillators; clearing a timer alone does not mute.
+function createSonarAudioController(AudioContextCtor, ownerWindow) {
+  let ctx = null;
+  let master = null;
+  let timer = null;
+  let wanted = false;
+  let disposed = false;
+  let generation = 0;
+  let waitingForGesture = false;
+  const voices = new Set();
+
+  const removeGestureListeners = () => {
+    if (!waitingForGesture) return;
+    ownerWindow.removeEventListener('pointerdown', retryFromGesture);
+    ownerWindow.removeEventListener('keydown', retryFromGesture);
+    waitingForGesture = false;
+  };
+  const releaseVoice = (voice, stopNow = false) => {
+    if (voice.released) return;
+    voice.released = true;
+    voices.delete(voice);
+    for (const osc of voice.oscillators) {
+      osc.onended = null;
+      if (stopNow) { try { osc.stop(ctx?.currentTime || 0); } catch (_) {} }
+      try { osc.disconnect(); } catch (_) {}
+    }
+    try { voice.gain.disconnect(); } catch (_) {}
+  };
+  const ping = () => {
+    if (!wanted || disposed || !ctx || ctx.state !== 'running') return;
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const voice = { gain, oscillators: [osc1, osc2], ended: 0, released: false };
+    voices.add(voice);
+    osc1.type = 'sine';
+    osc2.type = 'triangle';
+    osc1.frequency.setValueAtTime(850, now);
+    osc1.frequency.exponentialRampToValueAtTime(830, now + 1.8);
+    osc2.frequency.setValueAtTime(1700, now);
+    osc2.frequency.exponentialRampToValueAtTime(1660, now + 1.8);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
+    gain.connect(master);
+    for (const osc of voice.oscillators) {
+      osc.connect(gain);
+      osc.onended = () => { if (++voice.ended === 2) releaseVoice(voice); };
+      osc.start(now);
+      osc.stop(now + 1.8);
+    }
+  };
+  const arm = (token) => {
+    if (!wanted || disposed || token !== generation || ctx?.state !== 'running' || timer !== null) return;
+    removeGestureListeners();
+    master.gain.cancelScheduledValues(ctx.currentTime);
+    master.gain.setValueAtTime(1, ctx.currentTime);
+    ping();
+    timer = ownerWindow.setInterval(ping, 2000);
+  };
+  const tryResume = () => {
+    if (!wanted || disposed || !ctx) return;
+    const token = generation;
+    if (ctx.state === 'running') { arm(token); return; }
+    if (!waitingForGesture) {
+      waitingForGesture = true;
+      ownerWindow.addEventListener('pointerdown', retryFromGesture);
+      ownerWindow.addEventListener('keydown', retryFromGesture);
+    }
+    try { Promise.resolve(ctx.resume()).then(() => arm(token)).catch(() => {}); } catch (_) {}
+  };
+  function retryFromGesture() { tryResume(); }
+  const stop = () => {
+    wanted = false;
+    generation += 1;
+    removeGestureListeners();
+    if (timer !== null) { ownerWindow.clearInterval(timer); timer = null; }
+    if (ctx && master && ctx.state !== 'closed') {
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setValueAtTime(0, ctx.currentTime);
+    }
+    for (const voice of [...voices]) releaseVoice(voice, true);
+  };
+  return {
+    start() {
+      if (disposed || !AudioContextCtor) return;
+      if (!wanted) { wanted = true; generation += 1; }
+      if (!ctx) {
+        try {
+          ctx = new AudioContextCtor();
+          master = ctx.createGain();
+          master.gain.setValueAtTime(0, ctx.currentTime);
+          master.connect(ctx.destination);
+        } catch (_) { ctx = null; master = null; wanted = false; return; }
+      }
+      tryResume();
+    },
+    stop,
+    dispose() {
+      if (disposed) return;
+      stop();
+      disposed = true;
+      try { master?.disconnect(); } catch (_) {}
+      if (ctx && ctx.state !== 'closed') {
+        try { Promise.resolve(ctx.close()).catch(() => {}); } catch (_) {}
+      }
+      master = null;
+      ctx = null;
+    },
+  };
+}
+
 // 📍 ฟันธง: สร้าง Component สำหรับป้ายความถี่ (f-label) แบบฝัง CSS ป้องกันบั๊ก!
 const FreqLabel = ({ linkType, freq, active }) => {
   let color = '#fff';
@@ -1077,6 +1456,154 @@ const FreqLabel = ({ linkType, freq, active }) => {
 // =========================================================================
 const CLASSIC_VECTOR_ANTENNA_BASE_PATH = `M158,679L158,683L157,684L157,692L156,693L156,699L155,700L155,707L154,708L154,713L153,714L153,720L152,721L152,728L151,729L151,737L150,738L150,745L149,746L149,753L148,754L148,762L147,763L147,772L146,773L146,780L145,781L145,788L144,789L144,795L143,796L143,803L142,804L142,813L141,814L141,823L144,823L145,824L146,824L147,823L147,820L148,819L148,812L149,811L149,806L150,805L150,798L151,797L151,789L153,787L154,788L160,788L162,790L161,791L161,798L160,799L160,806L159,807L159,815L158,816L158,832L157,833L157,852L155,854L148,854L146,852L146,833L140,833L140,1040L146,1040L147,1039L147,1021L149,1019L156,1019L157,1020L157,1034L158,1035L158,1044L157,1045L157,1047L156,1048L155,1051L153,1053L153,1054L152,1055L150,1055L148,1053L145,1052L143,1050L143,1047L142,1047L141,1046L140,1046L139,1047L136,1046L136,1047L134,1049L133,1052L131,1054L131,1055L130,1056L129,1059L127,1061L127,1062L126,1063L125,1066L123,1068L122,1071L120,1073L120,1074L119,1075L118,1078L116,1080L115,1083L113,1085L112,1088L110,1090L109,1093L107,1095L107,1096L106,1097L106,1098L105,1099L104,1102L102,1104L102,1105L101,1106L101,1107L100,1108L100,1109L99,1110L99,1111L98,1112L98,1113L97,1114L96,1117L99,1120L102,1119L104,1121L105,1121L107,1123L108,1123L111,1126L111,1133L110,1134L106,1134L105,1135L102,1135L100,1133L100,1126L99,1125L98,1125L97,1126L93,1126L93,1138L92,1139L93,1140L93,1142L92,1143L92,1326L93,1327L99,1327L101,1325L110,1325L111,1326L111,1332L316,1332L316,1327L317,1326L317,1322L316,1321L316,1289L317,1288L317,1284L318,1283L332,1283L334,1281L334,1130L333,1129L318,1129L317,1128L317,1126L316,1125L315,1122L313,1120L312,1117L310,1115L310,1114L309,1113L309,1112L308,1111L307,1108L305,1106L305,1105L304,1104L304,1103L303,1102L302,1099L300,1097L299,1094L297,1092L296,1089L294,1087L294,1086L293,1085L292,1082L290,1080L290,1079L289,1078L288,1075L286,1073L286,1072L285,1071L284,1068L282,1066L282,1065L281,1064L281,1063L280,1062L279,1059L277,1057L277,1056L276,1055L276,1054L274,1052L274,1051L273,1050L272,1047L270,1045L270,981L272,979L283,979L283,978L284,977L284,975L283,974L283,973L271,973L270,972L270,870L274,866L277,865L279,863L280,863L282,861L283,861L284,860L284,856L272,856L271,855L271,826L272,825L272,817L274,815L275,815L275,810L276,809L276,803L277,802L277,795L278,794L278,787L279,786L279,778L280,777L280,771L281,770L281,762L282,761L282,753L283,752L283,745L284,744L284,737L285,736L285,730L283,728L283,725L284,724L284,721L285,720L285,719L289,715L290,715L294,711L294,710L293,709L287,709L286,708L286,701L287,700L287,696L285,696L285,700L284,701L284,707L282,709L204,709L203,708L196,708L195,709L194,709L194,711L195,712L199,712L200,713L200,715L201,716L201,720L202,721L204,721L205,720L204,719L204,716L203,715L203,713L204,712L233,712L234,713L234,716L233,717L233,721L236,721L236,717L237,716L237,713L238,712L265,712L266,713L265,714L265,715L263,718L263,720L264,721L265,721L266,720L266,719L267,718L267,717L268,716L268,715L270,712L282,712L283,713L283,717L282,718L282,726L280,728L273,728L272,729L272,734L271,735L271,742L270,743L270,749L269,750L269,756L268,757L268,763L267,764L267,772L266,773L266,780L265,781L265,790L264,791L264,798L263,799L263,810L262,811L262,816L260,818L253,818L252,817L245,817L244,816L238,816L237,815L231,815L230,814L224,814L223,813L216,813L215,812L208,812L207,811L200,811L199,810L191,810L190,809L183,809L182,808L175,808L174,807L167,807L166,806L163,806L162,805L162,799L163,798L163,791L165,789L165,788L166,787L166,782L167,781L167,780L165,778L165,775L166,774L166,767L167,766L167,760L168,759L168,752L169,751L169,744L170,743L170,737L171,736L171,727L172,726L172,720L173,719L173,714L175,712L175,711L176,710L176,703L175,702L175,694L176,693L176,687L177,686L177,680L178,679L183,679L184,680L184,685L183,686L183,691L184,691L185,692L194,692L194,683L196,681L198,681L199,682L205,682L206,683L213,683L214,684L221,684L222,685L229,685L230,686L235,686L230,686L229,685L225,685L224,684L220,684L219,683L214,683L213,682L209,682L208,681L204,681L203,680L198,680L197,679L193,679L193,690L192,691L190,691L189,690L189,687L190,686L190,679L189,678L189,682L188,683L188,689L187,690L186,690L185,689L185,683L186,682L186,678L178,678L177,677L176,677L176,680L175,681L175,688L174,689L174,696L173,697L173,702L172,703L171,703L170,702L164,702L162,700L163,699L163,691L164,690L164,683L165,682L165,680L164,679ZM113,1330L114,1329L313,1329L314,1330L313,1331L114,1331ZM95,1316L96,1315L110,1315L111,1316L111,1322L110,1323L96,1323L95,1322ZM95,1312L96,1311L97,1311L98,1312L97,1313L96,1313ZM96,1286L98,1288L98,1308L97,1309L96,1309L95,1308L95,1287ZM96,1261L97,1261L98,1262L98,1283L97,1284L96,1284L95,1283L95,1262ZM96,1235L97,1235L98,1236L98,1257L97,1258L96,1258L95,1257L95,1236ZM101,1230L110,1230L111,1231L111,1312L110,1313L101,1313L100,1312L100,1231ZM95,1230L96,1229L97,1229L98,1230L98,1231L97,1232L96,1232L95,1231ZM95,1221L97,1219L109,1219L111,1221L111,1226L109,1228L108,1227L96,1227L95,1226ZM97,1209L98,1210L98,1216L96,1218L95,1217L95,1210L96,1209ZM96,1183L98,1185L98,1205L97,1206L96,1206L95,1205L95,1184ZM96,1157L97,1157L98,1158L98,1179L97,1180L96,1180L95,1179L95,1158ZM96,1147L97,1147L98,1148L98,1153L97,1154L96,1154L95,1153L95,1148ZM102,1146L109,1146L111,1148L111,1216L109,1218L102,1218L100,1216L100,1148ZM95,1137L96,1136L109,1136L111,1138L111,1143L110,1144L96,1144L95,1143ZM269,1131L330,1131L331,1132L331,1279L330,1280L269,1280L268,1279L268,1132ZM247,1131L264,1131L266,1133L266,1279L265,1280L247,1280L246,1279L246,1132ZM96,1128L97,1128L98,1129L98,1133L97,1134L96,1134L95,1133L95,1129ZM113,1128L114,1127L314,1127L315,1128L314,1129L245,1129L244,1130L244,1282L245,1283L313,1283L314,1284L314,1327L313,1328L233,1328L232,1327L230,1327L229,1328L140,1328L139,1327L136,1327L135,1328L115,1328L113,1326ZM126,1187L125,1188L125,1305L126,1306L196,1306L196,1305L197,1304L197,1303L196,1302L196,1301L197,1300L196,1299L196,1298L197,1297L197,1291L196,1290L196,1265L197,1264L197,1223L196,1222L196,1199L197,1198L197,1189L196,1188L196,1187ZM192,1189L194,1189L195,1190L195,1303L194,1304L193,1304L192,1303L192,1297L191,1296L191,1269L192,1268L191,1267L191,1265L192,1264L192,1258L191,1257L191,1216L192,1215L192,1202L191,1201L191,1190ZM128,1189L189,1189L190,1190L190,1303L189,1304L128,1304L126,1302L126,1297L127,1296L127,1222L126,1221L126,1202L127,1201L127,1192L126,1191ZM130,1192L130,1301L186,1301L187,1300L187,1238L186,1237L186,1234L187,1233L187,1193L186,1192ZM132,1194L184,1194L185,1195L185,1299L184,1300L132,1300L131,1299L131,1195ZM147,1169L147,1177L148,1178L169,1178L170,1177L170,1169L169,1168L148,1168ZM160,1171L161,1170L167,1170L168,1171L168,1175L167,1176L161,1176L160,1175ZM149,1171L150,1170L156,1170L157,1171L157,1175L156,1176L150,1176L149,1175ZM155,1139L155,1146L162,1146L162,1140L161,1139ZM157,1142L158,1141L159,1141L160,1142L160,1144L159,1145L158,1145L157,1144ZM103,1109L105,1109L106,1110L107,1110L109,1112L110,1112L111,1113L112,1113L115,1115L115,1117L114,1118L114,1119L112,1122L110,1122L107,1119L106,1119L104,1117L103,1117L100,1115L100,1113L101,1112L101,1111ZM105,1107L106,1106L107,1107L106,1108ZM119,1084L120,1085L120,1086L119,1087L118,1090L116,1092L115,1095L113,1097L113,1098L112,1099L111,1102L109,1104L108,1104L107,1103L107,1101L108,1100L109,1097L111,1095L111,1094L112,1093L112,1092L114,1090L115,1087L118,1084ZM138,1061L140,1063L143,1064L145,1066L145,1067L143,1069L142,1072L140,1074L139,1077L137,1079L137,1080L136,1081L136,1082L134,1084L134,1085L133,1086L132,1089L130,1091L130,1092L129,1093L129,1094L127,1096L126,1099L122,1104L122,1105L121,1106L121,1107L119,1109L118,1112L117,1113L116,1113L115,1112L112,1111L110,1109L110,1108L111,1107L112,1104L114,1102L114,1101L115,1100L116,1097L118,1095L118,1094L119,1093L120,1090L122,1088L122,1087L123,1086L124,1083L126,1081L126,1080L127,1079L128,1076L130,1074L131,1071L133,1069L133,1068L134,1067L135,1064ZM132,1061L133,1062L133,1064L132,1065L132,1066L130,1068L129,1071L127,1073L127,1074L126,1075L125,1078L123,1080L123,1081L122,1082L121,1082L119,1080L120,1079L120,1078L122,1076L123,1073L125,1071L125,1070L126,1069L126,1068L128,1066L129,1063L131,1061ZM137,1050L139,1050L144,1054L147,1055L150,1058L150,1059L146,1064L145,1063L144,1063L142,1061L141,1061L139,1059L136,1058L134,1056L134,1054L135,1053L135,1052ZM114,1123L116,1121L117,1118L119,1116L120,1113L122,1111L123,1108L125,1106L125,1105L126,1104L126,1103L127,1102L128,1099L132,1094L133,1091L135,1089L136,1086L138,1084L139,1081L141,1079L141,1078L142,1077L143,1074L145,1072L146,1069L148,1067L148,1066L149,1065L150,1062L152,1060L152,1059L154,1057L155,1054L157,1052L158,1049L160,1047L268,1047L270,1049L270,1050L271,1051L272,1054L274,1056L274,1057L275,1058L276,1061L278,1063L278,1064L279,1065L280,1068L282,1070L282,1071L283,1072L284,1075L286,1077L286,1078L287,1079L288,1082L290,1084L291,1087L293,1089L293,1090L294,1091L294,1092L295,1093L296,1096L298,1098L298,1099L299,1100L300,1103L302,1105L303,1108L305,1110L305,1111L306,1112L307,1115L309,1117L309,1118L310,1119L310,1120L312,1123L311,1124L255,1124L254,1125L251,1125L250,1124L233,1124L232,1125L223,1125L222,1124L217,1124L216,1125L214,1125L213,1124L212,1125L211,1124L200,1124L199,1125L198,1124L197,1124L196,1125L195,1124L194,1125L193,1124L192,1125L191,1124L176,1124L175,1125L141,1125L140,1124L134,1124L133,1125L116,1125ZM160,1044L161,1043L267,1043L268,1044L267,1045L161,1045ZM160,1041L160,1040L161,1039L267,1039L268,1040L266,1042L161,1042ZM143,1031L144,1031L145,1032L145,1037L144,1038L143,1038L142,1037L142,1032ZM143,1020L144,1020L145,1021L145,1025L144,1026L143,1026L142,1025L142,1021ZM141,1012L143,1010L158,1010L160,1012L160,1016L158,1018L143,1018L141,1016ZM144,1003L145,1004L145,1007L143,1009L141,1007L141,1005L143,1003ZM148,980L157,980L158,981L158,1007L156,1009L149,1009L147,1007L147,981ZM160,981L161,980L211,980L212,979L266,979L267,980L267,987L268,988L268,1013L267,1014L268,1015L268,1017L267,1018L267,1033L268,1034L268,1036L266,1038L161,1038L160,1037L160,1020L161,1019L161,1013L162,1012L162,1011L160,1008ZM145,977L147,975L281,975L282,976L282,977L281,978L146,978ZM143,953L144,953L145,954L145,973L144,974L144,979L145,980L145,999L144,1000L143,1000L142,999L142,990L141,989L141,955ZM148,943L157,943L158,944L158,972L157,973L148,973L147,972L147,944ZM143,943L144,943L145,944L145,948L144,949L142,949L141,948L141,945ZM141,935L142,934L159,934L160,935L160,940L159,941L142,941L141,940ZM143,926L145,928L145,931L144,932L142,932L141,931L141,928ZM147,873L148,874L148,909L147,910L146,909L146,874ZM143,873L144,873L145,874L145,923L144,924L143,924L141,922L141,875ZM146,867L147,866L148,867L148,868L147,869L146,868ZM151,865L157,865L158,866L158,931L157,932L151,932L150,931L150,866ZM143,865L144,865L145,866L145,869L144,870L142,870L141,869L141,867ZM270,866L270,862L271,861L277,861L278,862L277,863L276,863L274,865L273,865L271,867ZM162,861L267,861L268,862L268,943L267,944L267,967L268,968L268,972L267,973L161,973L160,972L160,943L162,941L162,934L160,932L160,863ZM147,862L148,861L158,861L159,862L158,863L148,863ZM147,858L148,857L281,857L282,858L282,859L281,860L148,860L147,859ZM270,855L269,856L160,856L159,855L160,854L238,854L239,853L258,853L259,854L266,854L267,853L268,853ZM143,848L144,848L145,849L145,862L144,863L142,863L141,862L141,857L142,856L142,849ZM158,841L159,840L269,840L270,841L270,851L268,853L159,853L158,852ZM143,834L144,834L145,835L145,844L144,845L142,845L141,844L141,837ZM159,829L160,828L168,828L169,829L184,829L185,830L199,830L200,831L216,831L217,832L231,832L232,833L243,833L244,834L254,834L255,835L261,835L262,836L267,836L269,838L268,839L160,839L159,838ZM262,818L264,816L270,816L271,817L271,819L270,820L265,820ZM159,824L160,823L160,817L162,815L163,816L170,816L171,817L179,817L180,818L187,818L188,819L195,819L196,820L202,820L203,821L210,821L211,822L218,822L219,823L226,823L227,824L233,824L234,825L239,825L240,826L247,826L248,827L255,827L256,828L263,828L264,829L268,829L269,830L269,835L268,836L267,835L263,835L262,834L259,834L258,833L244,833L243,832L232,832L231,831L218,831L217,830L205,830L204,829L189,829L188,828L174,828L173,827L161,827L159,825ZM161,812L162,811L165,811L166,812L173,812L174,813L181,813L182,814L188,814L189,815L196,815L197,816L204,816L205,817L212,817L213,818L220,818L221,819L228,819L229,820L235,820L236,821L242,821L243,822L250,822L251,823L256,823L257,824L263,824L264,825L268,825L270,827L269,828L265,828L264,827L257,827L256,826L250,826L249,825L242,825L241,824L236,824L235,823L228,823L227,822L220,822L219,821L213,821L212,820L205,820L204,819L197,819L196,818L189,818L188,817L181,817L180,816L174,816L173,815L167,815L166,814L162,814L161,813ZM161,809L163,807L164,808L171,808L172,809L180,809L181,810L188,810L189,811L197,811L198,812L204,812L205,813L213,813L214,814L220,814L221,815L228,815L229,816L235,816L236,817L243,817L244,818L251,818L252,819L256,819L257,820L262,820L263,821L269,821L270,822L270,823L269,824L264,824L263,823L258,823L257,822L251,822L250,821L244,821L243,820L236,820L235,819L228,819L227,818L220,818L219,817L213,817L212,816L205,816L204,815L198,815L197,814L190,814L189,813L182,813L181,812L174,812L173,811L166,811L165,810L162,810ZM147,797L148,798L148,805L147,806L147,814L146,815L146,819L144,821L143,820L143,811L144,810L144,804L145,803L145,798L146,797ZM147,787L149,787L150,788L150,790L148,793L147,793L146,792L146,788ZM147,780L148,779L158,779L159,780L164,780L165,781L165,785L163,787L160,787L159,786L152,786L151,785L148,785L147,784ZM149,771L151,771L152,772L152,773L151,774L151,776L150,777L149,777L148,776L148,772ZM154,745L155,746L155,750L154,751L154,758L153,759L153,765L152,766L152,767L151,768L150,768L149,767L149,763L150,762L150,755L151,754L151,747L153,745ZM276,729L277,730L282,730L283,731L283,733L282,734L282,742L281,743L281,750L280,751L280,759L279,760L279,767L278,768L278,776L277,777L277,784L276,785L276,792L275,793L275,800L274,801L274,809L273,810L273,813L272,814L266,814L264,812L264,808L265,807L265,799L266,798L266,790L267,789L267,782L268,781L268,774L269,773L269,767L270,766L270,759L271,758L271,750L272,749L272,741L273,740L273,732ZM156,719L158,721L158,726L157,727L157,736L156,737L156,741L155,742L154,742L152,740L152,738L153,737L153,730L154,729L154,722ZM289,711L290,712L286,716L285,715L285,713L287,711ZM170,712L171,713L171,720L170,721L170,728L169,729L169,735L168,736L168,743L167,744L167,751L166,752L166,759L165,760L165,768L164,769L164,775L162,778L155,778L153,776L153,773L154,772L154,765L155,764L155,758L156,757L156,750L157,749L157,742L158,741L158,733L159,732L159,726L160,725L160,717L161,716L161,712L162,711L164,711L165,712ZM158,711L159,712L159,715L157,717L155,715L155,713L157,711ZM156,705L158,702L159,702L160,703L168,703L169,704L173,704L174,705L174,710L173,711L170,711L169,710L161,710L160,709L157,709L156,708ZM158,694L160,694L161,695L161,700L160,701L158,701L157,700L157,695ZM162,680L163,681L163,686L162,687L162,690L161,691L159,691L158,690L158,689L159,688L159,682L161,680Z`;
 
+// One mechanical simulation, owned by the controller rather than a popup.
+// All rates and acquisition delays below are measured in simulation seconds.
+const ANTENNA_STOW = { az: 0, el: 90 };
+const antennaAzError = (target, current) => ((target - current + 540) % 360) - 180;
+const antennaClamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const createAntennaSimulation = () => ({
+  ...ANTENNA_STOW, azVel: 0, elVel: 0, sourceKey: null,
+  lastSimMs: null, lastLinkActive: false, signalReadyAt: null,
+  losAt: null, acquired: false, signalVisible: false, mode: 'STOW'
+});
+
+function stepAntennaAxis(current, velocity, target, maxRate, acceleration, dt, circular = false) {
+  const error = circular ? antennaAzError(target, current) : target - current;
+  if (Math.abs(error) < 0.01 && Math.abs(velocity) < 0.05) return { value: target, velocity: 0 };
+  const desired = antennaClamp(error * 2.1, -maxRate, maxRate);
+  const nextVelocity = velocity + antennaClamp(desired - velocity, -acceleration * dt, acceleration * dt);
+  let step = nextVelocity * dt;
+  let resultVelocity = nextVelocity;
+  if (Math.sign(step) === Math.sign(error) && Math.abs(step) > Math.abs(error)) {
+    step = error;
+    resultVelocity = 0;
+  }
+  const value = current + step;
+  return { value: circular ? ((value % 360) + 360) % 360 : value, velocity: resultVelocity };
+}
+
+function advanceAntennaSimulation(previous, input) {
+  const simNow = Number(input.simulatedTimeMs);
+  if (!Number.isFinite(simNow)) return previous;
+  const changedSource = previous.sourceKey !== input.sourceKey;
+  const discontinuity = changedSource || input.discontinuity || (previous.lastSimMs !== null && simNow < previous.lastSimMs);
+  const state = discontinuity ? createAntennaSimulation() : { ...previous };
+  state.sourceKey = input.sourceKey;
+  const dt = !discontinuity && state.lastSimMs !== null && input.isPlaying
+    ? Math.max(0, (simNow - state.lastSimMs) / 1000) : 0;
+  state.lastSimMs = simNow;
+  const valid = Number.isFinite(input.az) && Number.isFinite(input.el);
+  const linked = Boolean(input.linkActive && valid);
+  const wrappedAz = valid ? ((input.az % 360) + 360) % 360 : 0;
+  const mask = Number.isFinite(input.stationMask) ? Math.max(0, input.stationMask) : 0;
+
+  if (linked && !state.lastLinkActive) {
+    state.signalReadyAt = simNow + 3000;
+    state.losAt = null;
+    state.acquired = false;
+  } else if (!linked && state.lastLinkActive) {
+    state.losAt = simNow;
+    state.signalReadyAt = null;
+    state.acquired = false;
+  }
+  state.lastLinkActive = linked;
+  const timeToAos = Number.isFinite(input.nextPassTimeMs) ? input.nextPassTimeMs - simNow : Infinity;
+  const preSlew = !linked && valid && timeToAos > 0 && timeToAos <= 9000;
+  const holding = !linked && state.losAt !== null && simNow - state.losAt < 1200;
+  const targetAz = linked || preSlew ? wrappedAz : holding ? state.az : ANTENNA_STOW.az;
+  const targetEl = linked ? antennaClamp(input.el, 0, 90) : preSlew ? antennaClamp(mask, 0, 90) : holding ? state.el : ANTENNA_STOW.el;
+
+  if (dt > 0 && !holding) {
+    // Integrate in small simulation-time steps, keeping smoothing identical at 1X/60X.
+    // At extreme rates the last 30 s are sufficient to settle this visual servo.
+    const span = Math.min(dt, 30);
+    const steps = Math.max(1, Math.ceil(span / 0.025));
+    const stepDt = span / steps;
+    for (let i = 0; i < steps; i += 1) {
+      const azStep = stepAntennaAxis(state.az, state.azVel, targetAz, linked || preSlew ? 15 : 12, linked || preSlew ? 30 : 20, stepDt, true);
+      const elStep = stepAntennaAxis(state.el, state.elVel, targetEl, linked || preSlew ? 12 : 9, linked || preSlew ? 24 : 18, stepDt);
+      state.az = azStep.value;
+      state.el = antennaClamp(elStep.value, 0, 90);
+      state.azVel = azStep.velocity;
+      state.elVel = elStep.velocity;
+    }
+  }
+  const pointingError = linked ? Math.max(Math.abs(antennaAzError(wrappedAz, state.az)), Math.abs(antennaClamp(input.el, 0, 90) - state.el)) : Infinity;
+  if (linked && state.signalReadyAt !== null && simNow >= state.signalReadyAt && pointingError <= 2.5) state.acquired = true;
+  // Mechanical acquisition may remain latched through a zenith crossing, but it
+  // never survives a source change, clock seek or LOS. RF visual obeys the SIM mask.
+  state.signalVisible = linked && state.acquired && input.el >= Math.max(3, mask);
+  const parked = Math.abs(antennaAzError(0, state.az)) < 0.1 && Math.abs(state.el - 90) < 0.1;
+  state.mode = linked ? (state.acquired ? 'TRACKING' : 'ACQUIRING') : preSlew ? 'PRE-SLEW' : holding ? 'LOS HOLD' : parked ? 'STOW' : 'STOWING';
+  return state;
+}
+
+function useAntennaSimulation(input) {
+  const stateRef = useRef(createAntennaSimulation());
+  const previousWallRef = useRef(null);
+  const [display, setDisplay] = useState(stateRef.current);
+  useEffect(() => {
+    const wallNow = Date.now();
+    const wallElapsed = previousWallRef.current === null ? 0 : Math.max(0, wallNow - previousWallRef.current);
+    previousWallRef.current = wallNow;
+    const oldTime = stateRef.current.lastSimMs;
+    const jump = oldTime === null ? 0 : input.simulatedTimeMs - oldTime;
+    const expected = wallElapsed * Math.max(1, Number(input.speedMult) || 1);
+    const discontinuity = oldTime !== null && (jump < 0 || jump > Math.max(1500, expected * 4 + 500) || (!input.isPlaying && jump !== 0));
+    stateRef.current = advanceAntennaSimulation(stateRef.current, { ...input, discontinuity });
+    setDisplay(stateRef.current);
+  }, [input.simulatedTimeMs, input.sourceKey, input.az, input.el, input.linkActive, input.isPlaying, input.speedMult, input.stationMask, input.nextPassTimeMs]);
+  return display;
+}
+
+
+// Measure the actual presentation host, including after a portal changes document.
+// This observes display size only; no simulation or network work is started here.
+function useSatOwnedPanelSize(ref, open, hostWindow, hostRevision) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  React.useLayoutEffect(() => {
+    const element = ref.current;
+    if (!open || !element) return;
+    const owner = hostWindow || element.ownerDocument?.defaultView || window;
+    let active = true;
+    let frame = 0;
+    const measure = () => {
+      if (!active) return;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const next = { width: Math.round(rect.width), height: Math.round(rect.height) };
+      setSize(previous => previous.width === next.width && previous.height === next.height ? previous : next);
+    };
+    const schedule = () => {
+      if (frame) owner.cancelAnimationFrame(frame);
+      frame = owner.requestAnimationFrame(measure);
+    };
+    measure();
+    const Observer = owner.ResizeObserver || window.ResizeObserver;
+    const observer = Observer ? new Observer(schedule) : null;
+    observer?.observe(element);
+    owner.addEventListener('resize', schedule);
+    owner.visualViewport?.addEventListener('resize', schedule);
+    element.ownerDocument.fonts?.ready?.then(() => { if (active) schedule(); });
+    return () => {
+      active = false;
+      if (frame) owner.cancelAnimationFrame(frame);
+      observer?.disconnect();
+      owner.removeEventListener('resize', schedule);
+      owner.visualViewport?.removeEventListener('resize', schedule);
+    };
+  }, [open, hostWindow, hostRevision]);
+  return size;
+}
+
+function toggleSatOwnedFullscreen(owner) {
+  const doc = owner?.document;
+  if (!doc) return;
+  const action = doc.fullscreenElement ? doc.exitFullscreen?.bind(doc) : doc.documentElement.requestFullscreen?.bind(doc.documentElement);
+  if (action) Promise.resolve(action()).catch(() => { owner.focus?.(); });
+  else owner.focus?.();
+}
+
 function Antenna3DSimulatorModal({
   open,
   onClose,
@@ -1091,7 +1618,13 @@ function Antenna3DSimulatorModal({
   windowZIndex,
   onFocus,
   simulatedTimeMs,
-  nextPassTimeMs
+  nextPassTimeMs,
+  antennaState,
+  hostWindow = window,
+  hosted = false,
+  hostRevision = 0,
+  windowControl = null,
+  presentationScale = 1
 }) {
   // STOW/PARK visual position: reflector-up, AZ 0 deg / EL 90 deg.
   // Keep the vector geometry and all tracking/orbit logic unchanged.
@@ -1102,25 +1635,13 @@ function Antenna3DSimulatorModal({
   const [isMinimized, setIsMinimized] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
   const [showGuides, setShowGuides] = useState(true);
-  const [showOrbit, setShowOrbit] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [windowRect, setWindowRect] = useState({ x: 90, y: 72, width: 1180, height: 720 });
-  const [visualPointing, setVisualPointing] = useState({ az: STOW_PARK_AZ_DEG, el: STOW_PARK_EL_DEG });
-  const [visualSignalVisible, setVisualSignalVisible] = useState(false);
+  const visualSignalVisible = Boolean(antennaState?.signalVisible);
   const frameRef = useRef(null);
   const dragRef = useRef({ offsetX: 0, offsetY: 0 });
   const initializedWindowRef = useRef(false);
-  const servoRef = useRef({
-    az: STOW_PARK_AZ_DEG,
-    el: STOW_PARK_EL_DEG,
-    azVel: 0,
-    elVel: 0,
-    lastTs: null,
-    lastLinkActive: false,
-    signalReadyAt: 0,
-    losAt: 0
-  });
-  const servoInputRef = useRef(null);
+
 
   useEffect(() => {
     if (!open) {
@@ -1131,20 +1652,20 @@ function Antenna3DSimulatorModal({
     }
 
     const fitRectToViewport = (rect) => {
-      const vw = Math.max(320, window.innerWidth);
-      const vh = Math.max(240, window.innerHeight);
-      const maxW = Math.max(520, vw - 16);
-      const maxH = Math.max(360, vh - 16);
-      const width = Math.min(Math.max(620, rect.width), maxW);
-      const height = Math.min(Math.max(440, rect.height), maxH);
+      const vw = Math.max(320, hostWindow.innerWidth);
+      const vh = Math.max(240, hostWindow.innerHeight);
+      const maxW = Math.max(1, vw - 16);
+      const maxH = Math.max(1, vh - 16);
+      const width = Math.min(Math.max(320, rect.width), maxW);
+      const height = Math.min(Math.max(300, rect.height), maxH);
       const x = Math.min(Math.max(8, rect.x), Math.max(8, vw - width - 8));
       const y = Math.min(Math.max(8, rect.y), Math.max(8, vh - height - 8));
-      return { x, y, width, height };
+      return x === rect.x && y === rect.y && width === rect.width && height === rect.height ? rect : { x, y, width, height };
     };
 
-    if (!initializedWindowRef.current) {
-      const vw = Math.max(320, window.innerWidth);
-      const vh = Math.max(240, window.innerHeight);
+    if (!hosted && !initializedWindowRef.current) {
+      const vw = Math.max(320, hostWindow.innerWidth);
+      const vh = Math.max(240, hostWindow.innerHeight);
       const width = Math.min(1360, Math.max(760, vw * 0.74), vw - 24);
       const height = Math.min(840, Math.max(540, vh * 0.78), vh - 24);
       setWindowRect({
@@ -1154,35 +1675,36 @@ function Antenna3DSimulatorModal({
         height
       });
       initializedWindowRef.current = true;
-    } else {
+    } else if (!hosted) {
       setWindowRect((rect) => fitRectToViewport(rect));
     }
 
     const onKeyDown = (event) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || hostWindow.document.fullscreenElement) return;
+      if (hosted) { onClose(); return; }
       if (isMaximized) setIsMaximized(false);
       else if (isMinimized) setIsMinimized(false);
       else onClose();
     };
     const onResize = () => {
-      if (isMaximized) return;
+      if (isMaximized || hosted) return;
       setWindowRect((rect) => fitRectToViewport(rect));
     };
 
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('resize', onResize);
+    hostWindow.addEventListener('keydown', onKeyDown);
+    hostWindow.addEventListener('resize', onResize);
     return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('resize', onResize);
+      hostWindow.removeEventListener('keydown', onKeyDown);
+      hostWindow.removeEventListener('resize', onResize);
     };
-  }, [open, isMaximized, isMinimized, onClose]);
+  }, [open, isMaximized, isMinimized, onClose, hostWindow, hosted, hostRevision]);
 
   useEffect(() => {
-    if (!open || !isDragging) return;
+    if (!open || !isDragging || hosted) return;
 
     const onPointerMove = (event) => {
-      const vw = Math.max(320, window.innerWidth);
-      const vh = Math.max(240, window.innerHeight);
+      const vw = Math.max(320, hostWindow.innerWidth);
+      const vh = Math.max(240, hostWindow.innerHeight);
       setWindowRect((rect) => {
         const x = Math.min(Math.max(0, event.clientX - dragRef.current.offsetX), Math.max(0, vw - rect.width));
         const effectiveHeight = isMinimized ? 58 : rect.height;
@@ -1192,17 +1714,19 @@ function Antenna3DSimulatorModal({
     };
     const onPointerUp = () => setIsDragging(false);
 
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp, { once: true });
+    hostWindow.addEventListener('pointermove', onPointerMove);
+    hostWindow.addEventListener('pointerup', onPointerUp, { once: true });
+    hostWindow.addEventListener('pointercancel', onPointerUp, { once: true });
     return () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
+      hostWindow.removeEventListener('pointermove', onPointerMove);
+      hostWindow.removeEventListener('pointerup', onPointerUp);
+      hostWindow.removeEventListener('pointercancel', onPointerUp);
     };
-  }, [open, isDragging, isMinimized]);
+  }, [open, isDragging, isMinimized, hostWindow, hosted]);
 
   useEffect(() => {
-    if (!open || isMaximized || isMinimized || !frameRef.current || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver((entries) => {
+    if (!open || hosted || isMaximized || isMinimized || !frameRef.current || !hostWindow.ResizeObserver) return;
+    const observer = new hostWindow.ResizeObserver((entries) => {
       const rect = entries[0]?.target?.getBoundingClientRect?.();
       if (!rect) return;
       setWindowRect((current) => {
@@ -1212,10 +1736,10 @@ function Antenna3DSimulatorModal({
     });
     observer.observe(frameRef.current);
     return () => observer.disconnect();
-  }, [open, isMaximized, isMinimized]);
+  }, [open, isMaximized, isMinimized, hosted, hostWindow, hostRevision]);
 
   const startWindowDrag = (event) => {
-    if (isMaximized || event.button !== 0) return;
+    if (hosted || isMaximized || event.button !== 0) return;
     if (event.target?.closest?.('button, input, label')) return;
     const rect = frameRef.current?.getBoundingClientRect?.();
     if (!rect) return;
@@ -1224,198 +1748,9 @@ function Antenna3DSimulatorModal({
     event.preventDefault();
   };
 
-  const validAz = Number.isFinite(targetData?.azimuthDeg);
-  const validEl = Number.isFinite(targetData?.elevationDeg);
-  const wrappedAz = validAz ? (((targetData.azimuthDeg % 360) + 360) % 360) : 0;
-  const rawEl = validEl ? targetData.elevationDeg : 0;
-
-  // Visual servo model only. SAT-ORBIT remains the source of truth for orbit/AZ/EL.
-  // At 1X, the model uses LEO-class visual rates (AZ 15 deg/s, EL 12 deg/s),
-  // pre-slews shortly before AOS, waits 3 seconds for acquisition, then tracks.
-  // After LOS the RF/satellite disappears, the dish holds briefly, then returns
-  // to STOW/PARK more gently (AZ 12 deg/s, EL 9 deg/s).
-  servoInputRef.current = {
-    validAz,
-    validEl,
-    wrappedAz,
-    rawEl,
-    linkActive: Boolean(linkActive),
-    speedMult: Math.max(1, Number(speedMult) || 1),
-    isPlaying: Boolean(isPlaying),
-    stationMask: Math.max(0, Number(stationMask) || 0),
-    simulatedTimeMs: Number(simulatedTimeMs),
-    nextPassTimeMs: Number(nextPassTimeMs)
-  };
-
-  useEffect(() => {
-    if (!open) {
-      const servo = servoRef.current;
-      servo.az = STOW_PARK_AZ_DEG;
-      servo.el = STOW_PARK_EL_DEG;
-      servo.azVel = 0;
-      servo.elVel = 0;
-      servo.lastTs = null;
-      servo.lastLinkActive = false;
-      servo.signalReadyAt = 0;
-      servo.losAt = 0;
-      setVisualPointing({ az: STOW_PARK_AZ_DEG, el: STOW_PARK_EL_DEG });
-      setVisualSignalVisible(false);
-      return;
-    }
-
-    let rafId = 0;
-    const PRE_SLEW_LEAD_SIM_MS = 9000;
-    const ACQUIRE_WAIT_REAL_MS = 3000;
-    const POST_LOS_HOLD_REAL_MS = 1200;
-
-    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-    const shortestAzError = (target, current) => ((target - current + 540) % 360) - 180;
-    const approachVelocity = (velocity, desired, maxDelta) => {
-      if (velocity < desired) return Math.min(desired, velocity + maxDelta);
-      if (velocity > desired) return Math.max(desired, velocity - maxDelta);
-      return velocity;
-    };
-
-    const stepLinearAxis = (current, velocity, target, maxRate, accel, dt) => {
-      const error = target - current;
-      if (Math.abs(error) < 0.01 && Math.abs(velocity) < 0.05) return { value: target, velocity: 0 };
-      const desiredVelocity = clamp(error * 2.1, -maxRate, maxRate);
-      let nextVelocity = approachVelocity(velocity, desiredVelocity, accel * dt);
-      let step = nextVelocity * dt;
-      if (Math.abs(step) > Math.abs(error)) {
-        step = error;
-        nextVelocity = 0;
-      }
-      return { value: current + step, velocity: nextVelocity };
-    };
-
-    const stepAzAxis = (current, velocity, target, maxRate, accel, dt) => {
-      const error = shortestAzError(target, current);
-      if (Math.abs(error) < 0.01 && Math.abs(velocity) < 0.05) return { value: (target + 360) % 360, velocity: 0 };
-      const desiredVelocity = clamp(error * 2.1, -maxRate, maxRate);
-      let nextVelocity = approachVelocity(velocity, desiredVelocity, accel * dt);
-      let step = nextVelocity * dt;
-      if (Math.abs(step) > Math.abs(error)) {
-        step = error;
-        nextVelocity = 0;
-      }
-      return { value: ((current + step) % 360 + 360) % 360, velocity: nextVelocity };
-    };
-
-    const animate = (ts) => {
-      const input = servoInputRef.current;
-      const servo = servoRef.current;
-      if (!input) {
-        rafId = requestAnimationFrame(animate);
-        return;
-      }
-
-      const dt = servo.lastTs === null ? 0 : clamp((ts - servo.lastTs) / 1000, 0, 0.05);
-      servo.lastTs = ts;
-      const speed = input.isPlaying ? input.speedMult : 0;
-      const veryFastSim = speed > 60;
-      const motionScale = speed > 0 ? speed : 0;
-
-      if (input.linkActive && !servo.lastLinkActive) {
-        servo.signalReadyAt = ts + (veryFastSim ? 0 : ACQUIRE_WAIT_REAL_MS / Math.max(1, motionScale));
-        servo.losAt = 0;
-        setVisualSignalVisible(false);
-      } else if (!input.linkActive && servo.lastLinkActive) {
-        servo.losAt = ts;
-        servo.signalReadyAt = 0;
-        setVisualSignalVisible(false);
-      }
-      servo.lastLinkActive = input.linkActive;
-
-      const simNow = Number.isFinite(input.simulatedTimeMs) ? input.simulatedTimeMs : 0;
-      const passAt = Number.isFinite(input.nextPassTimeMs) ? input.nextPassTimeMs : 0;
-      const timeToAos = passAt > 0 ? passAt - simNow : Infinity;
-      const preSlew = Boolean(
-        input.isPlaying && !input.linkActive && input.validAz &&
-        timeToAos > 0 && timeToAos <= PRE_SLEW_LEAD_SIM_MS
-      );
-      const holdingAfterLos = Boolean(
-        !input.linkActive && servo.losAt > 0 &&
-        ts - servo.losAt < (veryFastSim ? 0 : POST_LOS_HOLD_REAL_MS / Math.max(1, motionScale))
-      );
-
-      let targetAz = STOW_PARK_AZ_DEG;
-      let targetEl = STOW_PARK_EL_DEG;
-      let maxAzRate = 12;
-      let maxElRate = 9;
-      let azAccel = 20;
-      let elAccel = 18;
-
-      if (input.linkActive && input.validAz && input.validEl) {
-        targetAz = input.wrappedAz;
-        targetEl = clamp(input.rawEl, 0, 90);
-        maxAzRate = 15;
-        maxElRate = 12;
-        azAccel = 30;
-        elAccel = 24;
-      } else if (preSlew) {
-        targetAz = input.wrappedAz;
-        targetEl = clamp(input.stationMask, 0, 90);
-        maxAzRate = 15;
-        maxElRate = 12;
-        azAccel = 30;
-        elAccel = 24;
-      } else if (holdingAfterLos) {
-        targetAz = servo.az;
-        targetEl = servo.el;
-        maxAzRate = 0;
-        maxElRate = 0;
-        azAccel = 0;
-        elAccel = 0;
-      }
-
-      if (veryFastSim && input.linkActive && input.validAz && input.validEl) {
-        servo.az = targetAz;
-        servo.el = targetEl;
-        servo.azVel = 0;
-        servo.elVel = 0;
-      } else if (dt > 0 && motionScale > 0) {
-        const azStep = stepAzAxis(servo.az, servo.azVel, targetAz, maxAzRate * motionScale, azAccel * motionScale * motionScale, dt);
-        const elStep = stepLinearAxis(servo.el, servo.elVel, targetEl, maxElRate * motionScale, elAccel * motionScale * motionScale, dt);
-        servo.az = azStep.value;
-        servo.azVel = azStep.velocity;
-        servo.el = clamp(elStep.value, 0, 90);
-        servo.elVel = elStep.velocity;
-      }
-
-      const pointingError = input.linkActive && input.validAz && input.validEl
-        ? Math.max(Math.abs(shortestAzError(input.wrappedAz, servo.az)), Math.abs(clamp(input.rawEl, 0, 90) - servo.el))
-        : Infinity;
-      const signalShouldShow = Boolean(
-        input.linkActive && input.validAz && input.validEl &&
-        (veryFastSim || ts >= servo.signalReadyAt) &&
-        pointingError <= (veryFastSim ? 999 : 2.5)
-      );
-
-      // Once acquisition is achieved, keep the satellite/RF visualization latched
-      // for the remainder of the active pass. Near zenith the apparent azimuth can
-      // change very quickly (especially at accelerated SIM rates), so a transient
-      // servo pointing error must not make the satellite disappear from the scene.
-      // The latch is cleared only when linkActive becomes false (LOS) or the view closes.
-      setVisualSignalVisible((current) => {
-        if (!input.linkActive) return false;
-        if (current) return true;
-        return signalShouldShow;
-      });
-      setVisualPointing((current) => {
-        if (Math.abs(shortestAzError(servo.az, current.az)) < 0.015 && Math.abs(servo.el - current.el) < 0.015) return current;
-        return { az: servo.az, el: servo.el };
-      });
-
-      rafId = requestAnimationFrame(animate);
-    };
-
-    rafId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafId);
-  }, [open]);
-
-  const displayAz = visualPointing.az;
-  const displayEl = visualPointing.el;
+  // This view only renders the controller-owned mechanical state.
+  const displayAz = antennaState?.az ?? STOW_PARK_AZ_DEG;
+  const displayEl = antennaState?.el ?? STOW_PARK_EL_DEG;
 
   // The antenna below is the same Classic Vector geometry/projection model used
   // by GISTDA Mission Simulator v2.4.14.  SAT-ORBIT remains the master clock;
@@ -1641,7 +1976,10 @@ function Antenna3DSimulatorModal({
   }, []);
 
   const vectorScene = useMemo(() => {
-    const P = { x: 800, y: 438 };
+    // Presentation-only overhead spacing. At EL <= 45 deg the MASTER composition is unchanged;
+    // from 45-70 deg the dish lowers and the satellite gains headroom smoothly.
+    const overheadVisualT = Math.max(0, Math.min(1, (displayEl - 45) / 25));
+    const P = { x: 800, y: 438 + 28 * overheadVisualT };
     const S = 0.515;
     const CAMERA = 180;
     const D = Math.PI / 180;
@@ -1698,12 +2036,12 @@ function Antenna3DSimulatorModal({
     // satellite farther away from the dish while keeping its centre inside a
     // safe screen envelope. This changes no orbit/pointing calculation.
     const visualRx = 760;
-    const visualRy = 400;
+    const visualRy = 400 + 70 * overheadVisualT; // presentation-only: a little more vertical separation near overhead
     const desiredRadius = 1 / Math.hypot(nx / visualRx, ny / visualRy);
-    const safeLeft = 110;
-    const safeRight = 1490;
-    const safeTop = 72;
-    const safeBottom = 760;
+    const safeLeft = 150;
+    const safeRight = 1450;
+    const safeTop = 145 - 93 * overheadVisualT; // 145px normally -> 52px near overhead; true pointing ray preserved
+    const safeBottom = 755;
     const safeCandidates = [];
     if (nx > 1e-7) safeCandidates.push((safeRight - P.x) / nx);
     else if (nx < -1e-7) safeCandidates.push((safeLeft - P.x) / nx);
@@ -1737,19 +2075,21 @@ function Antenna3DSimulatorModal({
 
   if (!open) return null;
 
-  const effectiveWidth = isMinimized ? Math.min(Math.max(430, windowRect.width), 720) : windowRect.width;
-  const frameStyle = isMaximized
+  const effectiveWidth = isMinimized ? Math.min(windowRect.width, 720, hostWindow.innerWidth - 16) : windowRect.width;
+  const frameStyle = hosted
+    ? { position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 0, borderWidth: 0, resize: 'none', pointerEvents: 'auto' }
+    : isMaximized
     ? {
         position: 'fixed', left: 0, top: 0, width: '100vw', height: '100vh',
         borderRadius: 0, borderWidth: 0, resize: 'none', pointerEvents: 'auto'
       }
     : {
         position: 'fixed', left: `${windowRect.x}px`, top: `${windowRect.y}px`,
-        width: `${effectiveWidth}px`, height: isMinimized ? '58px' : `${windowRect.height}px`,
+        width: `${effectiveWidth}px`, height: isMinimized ? 'auto' : `${windowRect.height}px`,
         borderRadius: '12px', borderWidth: '2px', resize: isMinimized ? 'none' : 'both',
-        minWidth: isMinimized ? '430px' : 'min(660px, calc(100vw - 16px))',
-        minHeight: isMinimized ? '58px' : 'min(460px, calc(100vh - 16px))',
-        maxWidth: 'calc(100vw - 8px)', maxHeight: 'calc(100vh - 8px)',
+        minWidth: 'min(320px, calc(100vw - 16px))',
+        minHeight: isMinimized ? '0px' : 'min(300px, calc(100dvh - 16px))',
+        maxWidth: 'calc(100vw - 8px)', maxHeight: 'calc(100dvh - 8px)',
         pointerEvents: 'auto'
       };
 
@@ -1861,57 +2201,82 @@ function Antenna3DSimulatorModal({
         }
         .sat-antenna3d-landscape { z-index: 1; }
         .sat-antenna3d-vector { z-index: 2; pointer-events: none; }
+
+        /* Antenna 3D final pointing readout: clean floating AZ/EL at opposite screen edges. */
+        .sat-antenna3d-pointing-inline {
+          width: 100%;
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: clamp(18px, 3cqw, 42px);
+          font-family: Rajdhani, Arial, sans-serif;
+          white-space: nowrap;
+          min-width: 0;
+          pointer-events: none;
+        }
+        .sat-antenna3d-pointing-inline span {
+          display: inline-flex;
+          align-items: baseline;
+          gap: clamp(7px, .75cqw, 11px);
+          padding: clamp(5px, .55cqw, 8px) clamp(9px, 1cqw, 14px);
+          border-radius: 8px;
+          background: rgba(3, 24, 35, 0.62);
+          border: 1px solid rgba(224, 248, 255, 0.24);
+          box-shadow: 0 2px 10px rgba(0,0,0,.18), inset 0 0 14px rgba(255,255,255,.035);
+          font-weight: 900;
+          letter-spacing: .9px;
+          backdrop-filter: blur(2px);
+        }
+        .sat-antenna3d-pointing-inline span:first-child { border-color: rgba(0,234,255,.48); }
+        .sat-antenna3d-pointing-inline span:last-child { border-color: rgba(0,255,102,.48); }
+        .sat-antenna3d-pointing-inline b {
+          color: #f4fbff;
+          font: 900 calc(clamp(11px, 1cqw, 14px) * var(--sat-text-scale,1))/1 Orbitron, sans-serif;
+          text-shadow: 0 1px 3px rgba(0,0,0,.95);
+        }
+        .sat-antenna3d-pointing-inline strong {
+          display: inline-block;
+          min-width: 7.1ch;
+          text-align: right;
+          font: 900 calc(clamp(20px, 1.8cqw, 28px) * var(--sat-text-scale,1))/1 Orbitron, sans-serif;
+          font-variant-numeric: tabular-nums lining-nums;
+          font-feature-settings: 'tnum' 1, 'lnum' 1;
+          letter-spacing: 0;
+          -webkit-text-stroke: .25px rgba(3,24,35,.72);
+        }
+        .sat-antenna3d-pointing-inline span:first-child strong {
+          color: #00eaff !important;
+          text-shadow: 0 1px 3px rgba(0,0,0,.96), 0 0 10px rgba(0,234,255,.44);
+        }
+        .sat-antenna3d-pointing-inline span:last-child strong {
+          color: #00ff66 !important;
+          text-shadow: 0 1px 3px rgba(0,0,0,.96), 0 0 10px rgba(0,255,102,.44);
+        }
+        @container antenna3d (max-width: 740px) {
+          .sat-antenna3d-pointing-inline strong { font-size: calc(18px * var(--sat-text-scale,1)); min-width: 6.8ch; }
+          .sat-antenna3d-pointing-inline span { padding: 5px 8px; }
+        }
+        @container antenna3d (max-width: 520px) {
+          .sat-antenna3d-pointing-inline b { font-size: calc(9px * var(--sat-text-scale,1)); }
+          .sat-antenna3d-pointing-inline strong { font-size: calc(15px * var(--sat-text-scale,1)); }
+        }
         .sat-antenna3d-toolbar {
           position: absolute;
           z-index: 11;
           left: clamp(10px, 1.25cqw, 18px);
-          right: auto;
+          right: clamp(10px, 1.25cqw, 18px);
           bottom: clamp(9px, 1.05cqw, 14px);
           width: auto;
           height: auto;
           display: flex;
-          align-items: center;
-          justify-content: flex-start;
+          align-items: flex-end;
+          justify-content: stretch;
           padding: 0;
           background: transparent;
           border-top: 0;
           box-shadow: none;
           box-sizing: border-box;
-        }
-        .sat-antenna3d-toolbar-left {
-          display: flex;
-          align-items: center;
-          justify-content: flex-start;
-          gap: clamp(8px, 1.35cqw, 16px);
-          min-width: 0;
-          max-width: 100%;
-        }
-        .sat-antenna3d-toggle {
-          display: inline-flex;
-          align-items: center;
-          gap: clamp(4px, 0.55cqw, 7px);
-          color: rgba(255,255,255,0.72);
-          font: 800 clamp(8px, 0.82cqw, 10px) Rajdhani, sans-serif;
-          letter-spacing: 0.8px;
-          white-space: nowrap;
-          text-shadow: 0 1px 3px rgba(4,25,37,0.95);
-        }
-        .sat-antenna3d-toggle button {
-          min-width: clamp(44px, 5.4cqw, 55px);
-          height: clamp(22px, 2.5cqw, 25px);
-          border-radius: 999px;
-          padding: 0 clamp(6px, 0.8cqw, 9px);
-          border: 1px solid rgba(255,255,255,0.18);
-          background: rgba(255,255,255,0.06);
-          color: rgba(255,255,255,0.56);
-          font: 900 clamp(8px, 0.76cqw, 9px) Orbitron, sans-serif;
-          cursor: pointer;
-        }
-        .sat-antenna3d-toggle button.active {
-          border-color: var(--green);
-          color: #041b12;
-          background: var(--green);
-          box-shadow: 0 0 12px rgba(0,255,102,0.28);
+          pointer-events: none;
         }
         .sat-antenna3d-control-btn {
           width: clamp(32px, 3.35cqw, 40px);
@@ -1958,18 +2323,31 @@ function Antenna3DSimulatorModal({
           .sat-antenna3d-toggle { gap: 3px; font-size: 8px; letter-spacing: 0.4px; }
           .sat-antenna3d-toggle button { min-width: 42px; height: 22px; padding-inline: 5px; font-size: 8px; }
         }
+
+        /* ANTENNA 3D PRESENTATION LOCK (Expo):
+           Keep the scene full-bleed. Header and toolbar stay floating/transparent so
+           the satellite can use the upper safe area and the unchanged antenna geometry
+           can sit lower in the viewport. */
+        .sat-antenna3d-frame { position: relative; }
+        .sat-antenna3d-header { background: transparent; border-bottom: 0; box-shadow: none; }
+        .sat-antenna3d-toolbar { background: transparent; border-top: 0; box-shadow: none; }
+        @media (pointer: coarse) {
+          .sat-antenna3d-control-btn, .sat-antenna3d-toggle button, .sat-antenna3d-window-controls button { min-height: 40px; min-width: 40px; touch-action: manipulation; }
+        }
       `}</style>
 
       <div
         ref={frameRef}
         className="sat-antenna3d-frame"
-        style={frameStyle}
+        data-hosted={hosted}
+        data-minimized={isMinimized && !hosted}
+        style={{ ...frameStyle, '--sat-text-scale': presentationScale }}
         onPointerDownCapture={() => onFocus?.()}
       >
         <div
           className="sat-antenna3d-header"
           onPointerDown={startWindowDrag}
-          style={{ cursor: isMaximized ? 'default' : (isDragging ? 'grabbing' : 'grab') }}
+          style={{ touchAction: 'none', cursor: hosted || isMaximized ? 'default' : (isDragging ? 'grabbing' : 'grab') }}
         >
           <div className="sat-antenna3d-title-wrap">
             <div className="sat-antenna3d-title">ANTENNA 3D TRACKING SIMULATOR</div>
@@ -1986,7 +2364,8 @@ function Antenna3DSimulatorModal({
             </div>
 
             <div className="sat-antenna3d-window-controls">
-            <button
+            {windowControl}
+            {!hosted && <button
               className="sat-antenna3d-control-btn"
               onClick={() => {
                 if (isMaximized) setIsMaximized(false);
@@ -1996,17 +2375,18 @@ function Antenna3DSimulatorModal({
               style={{ border: '1px solid rgba(0,234,255,0.62)', color: 'var(--cyan)', background: 'rgba(0,234,255,0.06)' }}
             >
               {isMinimized ? '\u25a1' : '\u2212'}
-            </button>
+            </button>}
             <button
               className="sat-antenna3d-control-btn"
               onClick={() => {
+                if (hosted) { toggleSatOwnedFullscreen(hostWindow); return; }
                 setIsMinimized(false);
                 setIsMaximized((value) => !value);
               }}
-              title={isMaximized ? 'Restore window' : 'Maximize'}
+              title={hosted ? 'Fullscreen' : isMaximized ? 'Restore window' : 'Maximize'}
               style={{ border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,234,255,0.08)' }}
             >
-              {isMaximized ? '\u2750' : '\u25a1'}
+              <SatWindowIcon kind={isMaximized ? 'restore' : 'maximize'} />
             </button>
             <button
               className="sat-antenna3d-control-btn"
@@ -2020,7 +2400,7 @@ function Antenna3DSimulatorModal({
           </div>
         </div>
 
-        {!isMinimized && (
+        {(!isMinimized || hosted) && (
           <>
             <div className="sat-antenna3d-stage">
               <svg className="sat-antenna3d-landscape" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true">
@@ -2070,16 +2450,6 @@ function Antenna3DSimulatorModal({
                     <line x1="800" y1="82" x2="800" y2="590" stroke="#7aa7b7" strokeOpacity="0.24" strokeWidth="1.5" strokeDasharray="5 10" />
                   </g>
                 )}
-                {showOrbit && (
-                  <path
-                    d="M45 590 Q800 -360 1555 590"
-                    fill="none"
-                    stroke={visualSignalVisible ? '#9f8737' : '#6f9fb2'}
-                    strokeOpacity={visualSignalVisible ? '0.68' : '0.52'}
-                    strokeWidth="1.8"
-                    strokeDasharray={visualSignalVisible ? undefined : '9 10'}
-                  />
-                )}
               </svg>
 
               <svg className="sat-antenna3d-vector" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax meet" aria-label="Classic vector antenna tracking view">
@@ -2099,7 +2469,7 @@ function Antenna3DSimulatorModal({
                   </linearGradient>
                 </defs>
 
-                <g aria-label="Concrete antenna foundation" vectorEffect="non-scaling-stroke">
+                <g aria-label="Concrete antenna foundation" transform={`translate(0 ${(vectorScene.P.y - 438).toFixed(2)})`} vectorEffect="non-scaling-stroke">
                   <path d="M620 805 L980 805 L1018 823 L582 823 Z" fill="url(#antConcreteTop)" stroke="#315c6e" strokeWidth="2.2" />
                   <rect x="582" y="823" width="436" height="38" rx="2" fill="#b5cbc8" stroke="#315c6e" strokeWidth="2.2" />
                   <line x1="690" y1="823" x2="690" y2="861" stroke="#5d7f87" strokeWidth="1.2" opacity="0.72" />
@@ -2165,29 +2535,13 @@ function Antenna3DSimulatorModal({
             </div>
 
             <div className="sat-antenna3d-toolbar">
-              <div className="sat-antenna3d-toolbar-left">
-                <div className="sat-antenna3d-toggle">
-                  <span>GRID</span>
-                  <button className={showGrid ? 'active' : ''} onClick={() => setShowGrid((value) => !value)} title="Toggle engineering grid">
-                    {showGrid ? 'ON' : 'OFF'}
-                  </button>
-                </div>
-                <div className="sat-antenna3d-toggle">
-                  <span>GUIDES</span>
-                  <button className={showGuides ? 'active' : ''} onClick={() => setShowGuides((value) => !value)} title="Toggle horizon / elevation guides">
-                    {showGuides ? 'ON' : 'OFF'}
-                  </button>
-                </div>
-                <div className="sat-antenna3d-toggle">
-                  <span>ORBIT</span>
-                  <button className={showOrbit ? 'active' : ''} onClick={() => setShowOrbit((value) => !value)} title="Toggle orbit arc">
-                    {showOrbit ? 'ON' : 'OFF'}
-                  </button>
-                </div>
+              <div className="sat-antenna3d-pointing-inline" aria-label="Simulated antenna pointing angles">
+                <span><b>AZ</b><strong>{Number.isFinite(antennaState?.az) ? `${antennaState.az.toFixed(2).padStart(6,'0')}°` : 'N/A'}</strong></span>
+                <span><b>EL</b><strong>{Number.isFinite(antennaState?.el) ? `${antennaState.el.toFixed(2).padStart(5,'0')}°` : 'N/A'}</strong></span>
               </div>
             </div>
 
-            {!isMaximized && <div className="sat-antenna3d-resize-grip">&#8991;</div>}
+            {!isMaximized && !hosted && <div className="sat-antenna3d-resize-grip">&#8991;</div>}
           </>
         )}
       </div>
@@ -3460,52 +3814,69 @@ const handleRuntimeImageError = (event, fallbackSrc = null) => {
 // =========================================================================
 // Lightweight interactive regional map for Weather Center only.
 // Leaflet is lazy-loaded when the Weather Center opens, so the main SAT-ORBIT view carries no map-engine cost.
-let weatherLeafletPromise = null;
-function loadWeatherLeaflet() {
-  if (typeof window === 'undefined') return Promise.reject(new Error('Leaflet requires a browser'));
-  if (window.L) return Promise.resolve(window.L);
-  if (weatherLeafletPromise) return weatherLeafletPromise;
+const WEATHER_REFRESH_MS = 5 * 60 * 1000;
+const WEATHER_STALE_MS = 15 * 60 * 1000;
+const weatherHasNumber = (value) => (
+  (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) && Number.isFinite(Number(value))
+);
+const weatherStationKey = (station) => `${station?.id || ''}:${station?.lat ?? ''}:${station?.lng ?? ''}`;
+const WEATHER_CODES = {
+  0: 'CLEAR SKY', 1: 'PARTLY CLOUDY', 2: 'PARTLY CLOUDY', 3: 'OVERCAST',
+  45: 'FOG', 48: 'FOG', 51: 'DRIZZLE', 53: 'DRIZZLE', 55: 'DRIZZLE', 56: 'FREEZING DRIZZLE', 57: 'FREEZING DRIZZLE',
+  61: 'RAIN', 63: 'RAIN', 65: 'RAIN', 66: 'FREEZING RAIN', 67: 'FREEZING RAIN',
+  71: 'SNOW', 73: 'SNOW', 75: 'SNOW', 77: 'SNOW GRAINS',
+  80: 'RAIN SHOWERS', 81: 'RAIN SHOWERS', 82: 'RAIN SHOWERS', 85: 'SNOW SHOWERS', 86: 'SNOW SHOWERS',
+  95: 'THUNDERSTORM', 96: 'THUNDERSTORM WITH HAIL', 99: 'THUNDERSTORM WITH HAIL'
+};
+const weatherCodeLabel = (code) => weatherHasNumber(code) ? (WEATHER_CODES[Number(code)] || 'UNKNOWN') : 'NO DATA';
+const weatherRecordForStation = (record, stationKey) => record?.stationKey === stationKey ? record.data : null;
 
-  weatherLeafletPromise = new Promise((resolve, reject) => {
-    if (!document.getElementById('sat-orbit-leaflet-css')) {
-      const link = document.createElement('link');
+
+const weatherLeafletPromises = new WeakMap();
+function loadWeatherLeaflet(ownerWindow = window) {
+  const doc = ownerWindow?.document;
+  if (!doc) return Promise.reject(new Error('Leaflet requires a browser'));
+  if (ownerWindow.L) return Promise.resolve(ownerWindow.L);
+  if (weatherLeafletPromises.has(doc)) return weatherLeafletPromises.get(doc);
+  const promise = new Promise((resolve, reject) => {
+    if (!doc.getElementById('sat-orbit-leaflet-css')) {
+      const link = doc.createElement('link');
       link.id = 'sat-orbit-leaflet-css';
       link.rel = 'stylesheet';
       link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(link);
+      doc.head.appendChild(link);
     }
-
-    const existing = document.getElementById('sat-orbit-leaflet-js');
-    if (existing) {
-      const started = Date.now();
-      const waitForLeaflet = () => {
-        if (window.L) return resolve(window.L);
-        if (Date.now() - started > 10000) return reject(new Error('Leaflet load timeout'));
-        setTimeout(waitForLeaflet, 50);
-      };
-      waitForLeaflet();
-      return;
-    }
-
-    const script = document.createElement('script');
+    doc.getElementById('sat-orbit-leaflet-js')?.remove();
+    const script = doc.createElement('script');
     script.id = 'sat-orbit-leaflet-js';
     script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
     script.async = true;
-    script.onload = () => window.L ? resolve(window.L) : reject(new Error('Leaflet unavailable after load'));
-    script.onerror = () => reject(new Error('Leaflet script failed to load'));
-    document.head.appendChild(script);
-  }).catch((error) => {
-    weatherLeafletPromise = null;
-    throw error;
-  });
-
-  return weatherLeafletPromise;
+    let finished = false;
+    const finish = (error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeoutId);
+      script.onload = null;
+      script.onerror = null;
+      if (error) { script.remove(); reject(error); }
+      else resolve(ownerWindow.L);
+    };
+    const timeoutId = setTimeout(() => finish(new Error('Leaflet load timeout')), 10000);
+    script.onload = () => finish(ownerWindow.L ? null : new Error('Leaflet unavailable after load'));
+    script.onerror = () => finish(new Error('Leaflet script failed to load'));
+    doc.head.appendChild(script);
+  }).catch(error => { weatherLeafletPromises.delete(doc); throw error; });
+  weatherLeafletPromises.set(doc, promise);
+  return promise;
 }
 
-function WeatherInteractiveMap({ station, fmt, cloudCover, precipitationNow }) {
+function WeatherInteractiveMap({ station, fmt, cloudCover, precipitationNow, validTime, active = false, hostWindow = window, hostRevision = 0 }) {
   const hostRef = useRef(null);
   const mapRef = useRef(null);
   const weatherLayerRef = useRef(null);
+  const leafletRef = useRef(null);
+  const savedViewRef = useRef(null);
+  const [mapRevision, setMapRevision] = useState(0);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState('');
   const [layerMode, setLayerMode] = useState('CLOUD');
@@ -3523,21 +3894,32 @@ function WeatherInteractiveMap({ station, fmt, cloudCover, precipitationNow }) {
 
   useEffect(() => {
     let cancelled = false;
-    let resizeTimer = null;
+    let resizeFrame = null;
+    let resizeObserver = null;
+    const owner = hostWindow || hostRef.current?.ownerDocument?.defaultView;
+    const currentStationKey = `${stationId}:${lat}:${lng}`;
+    const resizeMap = () => {
+      if (resizeFrame) owner.cancelAnimationFrame(resizeFrame);
+      resizeFrame = owner.requestAnimationFrame(() => {
+        if (!cancelled && hostRef.current?.clientWidth && hostRef.current?.clientHeight) {
+          try { mapRef.current?.invalidateSize({ pan: false, debounceMoveend: true }); } catch (_) {}
+        }
+      });
+    };
     setMapReady(false);
     setMapError('');
-    setLayerMode('CLOUD');
 
-    loadWeatherLeaflet()
+    loadWeatherLeaflet(owner)
       .then((L) => {
-        if (cancelled || !hostRef.current) return;
+        if (cancelled || !hostRef.current || hostRef.current.ownerDocument !== owner.document) return;
+        leafletRef.current = L;
         if (mapRef.current) {
           try { mapRef.current.remove(); } catch (_) {}
           mapRef.current = null;
         }
 
-        // Map interaction: wheel zooms the map while the pointer is over the map;
-        // scrolling outside the map continues to scroll the Weather Center.
+        // Only the renderer is recreated after document adoption; preserve the
+        // user's map center/zoom and keep the one existing forecast poller.
         const map = L.map(hostRef.current, {
           zoomControl: false,
           attributionControl: true,
@@ -3551,37 +3933,35 @@ function WeatherInteractiveMap({ station, fmt, cloudCover, precipitationNow }) {
           keyboard: false,
           worldCopyJump: true,
           minZoom: 2
-        }).setView([lat, lng], 6);
+        });
+        // Station-first UX: every new Weather Map renderer starts on the selected ground station.
+        // User pan/zoom is preserved only while the renderer remains open; switching back to MAP recenters deliberately.
+        map.setView([lat, lng], 8, { animate: false });
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 18,
           attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
-        L.circle([lat, lng], {
-          radius: 17000,
-          color: '#00ff66',
-          weight: 1,
-          opacity: 0.55,
-          fillColor: '#00ff66',
-          fillOpacity: 0.06,
-          interactive: false
-        }).addTo(map);
-
+        // MASTER WEATHER MAP: station is a simple yellow point only; no permanent label/range ring.
         const marker = L.circleMarker([lat, lng], {
           radius: 7,
-          color: '#00ff66',
+          color: '#ffcc00',
           weight: 2,
           fillColor: '#ffcc00',
-          fillOpacity: 0.95
+          fillOpacity: 1
         }).addTo(map);
-        marker.bindTooltip(`${stationId} GROUND STATION`, { permanent: false, direction: 'top', opacity: 0.9 });
+        marker.bindPopup(`<strong>${stationId}</strong><br/>${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E<br/>Altitude ${Number(station?.alt || 0).toFixed(0)} m`);
 
         mapRef.current = map;
+        setMapRevision(value => value + 1);
         setMapReady(true);
-        resizeTimer = setTimeout(() => {
-          try { map.invalidateSize(false); } catch (_) {}
-        }, 80);
+        const Observer = owner.ResizeObserver || window.ResizeObserver;
+        resizeObserver = Observer ? new Observer(resizeMap) : null;
+        resizeObserver?.observe(hostRef.current);
+        owner.addEventListener('resize', resizeMap);
+        owner.visualViewport?.addEventListener('resize', resizeMap);
+        resizeMap();
       })
       .catch((error) => {
         if (cancelled) return;
@@ -3591,21 +3971,37 @@ function WeatherInteractiveMap({ station, fmt, cloudCover, precipitationNow }) {
 
     return () => {
       cancelled = true;
-      if (resizeTimer) clearTimeout(resizeTimer);
+      if (resizeFrame) owner.cancelAnimationFrame(resizeFrame);
+      resizeObserver?.disconnect();
+      owner.removeEventListener('resize', resizeMap);
+      owner.visualViewport?.removeEventListener('resize', resizeMap);
       if (weatherLayerRef.current) {
         try { weatherLayerRef.current.remove(); } catch (_) {}
         weatherLayerRef.current = null;
       }
       if (mapRef.current) {
+        try { savedViewRef.current = { stationKey: currentStationKey, center: mapRef.current.getCenter(), zoom: mapRef.current.getZoom() }; } catch (_) {}
         try { mapRef.current.remove(); } catch (_) {}
         mapRef.current = null;
       }
     };
-  }, [stationId, lat, lng]);
+  }, [stationId, lat, lng, hostWindow, hostRevision]);
+
+  useEffect(() => {
+    if (!active || !mapRef.current) return;
+    const owner = hostWindow || mapRef.current?._container?.ownerDocument?.defaultView || window;
+    const frame = owner.requestAnimationFrame(() => {
+      try {
+        mapRef.current?.invalidateSize({ pan: false, debounceMoveend: false });
+        mapRef.current?.setView([lat, lng], 8, { animate: false });
+      } catch (_) {}
+    });
+    return () => owner.cancelAnimationFrame(frame);
+  }, [active, stationId, lat, lng, mapRevision, hostWindow]);
 
   useEffect(() => {
     const map = mapRef.current;
-    const L = typeof window !== 'undefined' ? window.L : null;
+    const L = leafletRef.current;
     if (!map || !L) return;
 
     if (weatherLayerRef.current) {
@@ -3669,13 +4065,13 @@ function WeatherInteractiveMap({ station, fmt, cloudCover, precipitationNow }) {
       ...(layerConfig.pane ? { pane: layerConfig.pane } : {})
     });
 
-    layer.on('tileerror', () => {
-      setMapError(layerConfig.error);
-    });
-    layer.on('load', () => setMapError(''));
+    let activeLayer = true;
+    layer.on('tileerror', () => { if (activeLayer) setMapError(layerConfig.error); });
+    layer.on('load', () => { if (activeLayer) setMapError(''); });
     layer.addTo(map);
     weatherLayerRef.current = layer;
-  }, [layerMode, mapReady]);
+    return () => { activeLayer = false; layer.off(); try { layer.remove(); } catch (_) {} if (weatherLayerRef.current === layer) weatherLayerRef.current = null; };
+  }, [layerMode, mapRevision]);
 
   const zoomBy = (delta) => {
     const map = mapRef.current;
@@ -3683,15 +4079,17 @@ function WeatherInteractiveMap({ station, fmt, cloudCover, precipitationNow }) {
     if (delta > 0) map.zoomIn(); else map.zoomOut();
   };
 
-  const cloudPct = Number.isFinite(Number(cloudCover)) ? Math.max(0, Math.min(100, Number(cloudCover))) : null;
-  const rainNow = Number.isFinite(Number(precipitationNow)) ? Math.max(0, Number(precipitationNow)) : null;
+  const cloudPct = weatherHasNumber(cloudCover) ? Math.max(0, Math.min(100, Number(cloudCover))) : null;
+  const rainNow = weatherHasNumber(precipitationNow) ? Math.max(0, Number(precipitationNow)) : null;
 
   return (
     <div className="weather-map-shell">
       <div ref={hostRef} className="weather-leaflet-host" />
       <div className="weather-map-overlay" />
       <div className="weather-map-label">GLOBAL WEATHER MAP • {stationId}</div>
+      <div className="weather-map-valid">VALID {validTime || '--:--'} UTC</div>
       <div className="weather-map-actions">
+        <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => { try { mapRef.current?.setView([lat, lng], 8, { animate: true }); } catch (_) {} }} disabled={!mapReady} title={`Center on ${stationId} ground station`}>⌖</button>
         <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => zoomBy(1)} disabled={!mapReady} title="Zoom in">+</button>
         <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => zoomBy(-1)} disabled={!mapReady} title="Zoom out">−</button>
       </div>
@@ -3716,7 +4114,7 @@ function WeatherInteractiveMap({ station, fmt, cloudCover, precipitationNow }) {
           className={layerMode === 'SATELLITE' ? 'active satellite' : 'satellite'}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => setLayerMode('SATELLITE')}
-          title="Global satellite true color • NASA GIBS / MODIS Terra"
+          title="Global satellite true color • NASA GIBS / VIIRS NOAA-20"
         >SATELLITE</button>
       </div>
       {mapError ? <div className="weather-map-error">{mapError}</div> : null}
@@ -3731,7 +4129,7 @@ function WeatherInteractiveMap({ station, fmt, cloudCover, precipitationNow }) {
           <span>RAIN NOW</span>
           <strong>{rainNow == null ? '--' : `${rainNow.toFixed(1)} mm`}</strong>
         </div>
-        <small>{layerMode === 'CLOUD' ? 'CLOUD: VIIRS NOAA-20 VISIBLE CLOUD • NASA GIBS' : layerMode === 'RAIN' ? 'RAIN: GPM IMERG V07 30-MIN GLOBAL • NASA GIBS' : layerMode === 'SATELLITE' ? 'SATELLITE: MODIS TERRA TRUE COLOR • NASA GIBS' : 'BASE: OPENSTREETMAP'}</small>
+        <small>{layerMode === 'CLOUD' ? 'CLOUD: VIIRS NOAA-20 VISIBLE CLOUD • NASA GIBS' : layerMode === 'RAIN' ? 'RAIN: GPM IMERG V07 30-MIN GLOBAL • NASA GIBS' : layerMode === 'SATELLITE' ? 'SATELLITE: VIIRS NOAA-20 TRUE COLOR • NASA GIBS' : 'BASE: OPENSTREETMAP'}</small>
       </div>
     </div>
   );
@@ -3744,22 +4142,38 @@ function WeatherCenterModal({
   zIndex = 10005,
   onFocus,
   summaryCloudCover,
-  summaryMode
+  summaryMode,
+  hostWindow = window,
+  hosted = false,
+  hostRevision = 0,
+  windowControl = null,
+  presentationScale = 1
 }) {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [windowRect, setWindowRect] = useState({ x: 210, y: 95, width: 1120, height: 720 });
-  const [weatherData, setWeatherData] = useState(null);
+  const [weatherRecord, setWeatherRecord] = useState(null);
+  const stationKey = weatherStationKey(station);
+  const weatherData = weatherRecordForStation(weatherRecord, stationKey);
+  const [weatherWallMs, setWeatherWallMs] = useState(Date.now);
   const [isLoading, setIsLoading] = useState(false);
   const [weatherError, setWeatherError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const frameRef = useRef(null);
   const dragRef = useRef({ offsetX: 0, offsetY: 0 });
   const initializedRef = useRef(false);
+  const bodyRef = useRef(null);
+  const panelSize = useSatOwnedPanelSize(frameRef, open, hostWindow, hostRevision);
+  const bodySize = useSatOwnedPanelSize(bodyRef, open, hostWindow, hostRevision);
+  const [weatherTab, setWeatherTab] = useState('overview');
+  const [metricPage, setMetricPage] = useState(0);
+  const [trendPage, setTrendPage] = useState(0);
+  const [hourPage, setHourPage] = useState(0);
+  const [dayPage, setDayPage] = useState(0);
 
   const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
-  const finite = (v) => Number.isFinite(Number(v));
-  const fmt = (v, digits = 0, fallback = '--') => finite(v) ? Number(v).toFixed(digits) : fallback;
+  const finite = weatherHasNumber;
+  const fmt = (v, digits = 0, fallback = 'N/A') => finite(v) ? Number(v).toFixed(digits) : fallback;
   const parseUtc = (value) => {
     if (!value) return NaN;
     const s = String(value);
@@ -3775,94 +4189,125 @@ function WeatherCenterModal({
     if (!Number.isFinite(ms)) return '--';
     return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' }).format(new Date(ms)).toUpperCase();
   };
-  const weatherLabel = (code) => {
-    const c = Number(code);
-    if (!Number.isFinite(c)) return 'NO DATA';
-    if (c === 0) return 'CLEAR SKY';
-    if (c <= 2) return 'PARTLY CLOUDY';
-    if (c === 3) return 'OVERCAST';
-    if (c === 45 || c === 48) return 'FOG';
-    if (c >= 51 && c <= 57) return 'DRIZZLE';
-    if (c >= 61 && c <= 67) return 'RAIN';
-    if (c >= 71 && c <= 77) return 'SNOW';
-    if (c >= 80 && c <= 82) return 'RAIN SHOWERS';
-    if (c >= 85 && c <= 86) return 'SNOW SHOWERS';
-    if (c >= 95) return 'THUNDERSTORM';
-    return 'VARIABLE';
-  };
-  const weatherIcon = (code) => {
-    const c = Number(code);
-    if (!Number.isFinite(c)) return '◌';
-    if (c === 0) return '☀';
-    if (c <= 2) return '🌤';
-    if (c === 3) return '☁';
-    if (c === 45 || c === 48) return '≋';
-    if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) return '🌧';
-    if ((c >= 71 && c <= 77) || (c >= 85 && c <= 86)) return '❄';
-    if (c >= 95) return '⛈';
-    return '☁';
+  const weatherLabel = weatherCodeLabel;
+  const weatherIcon = (code, className = 'weather-glyph') => {
+    const c = finite(code) ? Number(code) : null;
+    const kind = c === 0 ? 'sun' : c === 1 || c === 2 ? 'partly' : c === 3 ? 'cloud' : c === 45 || c === 48 ? 'fog' : c !== null && ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) ? 'rain' : c !== null && ((c >= 71 && c <= 77) || (c >= 85 && c <= 86)) ? 'snow' : c !== null && [95,96,99].includes(c) ? 'storm' : 'cloud';
+    const cloud = <><path d="M20 44h28c7 0 12-4 12-10s-5-10-11-10c-2-8-9-13-17-13-10 0-18 7-19 17C7 29 3 33 3 38c0 4 3 6 7 6h10Z"/><path d="M15 29c2-8 8-13 17-13 7 0 13 4 16 10" opacity=".45"/></>;
+    return <svg className={className} viewBox="0 0 64 64" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      {kind === 'sun' && <><circle cx="32" cy="32" r="11"/><path d="M32 6v8M32 50v8M6 32h8M50 32h8M13.6 13.6l5.7 5.7M44.7 44.7l5.7 5.7M50.4 13.6l-5.7 5.7M19.3 44.7l-5.7 5.7"/></>}
+      {kind === 'partly' && <><circle cx="42" cy="20" r="9"/><path d="M42 4v5M42 31v5M26 20h5M53 20h5"/>{cloud}</>}
+      {kind === 'cloud' && cloud}
+      {kind === 'fog' && <><path d="M12 24h40M8 34h48M15 44h34"/><path d="M18 17h29" opacity=".5"/></>}
+      {kind === 'rain' && <>{cloud}<path d="M20 49l-3 7M32 49l-3 7M44 49l-3 7"/></>}
+      {kind === 'snow' && <>{cloud}<path d="M20 51h0M32 54h0M44 51h0" strokeWidth="5"/></>}
+      {kind === 'storm' && <>{cloud}<path d="M35 46l-8 10h7l-4 6 12-13h-7l4-3" fill="currentColor" stroke="none"/></>}
+    </svg>;
   };
   const windCardinal = (deg) => {
     if (!finite(deg)) return '--';
     const names = ['N','NE','E','SE','S','SW','W','NW'];
     return names[Math.round((((Number(deg) % 360) + 360) % 360) / 45) % 8];
   };
+  const dewPointC = (temperature, humidity) => {
+    if (!finite(temperature) || !finite(humidity) || Number(humidity) <= 0) return null;
+    const a = 17.62, b = 243.12, t = Number(temperature), rh = Math.min(100, Math.max(1, Number(humidity)));
+    const gamma = Math.log(rh / 100) + (a * t) / (b + t);
+    return (b * gamma) / (a - gamma);
+  };
+  const metricGlyph = (label) => {
+    const code = label === 'TEMPERATURE' || label === 'FEELS LIKE' || label === 'DEW POINT' ? 'T' : label === 'HUMIDITY' ? 'RH' : label === 'PRESSURE' ? 'P' : label === 'VISIBILITY' ? 'VIS' : label.startsWith('WIND') ? 'W' : label.startsWith('RAIN') ? 'R' : label === 'THUNDERSTORM' ? 'TS' : 'WX';
+    return <span className="weather-metric-glyph" aria-hidden="true">{code}</span>;
+  };
+  const weatherTabGlyph = (id) => ({ overview: '◈', map: '⌖', now: '●', trends: '⌁', hours: '◷', days: '▦' }[id] || '•');
+  const numericSeries = (values) => values.map(v => finite(v) ? Number(v) : null);
+  const seriesStats = (values) => {
+    const valid = numericSeries(values).filter(v => v !== null);
+    return valid.length ? { min: Math.min(...valid), max: Math.max(...valid), now: valid[valid.length - 1] } : { min: null, max: null, now: null };
+  };
+  const groundStationImpact = ({ code, gust, visibility, rain, pop, cloud }) => {
+    const c = finite(code) ? Number(code) : null, g = finite(gust) ? Number(gust) : null, vis = finite(visibility) ? Number(visibility) : null, r = finite(rain) ? Number(rain) : null, p = finite(pop) ? Number(pop) : null, cl = finite(cloud) ? Number(cloud) : null;
+    if ((c !== null && [95,96,99].includes(c)) || (g !== null && g >= 60) || (vis !== null && vis < 2) || (r !== null && r >= 10)) return { label: 'WEATHER RISK', level: 'risk' };
+    if ((g !== null && g >= 40) || (vis !== null && vis < 5) || (p !== null && p >= 70) || (cl !== null && cl >= 80)) return { label: 'CAUTION', level: 'caution' };
+    return { label: 'NORMAL', level: 'normal' };
+  };
 
   useEffect(() => {
-    if (!open) {
-      setIsDragging(false);
-      return;
-    }
-    if (!initializedRef.current) {
-      const vw = Math.max(800, window.innerWidth);
-      const vh = Math.max(600, window.innerHeight);
-      const width = Math.min(1220, Math.max(900, vw * 0.72), vw - 32);
-      const height = Math.min(790, Math.max(610, vh * 0.78), vh - 32);
+    if (!open) { setIsDragging(false); return; }
+    const fit = (rect) => {
+      const vw = hostWindow.innerWidth, vh = hostWindow.innerHeight;
+      const width = Math.min(Math.max(320, rect.width), Math.max(1, vw - 16));
+      const height = Math.min(Math.max(320, rect.height), Math.max(1, vh - 16));
+      const x = clamp(rect.x, 8, Math.max(8, vw - width - 8)), y = clamp(rect.y, 8, Math.max(8, vh - height - 8));
+      return width === rect.width && height === rect.height && x === rect.x && y === rect.y ? rect : { width, height, x, y };
+    };
+    if (!hosted && !initializedRef.current) {
+      const vw = hostWindow.innerWidth, vh = hostWindow.innerHeight;
+      const width = Math.min(1220, Math.max(900, vw * .72), Math.max(1, vw - 32));
+      const height = Math.min(790, Math.max(610, vh * .78), Math.max(1, vh - 32));
       setWindowRect({ x: Math.max(16, (vw - width) / 2), y: Math.max(16, (vh - height) / 2), width, height });
       initializedRef.current = true;
-    }
-  }, [open]);
+    } else if (!hosted && !isMaximized) setWindowRect(rect => fit(rect));
+    const onResize = () => { if (!hosted && !isMaximized) setWindowRect(rect => fit(rect)); };
+    const onKey = event => {
+      if (!hosted || event.key !== 'Escape' || hostWindow.document.fullscreenElement) return;
+      onClose();
+    };
+    hostWindow.addEventListener('resize', onResize);
+    hostWindow.addEventListener('keydown', onKey);
+    return () => { hostWindow.removeEventListener('resize', onResize); hostWindow.removeEventListener('keydown', onKey); };
+  }, [open, hosted, hostWindow, isMaximized, onClose]);
 
   useEffect(() => {
-    if (!open || isMaximized || !frameRef.current || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver((entries) => {
+    if (!open || hosted || isMaximized || !frameRef.current || !hostWindow.ResizeObserver) return;
+    const observer = new hostWindow.ResizeObserver(entries => {
       const rect = entries[0]?.target?.getBoundingClientRect?.();
       if (!rect) return;
-      setWindowRect((current) => {
-        if (Math.abs(current.width - rect.width) < 1 && Math.abs(current.height - rect.height) < 1) return current;
-        return { ...current, width: rect.width, height: rect.height };
-      });
+      setWindowRect(current => Math.abs(current.width - rect.width) < 1 && Math.abs(current.height - rect.height) < 1 ? current : { ...current, width: rect.width, height: rect.height });
     });
     observer.observe(frameRef.current);
     return () => observer.disconnect();
-  }, [open, isMaximized]);
+  }, [open, isMaximized, hosted, hostWindow, hostRevision]);
 
   useEffect(() => {
-    if (!open || !isDragging) return;
-    const onMove = (event) => {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      setWindowRect((rect) => ({
-        ...rect,
-        x: clamp(event.clientX - dragRef.current.offsetX, 0, Math.max(0, vw - rect.width)),
-        y: clamp(event.clientY - dragRef.current.offsetY, 0, Math.max(0, vh - rect.height))
-      }));
-    };
+    if (!open || !isDragging || hosted) return;
+    const onMove = event => setWindowRect(rect => ({
+      ...rect,
+      x: clamp(event.clientX - dragRef.current.offsetX, 0, Math.max(0, hostWindow.innerWidth - rect.width)),
+      y: clamp(event.clientY - dragRef.current.offsetY, 0, Math.max(0, hostWindow.innerHeight - rect.height))
+    }));
     const onUp = () => setIsDragging(false);
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp, { once: true });
+    hostWindow.addEventListener('pointermove', onMove);
+    hostWindow.addEventListener('pointerup', onUp, { once: true });
+    hostWindow.addEventListener('pointercancel', onUp, { once: true });
     return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
+      hostWindow.removeEventListener('pointermove', onMove);
+      hostWindow.removeEventListener('pointerup', onUp);
+      hostWindow.removeEventListener('pointercancel', onUp);
     };
-  }, [open, isDragging]);
+  }, [open, isDragging, hosted, hostWindow]);
 
   useEffect(() => {
-    if (!open || !station || !finite(station.lat) || !finite(station.lng)) return;
+    if (!open) return;
+    setWeatherWallMs(Date.now());
+    const ageTimer = setInterval(() => setWeatherWallMs(Date.now()), 60000);
+    const refreshTimer = setInterval(() => setRefreshKey((value) => value + 1), WEATHER_REFRESH_MS);
+    return () => { clearInterval(ageTimer); clearInterval(refreshTimer); };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!station || !finite(station.lat) || !finite(station.lng)) {
+      setWeatherRecord(null);
+      setWeatherError('STATION COORDINATES UNAVAILABLE');
+      setIsLoading(false);
+      return;
+    }
     const controller = new AbortController();
     let active = true;
     setIsLoading(true);
     setWeatherError(null);
+    setWeatherRecord((record) => record?.stationKey === stationKey ? record : null);
 
     const currentFields = [
       'temperature_2m','relative_humidity_2m','apparent_temperature','precipitation','rain',
@@ -3886,7 +4331,10 @@ function WeatherCenterModal({
       })
       .then((data) => {
         if (!active) return;
-        setWeatherData(data || null);
+        if (!data || typeof data !== 'object' || data.error || (!data.current && !data.hourly)) throw new Error('Empty weather response');
+        const fetchedAt = Date.now();
+        setWeatherRecord({ stationKey, fetchedAt, data });
+        setWeatherWallMs(fetchedAt);
         setWeatherError(null);
       })
       .catch((error) => {
@@ -3904,10 +4352,13 @@ function WeatherCenterModal({
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [open, station?.id, station?.lat, station?.lng, refreshKey]);
+  }, [open, stationKey, refreshKey]);
 
   if (!open) return null;
 
+  const weatherAgeMinutes = weatherData ? Math.max(0, Math.floor((weatherWallMs - weatherRecord.fetchedAt) / 60000)) : null;
+  const weatherIsStale = Boolean(weatherData && (weatherError || weatherWallMs - weatherRecord.fetchedAt > WEATHER_STALE_MS));
+  const weatherStatus = weatherIsStale ? 'CACHED FORECAST' : weatherData ? 'CURRENT FORECAST' : isLoading ? 'FETCHING FORECAST' : 'FORECAST UNAVAILABLE';
   const current = weatherData?.current || {};
   const hourly = weatherData?.hourly || {};
   const daily = weatherData?.daily || {};
@@ -3923,7 +4374,8 @@ function WeatherCenterModal({
   const hourlyAt = (key, index = nearestHour) => Array.isArray(hourly?.[key]) ? hourly[key][index] : null;
   const visibilityKm = finite(hourlyAt('visibility')) ? Number(hourlyAt('visibility')) / 1000 : null;
   const popNow = hourlyAt('precipitation_probability');
-  const thunderstormNow = Number(current.weather_code) >= 95;
+  const weatherCodeKnown = finite(current.weather_code) && Boolean(WEATHER_CODES[Number(current.weather_code)]);
+  const thunderstormNow = weatherCodeKnown ? [95, 96, 99].includes(Number(current.weather_code)) : null;
   const next24 = [];
   for (let i = nearestHour; i < Math.min(hourTimes.length, nearestHour + 24); i += 3) {
     next24.push({
@@ -3933,7 +4385,8 @@ function WeatherCenterModal({
       cloud: hourly.cloud_cover?.[i],
       pop: hourly.precipitation_probability?.[i],
       rain: hourly.precipitation?.[i],
-      wind: hourly.wind_speed_10m?.[i]
+      wind: hourly.wind_speed_10m?.[i],
+      windDir: hourly.wind_direction_10m?.[i]
     });
   }
   const dailyCards = (daily.time || []).slice(0, 5).map((time, index) => ({
@@ -3947,11 +4400,12 @@ function WeatherCenterModal({
     gust: daily.wind_gusts_10m_max?.[index]
   }));
 
-  const clampPct = (value) => finite(value) ? Math.max(0, Math.min(100, Number(value))) : 0;
+  const clampPct = (value) => finite(value) ? Math.max(0, Math.min(100, Number(value))) : null;
   const cloudPct = clampPct(current.cloud_cover);
-  const cloudState = cloudPct >= 90 ? 'OVERCAST' : cloudPct >= 70 ? 'CLOUDY' : cloudPct >= 40 ? 'BROKEN CLOUDS' : cloudPct >= 15 ? 'PARTLY CLOUDY' : 'CLEAR / FEW CLOUDS';
+  const cloudState = cloudPct === null ? 'NO DATA' : cloudPct >= 90 ? 'OVERCAST' : cloudPct >= 70 ? 'CLOUDY' : cloudPct >= 40 ? 'BROKEN CLOUDS' : cloudPct >= 15 ? 'PARTLY CLOUDY' : 'CLEAR / FEW CLOUDS';
   const cloudLevelColor = (pct) => {
     const v = clampPct(pct);
+    if (v === null) return '#7d8b98';
     if (v <= 20) return '#24475f';
     if (v <= 40) return '#4f89a8';
     if (v <= 60) return '#83b8d0';
@@ -3961,8 +4415,8 @@ function WeatherCenterModal({
   // Conventional meteorological thermal ramp (there is no single universal palette):
   // colder values use blue/cyan; warm values move through green/yellow/orange to red.
   const temperatureColor = (value) => {
+    if (!finite(value)) return '#7d8b98';
     const t = Number(value);
-    if (!Number.isFinite(t)) return '#ffffff';
     if (t < 0) return '#5b7cff';
     if (t < 10) return '#39a8ff';
     if (t < 20) return '#2bd9e9';
@@ -3973,32 +4427,60 @@ function WeatherCenterModal({
     return '#ff365d';
   };
   const cloudHeroColor = cloudLevelColor(cloudPct);
-  const cloudOperationalLabel = cloudPct <= 20 ? 'CLEAR • OPTICAL FAVORABLE' : cloudPct <= 40 ? 'LOW CLOUD • GENERALLY FAVORABLE' : cloudPct <= 60 ? 'PARTLY CLOUDY • REVIEW TARGET' : cloudPct <= 80 ? 'CLOUDY • DEGRADED' : 'OVERCAST • OPTICAL DEGRADED';
-  const precipNow = finite(current.rain ?? current.precipitation) ? Number(current.rain ?? current.precipitation) : 0;
-  const windDirection = finite(current.wind_direction_10m) ? ((Number(current.wind_direction_10m) % 360) + 360) % 360 : 0;
-  const windFlowDirection = (windDirection + 180) % 360;
+  const cloudOperationalLabel = cloudPct === null ? 'WEATHER UNAVAILABLE • OPTICAL STATUS UNKNOWN' : cloudPct <= 20 ? 'CLEAR • OPTICAL FAVORABLE' : cloudPct <= 40 ? 'LOW CLOUD • GENERALLY FAVORABLE' : cloudPct <= 60 ? 'PARTLY CLOUDY • REVIEW TARGET' : cloudPct <= 80 ? 'CLOUDY • DEGRADED' : 'OVERCAST • OPTICAL DEGRADED';
+  const precipNow = finite(current.precipitation ?? current.rain) ? Number(current.precipitation ?? current.rain) : null;
+  const windDirection = finite(current.wind_direction_10m) ? ((Number(current.wind_direction_10m) % 360) + 360) % 360 : null;
+  const windFlowDirection = windDirection === null ? null : (windDirection + 180) % 360;
+  const dewPoint = dewPointC(current.temperature_2m, current.relative_humidity_2m);
+  const currentImpact = groundStationImpact({ code: current.weather_code, gust: current.wind_gusts_10m, visibility: visibilityKm, rain: precipNow, pop: popNow, cloud: cloudPct });
+  const observedUtc = formatUtcHour(current.time);
+  const dataFreshLabel = weatherIsStale ? `DATA AGE ${weatherAgeMinutes ?? '--'} MIN` : weatherData ? 'DATA CURRENT' : 'DATA UNAVAILABLE';
+
+  const trendLast6 = [];
+  for (let i = Math.max(0, nearestHour - 5); i <= nearestHour && i < hourTimes.length; i += 1) {
+    trendLast6.push({
+      time: hourTimes[i], temp: hourly.temperature_2m?.[i], humidity: hourly.relative_humidity_2m?.[i], pressure: hourly.surface_pressure?.[i],
+      wind: hourly.wind_speed_10m?.[i], gust: hourly.wind_gusts_10m?.[i], cloud: hourly.cloud_cover?.[i], rain: hourly.precipitation?.[i]
+    });
+  }
+  const trendTempStats = seriesStats(trendLast6.map(d => d.temp));
+  const trendPressureStats = seriesStats(trendLast6.map(d => d.pressure));
+  const trendWindStats = seriesStats(trendLast6.map(d => d.wind));
+  const trendGustStats = seriesStats(trendLast6.map(d => d.gust));
+  const trendCloudStats = seriesStats(trendLast6.map(d => d.cloud));
+  const trendRainStats = seriesStats(trendLast6.map(d => d.rain));
+  const trendDelta = (key) => {
+    const values = trendLast6.map(item => item?.[key]).filter(finite).map(Number);
+    return values.length >= 2 ? values[values.length - 1] - values[0] : null;
+  };
+  const deltaText = (value, digits = 1, unit = '') => finite(value) ? `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(digits)}${unit}` : 'N/A';
+  const directionText = (value, threshold = 0.05, up = 'RISING', down = 'FALLING') => !finite(value) ? 'NO TREND' : Number(value) > threshold ? up : Number(value) < -threshold ? down : 'STABLE';
+  const trendTempDelta = trendDelta('temp');
+  const trendPressureDelta = trendDelta('pressure');
+  const trendWindDelta = trendDelta('wind');
+  const trendCloudDelta = trendDelta('cloud');
 
   const rainHistory6 = [];
-  for (let i = Math.max(0, nearestHour - 5); i <= nearestHour; i += 1) {
+  for (let i = Math.max(0, nearestHour - 5); i < hourTimes.length && i <= nearestHour; i += 1) {
     rainHistory6.push({
       time: hourTimes[i],
-      rain: finite(hourly.precipitation?.[i]) ? Number(hourly.precipitation[i]) : 0
+      rain: finite(hourly.precipitation?.[i]) ? Number(hourly.precipitation[i]) : null
     });
   }
   const rainHistoryMax = Math.max(0.1, ...rainHistory6.map((item) => item.rain || 0));
-  const rainHistoryTotal = rainHistory6.reduce((sum, item) => sum + (item.rain || 0), 0);
+  const rainHistoryTotal = rainHistory6.length && rainHistory6.every((item) => finite(item.rain)) ? rainHistory6.reduce((sum, item) => sum + item.rain, 0) : null;
 
   const precipNext6 = [];
   for (let i = nearestHour; i < Math.min(hourTimes.length, nearestHour + 6); i += 1) {
     precipNext6.push({
       time: hourTimes[i],
-      rain: finite(hourly.precipitation?.[i]) ? Number(hourly.precipitation[i]) : 0,
-      pop: finite(hourly.precipitation_probability?.[i]) ? Number(hourly.precipitation_probability[i]) : 0
+      rain: finite(hourly.precipitation?.[i]) ? Number(hourly.precipitation[i]) : null,
+      pop: finite(hourly.precipitation_probability?.[i]) ? Number(hourly.precipitation_probability[i]) : null
     });
   }
   const precipNext6Max = Math.max(0.1, ...precipNext6.map((item) => item.rain || 0));
-  const precipNext6Total = precipNext6.reduce((sum, item) => sum + (item.rain || 0), 0);
-  const precipNext6Pop = precipNext6.length ? Math.max(...precipNext6.map((item) => item.pop || 0)) : 0;
+  const precipNext6Total = precipNext6.length && precipNext6.every((item) => finite(item.rain)) ? precipNext6.reduce((sum, item) => sum + item.rain, 0) : null;
+  const precipNext6Pop = precipNext6.length && precipNext6.every((item) => finite(item.pop)) ? Math.max(...precipNext6.map((item) => item.pop)) : null;
 
   const cloudNext6 = [];
   for (let i = nearestHour; i < Math.min(hourTimes.length, nearestHour + 6); i += 1) {
@@ -4009,6 +4491,7 @@ function WeatherCenterModal({
   }
 
   const weatherAccent = (code) => {
+    if (!finite(code) || !WEATHER_CODES[Number(code)]) return '#7d8b98';
     const c = Number(code);
     if (c >= 95) return '#ff3b5c';
     if ((c >= 61 && c <= 82) || (c >= 51 && c <= 57)) return '#ffb000';
@@ -4019,16 +4502,18 @@ function WeatherCenterModal({
   const lat = Number(station?.lat || 0);
   const lng = Number(station?.lng || 0);
 
-  const frameStyle = isMaximized ? {
+  const frameStyle = hosted ? {
+    position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 0, resize: 'none', minWidth: 0, minHeight: 0
+  } : isMaximized ? {
     position: 'fixed', inset: 0, width: '100vw', height: '100vh', borderRadius: 0, resize: 'none'
   } : {
     position: 'fixed', left: `${windowRect.x}px`, top: `${windowRect.y}px`, width: `${windowRect.width}px`, height: `${windowRect.height}px`,
-    minWidth: 'min(820px, calc(100vw - 16px))', minHeight: 'min(560px, calc(100vh - 16px))',
-    maxWidth: 'calc(100vw - 8px)', maxHeight: 'calc(100vh - 8px)', borderRadius: '12px', resize: 'both'
+    minWidth: 'min(320px, calc(100vw - 16px))', minHeight: 'min(320px, calc(100dvh - 16px))',
+    maxWidth: 'calc(100vw - 8px)', maxHeight: 'calc(100dvh - 8px)', borderRadius: '12px', resize: 'both'
   };
 
   const startDrag = (event) => {
-    if (isMaximized || event.button !== 0 || event.target?.closest?.('button')) return;
+    if (hosted || isMaximized || event.button !== 0 || event.target?.closest?.('button, select, input')) return;
     const rect = frameRef.current?.getBoundingClientRect?.();
     if (!rect) return;
     dragRef.current = { offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
@@ -4036,12 +4521,55 @@ function WeatherCenterModal({
     event.preventDefault();
   };
 
+
+  const scale = Math.min(1.5, Math.max(1, Number(presentationScale) || 1));
+  const overviewAvailable = panelSize.width >= 1080 * scale && bodySize.height >= 620 * scale;
+  const activeWeatherTab = weatherTab === 'overview' && !overviewAvailable ? 'now' : weatherTab;
+  const metricsColumns = bodySize.width >= 840 * scale ? 5 : bodySize.width >= 430 * scale ? 2 : 1;
+  const metricRows = Math.max(1, Math.floor((bodySize.height - 140 * scale) / (54 * scale)));
+  const metricPageSize = activeWeatherTab === 'now' && bodySize.width >= 720 * scale ? 11 : Math.min(10, metricsColumns * metricRows);
+  const trendColumns = bodySize.width >= 680 * scale ? 2 : 1;
+  const trendRows = Math.max(1, Math.floor((bodySize.height - 42) / (180 * scale)));
+  const trendPageSize = Math.min(4, trendColumns * trendRows);
+  const hourColumns = Math.max(1, Math.min(8, Math.floor(bodySize.width / (126 * scale))));
+  const hourRows = Math.max(1, Math.floor((bodySize.height - 60) / (150 * scale)));
+  const hourPageSize = Math.max(1, Math.min(8, hourColumns * hourRows));
+  const dayColumns = Math.max(1, Math.min(5, Math.floor(bodySize.width / (240 * scale))));
+  const dayRows = Math.max(1, Math.floor((bodySize.height - 60) / (106 * scale)));
+  const dayPageSize = Math.max(1, Math.min(5, dayColumns * dayRows));
+  const pageIndex = (page, total, count) => Math.max(0, Math.min(page, Math.ceil(total / count) - 1));
+  const pageItems = (items, page, count) => activeWeatherTab === 'overview' ? items : items.slice(pageIndex(page, items.length, count) * count, (pageIndex(page, items.length, count) + 1) * count);
+  const pager = (label, page, setPage, total, count) => {
+    if (activeWeatherTab === 'overview' || total <= count) return null;
+    const currentPage = pageIndex(page, total, count), pages = Math.ceil(total / count);
+    return <div className="weather-pager" aria-label={`${label} pages`}>
+      <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} aria-label={`Previous ${label}`}>‹</button>
+      <span>{label} · {currentPage * count + 1}–{Math.min(total, (currentPage + 1) * count)} / {total} · {currentPage + 1}/{pages}</span>
+      <button type="button" disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)} aria-label={`Next ${label}`}>›</button>
+    </div>;
+  };
+  const weatherMetrics = [
+    ['TEMPERATURE', fmt(current.temperature_2m,1), '°C', temperatureColor(current.temperature_2m), 'temperature-highlight'],
+    ['FEELS LIKE', fmt(current.apparent_temperature,1), '°C', temperatureColor(current.apparent_temperature), 'temperature-highlight'],
+    ['DEW POINT', fmt(dewPoint,1), '°C', '#7bdcff'],
+    ['HUMIDITY', fmt(current.relative_humidity_2m,0), '%', 'var(--cyan)'],
+    ['PRESSURE', fmt(current.surface_pressure,0), ' hPa', '#fff'],
+    ['VISIBILITY', fmt(visibilityKm,1), ' km', finite(visibilityKm) && Number(visibilityKm) < 5 ? 'var(--gold)' : '#fff'],
+    ['WIND', `${windCardinal(current.wind_direction_10m)} ${fmt(current.wind_speed_10m,0)}`, ' km/h', 'var(--cyan)'],
+    ['WIND GUST', fmt(current.wind_gusts_10m,0), ' km/h', finite(current.wind_gusts_10m) && Number(current.wind_gusts_10m) >= 40 ? '#ff8a00' : '#fff'],
+    ['RAIN NOW', fmt(precipNow,1), ' mm', precipNow > 0 ? '#ff9a00' : '#fff', 'rain-highlight'],
+    ['RAIN PROB.', fmt(popNow,0), '%', finite(popNow) && Number(popNow) >= 60 ? 'var(--gold)' : '#fff', 'rain-highlight'],
+    ['THUNDERSTORM', thunderstormNow === null ? 'N/A' : thunderstormNow ? 'FORECAST' : 'NOT FORECAST', '', thunderstormNow === null ? '#7d8b98' : thunderstormNow ? 'var(--red)' : 'var(--green)', thunderstormNow ? 'alert-highlight' : '']
+  ];
+
   const metric = (label, value, unit = '', accent = '#fff', extraClass = '') => (
-    <div className={`weather-center-metric ${extraClass}`.trim()}>
+    <div key={label} className={`weather-center-metric ${extraClass}`.trim()}>
+      {metricGlyph(label)}
       <span>{label}</span>
       <strong style={{ color: accent }}>{value}{unit}</strong>
     </div>
   );
+  const visibleWeatherMetrics = activeWeatherTab === 'overview' ? weatherMetrics.slice(0, 6) : weatherMetrics;
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex, pointerEvents: 'none' }}>
@@ -4192,31 +4720,265 @@ function WeatherCenterModal({
           .weather-day { padding: 8px; gap: 6px 8px; }
           .weather-section-label { margin-bottom: 5px; }
         }
+        /* A bounded dashboard on large hosts; explicit views on compact hosts. */
+        .weather-center-frame { container-name: weather; }
+        .weather-center-header { height: auto; min-height: 62px; flex: 0 0 auto; padding: 9px 12px; flex-wrap: wrap; gap: 7px 12px; }
+        .weather-center-header > div:first-child { flex: 1 1 200px; }
+        .weather-center-title { font-size: calc(clamp(16px, 1.8cqw, 24px) * var(--sat-text-scale,1)); white-space: normal; line-height: 1.2; }
+        .weather-center-sub { display: block; font-size: calc(11px * var(--sat-text-scale,1)); line-height: 1.25; white-space: normal; overflow: visible; text-overflow: clip; margin-top: 4px; }
+        .weather-window-controls { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+        .weather-center-btn { width: 34px; height: 34px; flex-shrink: 0; }
+        .weather-view-tabs { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding: 5px 8px; border-bottom: 1px solid #23404b; background: #03111b; }
+        .weather-view-tabs button, .weather-pager button { border: 1px solid #356174; border-radius: 4px; background: #0a2432; color: #c7f7ff; padding: 5px 9px; cursor: pointer; font: 800 calc(12px * var(--sat-text-scale,1))/1.1 Rajdhani,Arial,sans-serif; min-height: 30px; }
+        .weather-view-tabs button.active { border-color: var(--cyan); background: #104050; color: #fff; }
+        .weather-pager { flex: 0 0 auto; min-height: 32px; display: flex; justify-content: center; align-items: center; gap: 9px; padding-top: 5px; font: 700 calc(12px * var(--sat-text-scale,1)) Rajdhani,Arial,sans-serif; color: #c4e6ef; }
+        .weather-pager button { min-width: 32px; font-size: 20px; padding: 2px 7px; }
+        .weather-pager button:disabled { opacity: .35; cursor: default; }
+        .weather-center-body { flex: 1 1 0; min-height: 0; min-width: 0; overflow: hidden; padding: 8px; display: grid; grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(0,1fr); gap: 0; }
+        .weather-center-top, .weather-center-current { display: contents; }
+        .weather-map-panel, .weather-current-hero, .weather-metrics-section, .weather-trends-section, .weather-hours-section, .weather-days-section, .weather-current-feedback { display: none; }
+        .weather-center-frame[data-view="map"] .weather-map-panel { display: block; grid-area: 1 / 1; min-height: 0; }
+        .weather-center-frame[data-view="now"] .weather-center-body { grid-template-rows: auto minmax(0,1fr); gap: 8px; }
+        .weather-center-frame[data-view="now"] .weather-current-hero { display: flex; grid-area: 1 / 1; }
+        .weather-center-frame[data-view="now"] .weather-metrics-section { display: flex; flex-direction: column; grid-area: 2 / 1; min-height: 0; }
+        .weather-center-frame[data-view="now"] .weather-current-feedback { display: block; grid-area: 1 / 1 / -1 / -1; }
+        .weather-center-frame[data-view="trends"] .weather-trends-section,
+        .weather-center-frame[data-view="hours"] .weather-hours-section,
+        .weather-center-frame[data-view="days"] .weather-days-section { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+        .weather-center-frame[data-view="trends"] .weather-current-feedback { display: block; grid-area: 1 / 1 / -1 / -1; }
+        .weather-current-hero { min-height: 0; padding: 8px 10px; gap: 8px; align-items: center; }
+        .weather-current-cloud-kicker { font-size: calc(11px * var(--sat-text-scale,1)); line-height: 1.25; }
+        .weather-current-cloud-value { font-size: calc(clamp(28px,3.3cqw,46px) * var(--sat-text-scale,1)); }
+        .weather-current-cloud-state { font-size: calc(12px * var(--sat-text-scale,1)); white-space: normal; text-overflow: clip; overflow: visible; }
+        .weather-current-cloud-op { font-size: calc(11px * var(--sat-text-scale,1)); white-space: normal; text-overflow: clip; overflow: visible; line-height: 1.2; }
+        .weather-current-side { min-width: 66px; max-width: 112px; }
+        .weather-current-icon { font-size: 32px; }
+        .weather-current-condition { font-size: calc(11px * var(--sat-text-scale,1)); line-height: 1.2; white-space: normal; }
+        .weather-center-metrics { flex: 1 1 0; min-height: 0; grid-template-columns: repeat(var(--weather-metric-cols,2),minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); gap: 6px; }
+        .weather-center-metric { flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; padding: 6px 8px; min-width: 0; min-height: 0; }
+        .weather-center-metric span { flex: 0 0 auto; font-size: calc(12px * var(--sat-text-scale,1)); white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.1; }
+        .weather-center-metric strong, .weather-center-metric.temperature-highlight strong { flex: 0 0 auto; max-width: 100%; font-size: calc(14px * var(--sat-text-scale,1)); line-height: 1.2; text-align: left; white-space: normal; }
+        .weather-ops-grid { flex: 1 1 0; min-height: 0; grid-template-columns: repeat(var(--weather-trend-cols,2),minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); gap: 8px; }
+        .weather-ops-card { display: flex; flex-direction: column; min-height: 0; padding: 8px; }
+        .weather-ops-card[hidden] { display: none!important; }
+        .weather-ops-title { flex: 0 0 auto; font-size: calc(11px * var(--sat-text-scale,1)); line-height: 1.2; white-space: normal; overflow: visible; text-overflow: clip; }
+        .weather-cloud-card-body { height: auto; flex: 1 1 0; min-height: 0; grid-template-rows: auto minmax(0,1fr); gap: 5px; padding-top: 5px; }
+        .weather-cloud-trend, .weather-mini-bars, .weather-history-bars { height: auto; min-height: 0; flex: 1 1 0; }
+        .weather-cloud-trend-legend, .weather-cloud-trend-time, .weather-mini-bar-time, .weather-rain-summary span, .weather-history-summary, .weather-wind-copy span { font-size: calc(11px * var(--sat-text-scale,1)); line-height: 1.15; }
+        .weather-cloud-trend-value, .weather-rain-summary strong, .weather-history-summary strong { font-size: calc(12px * var(--sat-text-scale,1)); line-height: 1.2; }
+        .weather-rain-summary { flex-wrap: wrap; gap: 3px 8px; flex: 0 0 auto; }
+        .weather-history-summary { flex: 0 0 auto; }
+        .weather-wind-body { height: auto; flex: 1 1 0; min-height: 0; grid-template-columns: 72px minmax(0,1fr); gap: 8px; }
+        .weather-compass { width: 66px; height: 66px; }
+        .weather-wind-copy { min-width: 0; }
+        .weather-wind-copy strong { font-size: calc(14px * var(--sat-text-scale,1)); }
+        .weather-strip { flex: 1 1 0; min-height: 0; grid-template-columns: repeat(var(--weather-hour-cols,4),minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); gap: 7px; }
+        .weather-hour { padding: 8px 6px; display: flex; flex-direction: column; justify-content: space-evenly; min-height: 0; }
+        .weather-hour time { font-size: calc(12px * var(--sat-text-scale,1)); }
+        .weather-hour .ico { font-size: 25px; margin: 3px 0; }
+        .weather-hour strong { font-size: calc(18px * var(--sat-text-scale,1)); }
+        .weather-hour small { font-size: calc(12px * var(--sat-text-scale,1)); line-height: 1.3; }
+        .weather-days { flex: 1 1 0; min-height: 0; grid-template-columns: repeat(var(--weather-day-cols,2),minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); gap: 8px; }
+        .weather-day { padding: 8px; gap: 4px 8px; min-height: 0; grid-template-columns: 30px minmax(0,1fr); }
+        .weather-day strong { font-size: calc(12px * var(--sat-text-scale,1)); white-space: normal; line-height: 1.2; }
+        .weather-day small { font-size: calc(12px * var(--sat-text-scale,1)); line-height: 1.25; }
+        .weather-section-label { flex: 0 0 auto; font-size: calc(11px * var(--sat-text-scale,1)); line-height: 1.2; margin-bottom: 7px; }
+        .weather-center-footer { height: auto; min-height: 28px; flex: 0 0 auto; flex-wrap: wrap; gap: 3px 12px; padding: 5px 10px; font-size: calc(10px * var(--sat-text-scale,1)); line-height: 1.2; letter-spacing: .2px; }
+        .weather-center-footer > span:first-child { flex: 1 1 580px; min-width: 0; }
+        .weather-center-footer > span:last-child { flex: 0 1 auto; }
+        .weather-center-frame[data-view="overview"] .weather-center-body { grid-template-columns: repeat(12,minmax(0,1fr)); grid-template-rows: minmax(calc(96px * var(--sat-text-scale,1)),.8fr) minmax(calc(104px * var(--sat-text-scale,1)),1fr) minmax(calc(128px * var(--sat-text-scale,1)),1.2fr) minmax(calc(128px * var(--sat-text-scale,1)),1fr) minmax(calc(104px * var(--sat-text-scale,1)),.8fr); gap: 8px; }
+        .weather-center-frame[data-view="overview"] .weather-map-panel { display: block; grid-column: 1 / 5; grid-row: 1 / 3; }
+        .weather-center-frame[data-view="overview"] .weather-current-hero { display: flex; grid-column: 5 / -1; grid-row: 1; }
+        .weather-center-frame[data-view="overview"] .weather-metrics-section { display: flex; grid-column: 5 / -1; grid-row: 2; }
+        .weather-center-frame[data-view="overview"] .weather-center-metrics { grid-template-columns: repeat(5,minmax(0,1fr)); }
+        .weather-center-frame[data-view="overview"] .weather-center-metric strong { font-size: calc(12px * var(--sat-text-scale,1)); }
+        .weather-center-frame[data-view="overview"] .weather-trends-section { display: flex; grid-column: 1 / -1; grid-row: 3; }
+        .weather-center-frame[data-view="overview"] .weather-ops-grid { grid-template-columns: repeat(4,minmax(0,1fr)); }
+        .weather-center-frame[data-view="overview"] .weather-hours-section { display: flex; flex-direction: column; grid-column: 1 / -1; grid-row: 4; }
+        .weather-center-frame[data-view="overview"] .weather-strip { grid-template-columns: repeat(8,minmax(0,1fr)); }
+        .weather-center-frame[data-view="overview"] .weather-days-section { display: flex; flex-direction: column; grid-column: 1 / -1; grid-row: 5; }
+        .weather-center-frame[data-view="overview"] .weather-days { grid-template-columns: repeat(5,minmax(0,1fr)); }
+        .weather-center-frame[data-view="overview"] .weather-hour { padding: 5px; }
+        .weather-center-frame[data-view="overview"] .weather-hour .ico { font-size: 20px; margin: 1px 0; }
+        .weather-center-frame[data-view="overview"] .weather-hour strong { font-size: calc(16px * var(--sat-text-scale,1)); }
+        .weather-center-frame[data-view="overview"] .weather-hour small, .weather-center-frame[data-view="overview"] .weather-day small { font-size: calc(11px * var(--sat-text-scale,1)); }
+        .weather-center-frame[data-view="overview"] .weather-day { padding: 5px; gap: 3px 6px; }
+        .weather-center-frame[data-view="overview"] .weather-day .ico { font-size: 22px; }
+        .weather-center-frame[data-view="overview"] .weather-current-feedback { display: block; grid-column: 5 / -1; grid-row: 1 / 3; }
+        .weather-map-label { top: 8px; left: 8px; right: 8px; width: fit-content; max-width: calc(100% - 16px); box-sizing: border-box; font-size: calc(11px * var(--sat-text-scale,1)); line-height: 1.2; padding: 5px 7px; }
+        .weather-map-actions { top: 44px; right: 8px; }
+        .weather-map-layers { top: 44px; left: 8px; right: 48px; flex-wrap: wrap; justify-content: flex-start; }
+        .weather-map-layers button { font-size: calc(10px * var(--sat-text-scale,1)); height: 30px; padding: 0 6px; }
+        .weather-map-coord { left: 8px; right: 8px; bottom: 4px; font-size: calc(11px * var(--sat-text-scale,1)); line-height: 1.15; padding: 4px 6px; }
+        .weather-map-legend { display: block; right: 8px; bottom: 36px; width: min(225px,55%); padding: 5px 7px; }
+        .weather-map-legend-row { font-size: calc(11px * var(--sat-text-scale,1)); }
+        .weather-map-legend-row strong { font-size: calc(12px * var(--sat-text-scale,1)); }
+        .weather-map-legend small { font-size: calc(10px * var(--sat-text-scale,1)); line-height: 1.15; }
+        .weather-cloud-scale { margin: 3px 0; }
+        .weather-map-error { max-width: calc(100% - 24px); font-size: calc(11px * var(--sat-text-scale,1)); text-align: center; }
+        .weather-center-frame[data-view="overview"] .weather-map-legend { bottom: 31px; width: 155px; padding: 4px; }
+        .weather-center-frame[data-view="overview"] .weather-map-legend small { display: none; }
+        @container weather (max-width: 560px) {
+          .weather-center-header { padding: 7px 9px; gap: 6px; }
+          .weather-center-header > div:first-child { flex-basis: 100%; }
+          .weather-window-controls { width: 100%; justify-content: flex-end; }
+          .weather-center-title { font-size: calc(16px * var(--sat-text-scale,1)); }
+          .weather-center-sub { font-size: calc(10px * var(--sat-text-scale,1)); }
+          .weather-current-side { min-width: 58px; max-width: 85px; }
+          .weather-current-icon { font-size: 27px; }
+        }
+        /* WEATHER CENTER MASTER v1.2 — Ground Station Operational Weather Dashboard */
+        .weather-center-frame { --wx-gap: clamp(7px,.62cqw,12px); --wx-card: rgba(4,18,29,.86); --wx-border: rgba(0,234,255,.18); }
+        .weather-center-header { min-height: 68px; padding: 10px clamp(12px,1.25cqw,22px); }
+        .weather-center-title { font-size: calc(clamp(22px,2.0cqw,31px) * var(--sat-text-scale,1)); }
+        .weather-center-sub { font-size: calc(clamp(11px,.86cqw,14px) * var(--sat-text-scale,1)); letter-spacing:.75px; }
+        .weather-view-tabs { gap: clamp(6px,.55cqw,10px); padding: 8px 10px; }
+        .weather-view-tabs button { min-height: 38px; padding: 7px clamp(10px,1.05cqw,17px); border-radius: 6px; font: 900 calc(clamp(13px,.9cqw,16px) * var(--sat-text-scale,1))/1 Orbitron,Arial,sans-serif; letter-spacing:.45px; display:inline-flex; align-items:center; gap:7px; }
+        .weather-view-tabs button.active { background: linear-gradient(180deg,#125066,#0b3444); box-shadow: 0 0 14px rgba(0,234,255,.18), inset 0 -3px 0 var(--cyan); }
+        .weather-tab-glyph { color: var(--cyan); font-size: 1.08em; }
+        .weather-center-body { padding: var(--wx-gap); }
+        .weather-map-valid { position:absolute; z-index:5; left:12px; bottom:42px; padding:5px 8px; border-radius:5px; background:rgba(0,8,14,.84); border:1px solid rgba(0,234,255,.28); color:#dffbff; font:900 10px Orbitron,sans-serif; letter-spacing:.6px; pointer-events:none; }
+        .weather-map-panel { box-shadow: inset 0 0 25px rgba(0,234,255,.05); }
+        .weather-map-label { font-size: calc(clamp(11px,.82cqw,14px) * var(--sat-text-scale,1)); }
+        .weather-map-layers button { min-height: 34px; font-size: calc(clamp(10px,.72cqw,13px) * var(--sat-text-scale,1)); }
+        .weather-map-coord,.weather-map-legend-row,.weather-map-legend small { font-size: calc(clamp(10px,.72cqw,13px) * var(--sat-text-scale,1)); }
+        .weather-current-hero { background: radial-gradient(circle at 78% 25%,rgba(0,234,255,.08),transparent 34%), linear-gradient(112deg,rgba(0,217,255,.08),rgba(5,18,29,.92)); min-height: 102px; padding: 12px 15px 15px; }
+        .weather-current-cloud-kicker { font-size: calc(clamp(12px,.9cqw,15px) * var(--sat-text-scale,1)); }
+        .weather-current-cloud-value { font-size: calc(clamp(40px,4.5cqw,68px) * var(--sat-text-scale,1)); }
+        .weather-current-cloud-state { font-size: calc(clamp(13px,1.05cqw,17px) * var(--sat-text-scale,1)); }
+        .weather-current-cloud-op { font-size: calc(clamp(10px,.76cqw,13px) * var(--sat-text-scale,1)); }
+        .weather-current-icon .weather-glyph,.weather-current-side .weather-glyph { width:52px; height:52px; color:#fff; filter: drop-shadow(0 0 12px rgba(255,255,255,.16)); }
+        .weather-current-condition { font-size: calc(clamp(11px,.86cqw,14px) * var(--sat-text-scale,1)); }
+        .weather-current-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:6px; }
+        .weather-data-badge,.weather-impact-badge { padding:4px 7px; border-radius:4px; border:1px solid rgba(255,255,255,.16); font:900 calc(10px * var(--sat-text-scale,1)) Orbitron,sans-serif; letter-spacing:.45px; }
+        .weather-data-badge.current { color:var(--green); border-color:rgba(0,255,102,.4); background:rgba(0,255,102,.06); }
+        .weather-data-badge.stale { color:var(--gold); border-color:rgba(255,204,0,.45); background:rgba(255,204,0,.06); }
+        .weather-impact-badge.normal { color:var(--green); border-color:rgba(0,255,102,.35); }
+        .weather-impact-badge.caution { color:var(--gold); border-color:rgba(255,204,0,.45); }
+        .weather-impact-badge.risk { color:#ff5a67; border-color:rgba(255,90,103,.5); }
+        .weather-center-metrics { gap: var(--wx-gap); }
+        .weather-center-metric { position:relative; overflow:hidden; align-items:flex-start; justify-content:center; min-height:78px; padding:10px 11px 10px 48px; border-color:var(--wx-border); background:linear-gradient(145deg,rgba(6,24,37,.92),rgba(3,12,21,.92)); }
+        .weather-metric-glyph { position:absolute; left:11px; top:50%; transform:translateY(-50%); width:27px; height:27px; display:flex; align-items:center; justify-content:center; border:1px solid rgba(0,234,255,.38); border-radius:50%; color:var(--cyan); font:900 9px Orbitron,sans-serif; box-shadow:0 0 12px rgba(0,234,255,.08); }
+        .weather-center-metric span:not(.weather-metric-glyph) { font-size:calc(clamp(11px,.8cqw,14px) * var(--sat-text-scale,1)); letter-spacing:.55px; }
+        .weather-center-metric strong,.weather-center-metric.temperature-highlight strong { font-size:calc(clamp(17px,1.35cqw,23px) * var(--sat-text-scale,1)); }
+        .weather-section-label { font-size:calc(clamp(12px,.88cqw,15px) * var(--sat-text-scale,1)); letter-spacing:.75px; }
+        .weather-glyph { width:1em; height:1em; display:inline-block; vertical-align:middle; }
+        .weather-hour .ico .weather-glyph { width:34px; height:34px; color:#fff; }
+        .weather-day .ico .weather-glyph { width:42px; height:42px; color:#fff; }
+        .weather-trend-card { min-width:0; min-height:0; padding:10px 12px; border:1px solid var(--wx-border); border-radius:8px; background:linear-gradient(145deg,rgba(5,21,33,.94),rgba(2,10,18,.96)); display:flex; flex-direction:column; gap:7px; }
+        .weather-trend-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+        .weather-trend-title { color:#e9fbff; font:900 calc(clamp(11px,.8cqw,14px) * var(--sat-text-scale,1)) Orbitron,sans-serif; letter-spacing:.55px; }
+        .weather-trend-stats { text-align:right; color:#a9c7d3; font:800 calc(clamp(9px,.68cqw,11px) * var(--sat-text-scale,1)) Rajdhani,sans-serif; line-height:1.2; }
+          .weather-number-trends { align-items:stretch; }
+          .weather-number-card { display:flex; flex-direction:column; justify-content:flex-start; min-height:0; padding:clamp(12px,1.1cqw,18px); }
+          .weather-number-main { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:clamp(10px,1.4cqh,18px) 0; border-bottom:1px solid rgba(0,234,255,.16); padding-bottom:clamp(9px,1.2cqh,15px); }
+          .weather-number-main strong { color:#f4fbff; font:900 calc(clamp(28px,3.0cqw,52px) * var(--sat-text-scale,1))/1 Orbitron,sans-serif; font-variant-numeric:tabular-nums; }
+          .weather-number-main span { color:#8fb1bd; font:800 calc(clamp(11px,1.0cqw,15px) * var(--sat-text-scale,1))/1.15 Rajdhani,sans-serif; letter-spacing:.7px; text-align:right; }
+          .weather-number-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; flex:1; }
+          .weather-number-grid > span, .weather-summary-grid > span { min-width:0; border:1px solid rgba(0,234,255,.16); border-radius:7px; background:linear-gradient(145deg,rgba(3,17,27,.86),rgba(1,12,20,.72)); padding:clamp(9px,1cqw,14px); display:flex; flex-direction:column; justify-content:center; gap:5px; }
+          .weather-number-grid small, .weather-summary-grid small { color:#7f9da8; font:800 calc(clamp(10px,.9cqw,13px) * var(--sat-text-scale,1))/1.1 Rajdhani,sans-serif; letter-spacing:.6px; }
+          .weather-number-grid b, .weather-summary-grid strong { color:#ecfaff; font:900 calc(clamp(15px,1.45cqw,23px) * var(--sat-text-scale,1))/1.05 Orbitron,sans-serif; font-variant-numeric:tabular-nums; }
+          .weather-summary-panel { height:auto; min-height:0; }
+          .weather-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; padding:8px 10px 10px; }
+          .weather-summary-grid-5 { grid-template-columns:repeat(5,minmax(0,1fr)); }
+          .weather-summary-grid .normal { border-color:rgba(0,255,102,.45); } .weather-summary-grid .normal strong { color:var(--green); }
+          .weather-summary-grid .caution { border-color:rgba(255,204,0,.45); } .weather-summary-grid .caution strong { color:var(--gold); }
+          .weather-summary-grid .risk { border-color:rgba(255,51,51,.45); } .weather-summary-grid .risk strong { color:var(--red); }
+          @container (max-width:900px) { .weather-summary-grid, .weather-summary-grid-5 { grid-template-columns:repeat(2,minmax(0,1fr)); } .weather-number-grid { gap:6px; } }
+        .weather-24-timeline,.weather-5day-summary { flex:0 0 28%; min-height:110px; display:grid; grid-template-columns:minmax(0,1fr); gap:5px; padding:8px 10px; border:1px solid var(--wx-border); border-radius:8px; background:rgba(3,14,24,.82); }
+        .weather-timeline-title { display:flex; justify-content:space-between; align-items:center; gap:8px; color:#dffaff; font:900 calc(11px * var(--sat-text-scale,1)) Orbitron,sans-serif; }
+        .weather-strip { flex:1 1 0; min-height:0; }
+        .weather-hour { min-height:0; padding:9px 7px; background:linear-gradient(180deg,rgba(4,24,38,.92),rgba(2,12,21,.92)); }
+        .weather-hour time { font-size:calc(clamp(12px,.82cqw,15px) * var(--sat-text-scale,1)); }
+        .weather-hour strong { font-size:calc(clamp(20px,1.45cqw,27px) * var(--sat-text-scale,1)); }
+        .weather-hour small { font-size:calc(clamp(10px,.76cqw,13px) * var(--sat-text-scale,1)); }
+        .weather-days { flex:1 1 0; min-height:0; }
+        .weather-day { position:relative; display:flex; flex-direction:column; justify-content:space-between; align-items:flex-start; gap:8px; padding:12px; border-left-width:3px; background:linear-gradient(155deg,rgba(4,24,30,.92),rgba(2,12,20,.95)); }
+        .weather-day-top { width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .weather-day strong { font-size:calc(clamp(13px,.9cqw,16px) * var(--sat-text-scale,1)); }
+        .weather-day-temp { font:900 calc(clamp(25px,2.0cqw,34px) * var(--sat-text-scale,1)) Orbitron,sans-serif; color:#fff; }
+        .weather-day-condition { color:#cfe9f2; font:800 calc(clamp(11px,.76cqw,13px) * var(--sat-text-scale,1)) Rajdhani,sans-serif; }
+        .weather-day-details { color:#a9bec8; font:800 calc(clamp(10px,.7cqw,12px) * var(--sat-text-scale,1)) Rajdhani,sans-serif; line-height:1.35; }
+        .weather-day-impact { align-self:flex-start; }
+        .weather-center-footer { font-size:calc(clamp(9px,.62cqw,11px) * var(--sat-text-scale,1)); }
+        .weather-center-frame[data-view="overview"] .weather-center-body { grid-template-columns:repeat(12,minmax(0,1fr)); grid-template-rows:minmax(112px,.55fr) minmax(190px,1.2fr) minmax(170px,.95fr) minmax(150px,.8fr); gap:var(--wx-gap); }
+        .weather-center-frame[data-view="overview"] .weather-map-panel { grid-column:1 / 7; grid-row:1 / 3; }
+        .weather-center-frame[data-view="overview"] .weather-current-hero { grid-column:7 / -1; grid-row:1; }
+        .weather-center-frame[data-view="overview"] .weather-metrics-section { grid-column:7 / -1; grid-row:2; }
+        .weather-center-frame[data-view="overview"] .weather-center-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
+        .weather-center-frame[data-view="overview"] .weather-trends-section { grid-column:1 / -1; grid-row:3; }
+        .weather-center-frame[data-view="overview"] .weather-ops-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+        .weather-center-frame[data-view="overview"] .weather-hours-section { grid-column:1 / -1; grid-row:4; }
+        .weather-center-frame[data-view="overview"] .weather-days-section { display:none; }
+        .weather-center-frame[data-view="now"] .weather-center-body { grid-template-rows:auto minmax(0,1fr); }
+        .weather-center-frame[data-view="now"] .weather-center-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); grid-template-rows:repeat(3,minmax(0,1fr)); }
+        .weather-center-frame[data-view="trends"] .weather-ops-grid { grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(2,minmax(0,1fr)); }
+        .weather-center-frame[data-view="hours"] .weather-hours-section { gap:8px; }
+        .weather-center-frame[data-view="hours"] .weather-strip { flex-basis:62%; }
+        .weather-center-frame[data-view="days"] .weather-days-section { gap:8px; }
+        .weather-center-frame[data-view="days"] .weather-days { grid-template-columns:repeat(5,minmax(0,1fr)); }
+        @container weather (max-width: 980px) {
+          .weather-center-frame[data-view="overview"] .weather-center-body { grid-template-rows:minmax(230px,.95fr) minmax(180px,.8fr) minmax(160px,.7fr); }
+          .weather-center-frame[data-view="overview"] .weather-map-panel { grid-column:1 / 7; grid-row:1; }
+          .weather-center-frame[data-view="overview"] .weather-current-hero { grid-column:7 / -1; grid-row:1; }
+          .weather-center-frame[data-view="overview"] .weather-metrics-section { grid-column:1 / -1; grid-row:2; }
+          .weather-center-frame[data-view="overview"] .weather-trends-section { display:none; }
+          .weather-center-frame[data-view="overview"] .weather-hours-section { grid-row:3; }
+          .weather-center-frame[data-view="now"] .weather-center-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-rows:minmax(84px,1fr); }
+          .weather-center-frame[data-view="days"] .weather-days { grid-template-columns:repeat(3,minmax(0,1fr)); }
+        }
+        @container weather (max-width: 680px) {
+          .weather-view-tabs { justify-content:flex-start; overflow-x:auto; flex-wrap:nowrap; }
+          .weather-view-tabs button { flex:0 0 auto; }
+          .weather-map-valid { bottom:38px; }
+          .weather-center-frame[data-view="overview"] .weather-center-body { grid-template-columns:1fr; grid-template-rows:minmax(220px,.9fr) auto minmax(160px,.7fr); overflow:auto; }
+          .weather-center-frame[data-view="overview"] .weather-map-panel,.weather-center-frame[data-view="overview"] .weather-current-hero,.weather-center-frame[data-view="overview"] .weather-metrics-section,.weather-center-frame[data-view="overview"] .weather-hours-section { grid-column:1; }
+          .weather-center-frame[data-view="overview"] .weather-map-panel { grid-row:1; }
+          .weather-center-frame[data-view="overview"] .weather-current-hero { grid-row:2; }
+          .weather-center-frame[data-view="overview"] .weather-metrics-section { grid-row:3; }
+          .weather-center-frame[data-view="overview"] .weather-hours-section { display:none; }
+          .weather-center-frame[data-view="now"] .weather-center-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+          .weather-center-frame[data-view="trends"] .weather-ops-grid { grid-template-columns:1fr; grid-template-rows:repeat(4,minmax(180px,1fr)); overflow:auto; }
+          .weather-center-frame[data-view="days"] .weather-days { grid-template-columns:1fr 1fr; }
+          .weather-24-timeline,.weather-5day-summary { min-height:95px; }
+        }
+
+        @media (pointer: coarse) {
+          .weather-center-btn, .weather-window-controls button, .weather-view-tabs button, .weather-pager button, .weather-map-actions button { min-height: 40px; min-width: 40px; touch-action: manipulation; }
+          .weather-map-layers button { min-height: 36px; touch-action: manipulation; }
+        }
       `}</style>
-      <div ref={frameRef} className="weather-center-frame" style={frameStyle} onPointerDownCapture={onFocus}>
-        <div className="weather-center-header" onPointerDown={startDrag} style={{ cursor: isMaximized ? 'default' : (isDragging ? 'grabbing' : 'grab') }}>
+      <div ref={frameRef} className="weather-center-frame" data-view={activeWeatherTab} data-hosted={hosted} style={{ ...frameStyle, '--sat-text-scale': scale, '--weather-metric-cols': metricsColumns, '--weather-trend-cols': trendColumns, '--weather-hour-cols': hourColumns, '--weather-day-cols': dayColumns }} onPointerDownCapture={onFocus}>
+        <div className="weather-center-header" onPointerDown={startDrag} style={{ touchAction: 'none', cursor: hosted || isMaximized ? 'default' : (isDragging ? 'grabbing' : 'grab') }}>
           <div style={{ minWidth: 0, pointerEvents: 'none' }}>
             <div className="weather-center-title">WEATHER CENTER</div>
-            <div className="weather-center-sub">{station?.id || 'SRC'} GROUND STATION • LIVE FORECAST • REGIONAL OPERATIONS VIEW</div>
+            <div className="weather-center-sub">GISTDA — {station?.id || 'SRC'} GROUND STATION • LAT {fmt(station?.lat,4)}° • LON {fmt(station?.lng,4)}° • ALT {fmt(station?.alt,0)} m • OBSERVED {observedUtc} UTC • {weatherStatus}</div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="weather-window-controls">
+            {windowControl}
             <button className="weather-center-btn" onClick={() => setRefreshKey((v) => v + 1)} title="Refresh weather" style={{ color: 'var(--green)', borderColor: 'var(--green)' }}>↻</button>
-            <button className="weather-center-btn" onClick={() => setIsMaximized((v) => !v)} title={isMaximized ? 'Restore window' : 'Maximize'}>{isMaximized ? '❐' : '□'}</button>
+            <button className="weather-center-btn" onClick={() => hosted ? toggleSatOwnedFullscreen(hostWindow) : setIsMaximized((v) => !v)} title={hosted ? 'Fullscreen' : isMaximized ? 'Restore window' : 'Maximize'}><SatWindowIcon kind={isMaximized ? 'restore' : 'maximize'} /></button>
             <button className="weather-center-btn" onClick={onClose} title="Close" style={{ color: 'var(--red)', borderColor: 'var(--red)', background: 'rgba(255,51,51,0.06)' }}>×</button>
           </div>
         </div>
 
-        <div className="weather-center-body">
+        {weatherIsStale && <div role="status" style={{ padding: '5px 14px', color: 'var(--gold)', font: '700 12px Rajdhani', background: 'rgba(255,204,0,.08)' }}>{weatherError || 'FORECAST NEEDS REFRESH'} • Showing the last forecast for {station?.id}; updated UTC {formatUtcHour(new Date(weatherRecord.fetchedAt).toISOString())}.</div>}
+        <nav className="weather-view-tabs" aria-label="Weather views">
+          {[["overview", "OVERVIEW"], ["map", "MAP"], ["now", "NOW"], ["trends", "TRENDS"], ["hours", "24H"], ["days", "5 DAY"]].map(([id, label]) =>
+            id === 'overview' && !overviewAvailable ? null : <button key={id} type="button" aria-pressed={activeWeatherTab === id} className={activeWeatherTab === id ? 'active' : ''} onClick={() => setWeatherTab(id)}><span className="weather-tab-glyph">{weatherTabGlyph(id)}</span>{label}</button>
+          )}
+        </nav>
+        <div ref={bodyRef} className="weather-center-body">
           <div className="weather-center-top">
-            <div className="weather-center-panel">
-              <WeatherInteractiveMap station={station} fmt={fmt} cloudCover={current.cloud_cover} precipitationNow={precipNow} />
+            <div className="weather-center-panel weather-map-panel">
+              <WeatherInteractiveMap station={station} fmt={fmt} cloudCover={current.cloud_cover} precipitationNow={precipNow} validTime={observedUtc} active={activeWeatherTab === 'map'} hostWindow={hostWindow} hostRevision={hostRevision} />
             </div>
 
             <div className="weather-center-panel weather-center-current">
               {isLoading && !weatherData ? (
-                <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--cyan)', fontFamily: 'Orbitron', fontWeight: 900 }}>LOADING WEATHER DATA...</div>
+                <div className="weather-current-feedback" style={{ margin: 'auto', textAlign: 'center', color: 'var(--cyan)', fontFamily: 'Orbitron', fontWeight: 900 }}>LOADING WEATHER DATA...</div>
               ) : weatherError && !weatherData ? (
-                <div style={{ margin: 'auto', textAlign: 'center' }}>
+                <div className="weather-current-feedback" style={{ margin: 'auto', textAlign: 'center' }}>
                   <div style={{ color: 'var(--red)', fontFamily: 'Orbitron', fontWeight: 900, marginBottom: '8px' }}>{weatherError}</div>
                   <button className="weather-center-btn" onClick={() => setRefreshKey((v) => v + 1)} style={{ width: 'auto', padding: '0 12px', color: 'var(--gold)', borderColor: 'var(--gold)' }}>RETRY</button>
                 </div>
@@ -4230,119 +4992,1884 @@ function WeatherCenterModal({
                         <span className="weather-current-cloud-state" style={{ color: cloudHeroColor }}>{cloudState}</span>
                       </div>
                       <div className="weather-current-cloud-op">{cloudOperationalLabel}</div>
+                      <div className="weather-current-meta">
+                        <span className={`weather-data-badge ${weatherIsStale ? 'stale' : 'current'}`}>{dataFreshLabel}</span>
+                        <span className={`weather-impact-badge ${currentImpact.level}`}>GROUND STATION • {currentImpact.label} · DERIVED</span>
+                      </div>
                     </div>
                     <div className="weather-current-side">
                       <div className="weather-current-icon">{weatherIcon(current.weather_code)}</div>
                       <div className="weather-current-condition">{weatherLabel(current.weather_code)}</div>
                     </div>
                   </div>
-                  <div className="weather-center-metrics">
-                    {metric('TEMPERATURE', fmt(current.temperature_2m,1), '°C', temperatureColor(current.temperature_2m), 'temperature-highlight')}
-                    {metric('FEELS LIKE', fmt(current.apparent_temperature,1), '°C', temperatureColor(current.apparent_temperature), 'temperature-highlight')}
-                    {metric('HUMIDITY', fmt(current.relative_humidity_2m,0), '%', 'var(--cyan)')}
-                    {metric('PRESSURE', fmt(current.surface_pressure,0), ' hPa', '#fff')}
-                    {metric('VISIBILITY', fmt(visibilityKm,1), ' km', finite(visibilityKm) && Number(visibilityKm) < 5 ? 'var(--gold)' : '#fff')}
-                    {metric('WIND', `${fmt(current.wind_speed_10m,0)} ${windCardinal(current.wind_direction_10m)}`, ' km/h', 'var(--cyan)')}
-                    {metric('WIND GUST', fmt(current.wind_gusts_10m,0), ' km/h', finite(current.wind_gusts_10m) && Number(current.wind_gusts_10m) >= 40 ? '#ff8a00' : '#fff')}
-                    {metric('RAIN NOW', fmt(precipNow,1), ' mm', precipNow > 0 ? '#ff9a00' : '#fff', 'rain-highlight')}
-                    {metric('RAIN PROB.', fmt(popNow,0), '%', finite(popNow) && Number(popNow) >= 60 ? 'var(--gold)' : '#fff', 'rain-highlight')}
-                    {metric('THUNDERSTORM', thunderstormNow ? 'DETECTED' : 'NO SIGNAL', '', thunderstormNow ? 'var(--red)' : 'var(--green)', thunderstormNow ? 'alert-highlight' : '')}
+                  <div className="weather-metrics-section">
+                    <div className="weather-center-metrics">{pageItems(visibleWeatherMetrics, metricPage, metricPageSize).map(args => metric(...args))}</div>
+                    {pager('METRICS', metricPage, setMetricPage, visibleWeatherMetrics.length, metricPageSize)}
                   </div>
 
-                  <div className="weather-ops-grid">
-                    <div className="weather-ops-card cloud-card">
-                      <div className="weather-ops-title">CLOUD TREND • NEXT 6 HOURS</div>
-                      <div className="weather-cloud-card-body">
-                        <div className="weather-cloud-trend-legend"><span>LOW</span><div className="weather-cloud-gradient" /><span>HIGH</span></div>
-                        <div className="weather-cloud-trend">
-                          {cloudNext6.map((item, index) => {
-                            const color = cloudLevelColor(item.cloud);
-                            return (
-                              <div className="weather-cloud-trend-wrap" key={`${item.time}-${index}`}>
-                                <div className="weather-cloud-trend-value">{fmt(item.cloud,0)}%</div>
-                                <div className="weather-cloud-trend-bar" style={{ height: `${Math.max(5, item.cloud)}%`, background: `linear-gradient(180deg,${color},${color}88)`, color }} />
-                                <div className="weather-cloud-trend-time">{formatUtcHour(item.time)}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
+                  <div className="weather-trends-section"><div className="weather-ops-grid weather-number-trends">
+                    <div className="weather-trend-card weather-number-card">
+                      <div className="weather-trend-title">TEMPERATURE / HUMIDITY</div>
+                      <div className="weather-number-main"><strong>{fmt(trendTempStats.now,1)}°C</strong><span>NOW</span></div>
+                      <div className="weather-number-grid"><span><small>6H CHANGE</small><b>{deltaText(trendTempDelta,1,'°C')}</b></span><span><small>HUMIDITY</small><b>{fmt(current.relative_humidity_2m,0)}%</b></span><span><small>TREND</small><b>{directionText(trendTempDelta,.15,'WARMING','COOLING')}</b></span><span><small>RANGE</small><b>{fmt(trendTempStats.min,1)}–{fmt(trendTempStats.max,1)}°C</b></span></div>
                     </div>
-
-                    <div className="weather-ops-card rain-card">
-                      <div className="weather-ops-title">PRECIPITATION • NEXT 6 HOURS</div>
-                      <div className="weather-mini-bars">
-                        {precipNext6.map((item, index) => (
-                          <div className="weather-mini-bar-wrap" key={`${item.time}-${index}`}>
-                            <div className="weather-mini-bar" style={{ height: `${Math.max(5, Math.round((item.rain / precipNext6Max) * 100))}%` }} />
-                            <div className="weather-mini-bar-time">{formatUtcHour(item.time)}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="weather-rain-summary"><strong>{fmt(precipNext6Total,1)} mm</strong><span>MAX PROB {fmt(precipNext6Pop,0)}%</span></div>
+                    <div className="weather-trend-card weather-number-card">
+                      <div className="weather-trend-title">PRESSURE</div>
+                      <div className="weather-number-main"><strong>{fmt(trendPressureStats.now,0)} hPa</strong><span>NOW</span></div>
+                      <div className="weather-number-grid"><span><small>6H CHANGE</small><b>{deltaText(trendPressureDelta,0,' hPa')}</b></span><span><small>TREND</small><b>{directionText(trendPressureDelta,.4)}</b></span><span><small>MIN</small><b>{fmt(trendPressureStats.min,0)} hPa</b></span><span><small>MAX</small><b>{fmt(trendPressureStats.max,0)} hPa</b></span></div>
                     </div>
-
-                    <div className="weather-ops-card wind-card">
-                      <div className="weather-ops-title">WIND DIRECTION & SPEED</div>
-                      <div className="weather-wind-body">
-                        <div className="weather-compass">
-                          <span className="cardinal n">N</span><span className="cardinal s">S</span><span className="cardinal w">W</span><span className="cardinal e">E</span>
-                          <div className="weather-compass-arrow" style={{ transform: `rotate(${windFlowDirection}deg)` }} />
-                        </div>
-                        <div className="weather-wind-copy"><strong>{fmt(current.wind_speed_10m,0)} km/h</strong><span>FROM {windCardinal(windDirection)}<br/>({fmt(windDirection,0)}°) • GUST {fmt(current.wind_gusts_10m,0)} km/h</span></div>
-                      </div>
+                    <div className="weather-trend-card weather-number-card">
+                      <div className="weather-trend-title">WIND / GUST</div>
+                      <div className="weather-number-main"><strong>{fmt(trendWindStats.now,0)} km/h</strong><span>{windCardinal(windDirection)} {fmt(windDirection,0)}°</span></div>
+                      <div className="weather-number-grid"><span><small>6H CHANGE</small><b>{deltaText(trendWindDelta,0,' km/h')}</b></span><span><small>MAX GUST</small><b>{fmt(trendGustStats.max,0)} km/h</b></span><span><small>TREND</small><b>{directionText(trendWindDelta,.8,'INCREASING','DECREASING')}</b></span><span><small>NOW GUST</small><b>{fmt(current.wind_gusts_10m,0)} km/h</b></span></div>
                     </div>
-
-                    <div className="weather-ops-card history-card">
-                      <div className="weather-ops-title">RAINFALL TREND • LAST 6 HOURS</div>
-                      <div className="weather-history-bars">
-                        {rainHistory6.map((item, index) => <div key={`${item.time}-${index}`} className="weather-history-bar" style={{ height: `${Math.max(4, Math.round((item.rain / rainHistoryMax) * 100))}%` }} />)}
-                      </div>
-                      <div className="weather-history-summary"><span>6H TOTAL</span><strong>{fmt(rainHistoryTotal,1)} mm</strong></div>
+                    <div className="weather-trend-card weather-number-card">
+                      <div className="weather-trend-title">PRECIPITATION / CLOUD</div>
+                      <div className="weather-number-main"><strong>{fmt(rainHistoryTotal,1)} mm</strong><span>RAIN · LAST 6H</span></div>
+                      <div className="weather-number-grid"><span><small>CLOUD NOW</small><b>{fmt(trendCloudStats.now,0)}%</b></span><span><small>CLOUD CHANGE</small><b>{deltaText(trendCloudDelta,0,'%')}</b></span><span><small>RAIN PEAK</small><b>{fmt(trendRainStats.max,1)} mm/h</b></span><span><small>CLOUD TREND</small><b>{directionText(trendCloudDelta,2,'INCREASING','DECREASING')}</b></span></div>
                     </div>
-                  </div>
+                  </div></div>
                 </>
               )}
             </div>
           </div>
 
-          <div>
+          <div className="weather-hours-section">
             <div className="weather-section-label">NEXT 24 HOURS • 3-HOUR INTERVAL • UTC</div>
             <div className="weather-strip">
-              {next24.length ? next24.map((item, index) => (
+              {next24.length ? pageItems(next24, hourPage, hourPageSize).map((item, index) => (
                 <div className="weather-hour" key={`${item.time}-${index}`} style={{ borderTopColor: weatherAccent(item.code) }}>
                   <time>{formatUtcHour(item.time)}</time>
                   <div className="ico">{weatherIcon(item.code)}</div>
                   <strong style={{ color: temperatureColor(item.temp) }}>{fmt(item.temp,0)}°C</strong>
-                  <small>CLOUD {fmt(item.cloud,0)}%<br/>RAIN {fmt(item.pop,0)}% • {fmt(item.wind,0)} km/h</small>
+                  <small>{weatherLabel(item.code)}<br/>CLOUD {fmt(item.cloud,0)}% · RAIN {fmt(item.pop,0)}%<br/>{windCardinal(item.windDir)} {fmt(item.wind,0)} km/h</small>
                 </div>
               )) : <div style={{ color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani' }}>Forecast unavailable.</div>}
             </div>
+            <div className="weather-24-timeline weather-summary-panel">
+              <div className="weather-timeline-title"><span>24-HOUR OPERATIONAL SUMMARY</span><span>GROUND STATION FORECAST</span></div>
+              <div className="weather-summary-grid">
+                <span><small>TEMP RANGE</small><strong>{next24.length ? `${fmt(Math.min(...next24.map(d=>Number(d.temp)).filter(Number.isFinite)),0)}–${fmt(Math.max(...next24.map(d=>Number(d.temp)).filter(Number.isFinite)),0)}°C` : 'N/A'}</strong></span>
+                <span><small>MAX RAIN PROB.</small><strong>{next24.length ? `${fmt(Math.max(...next24.map(d=>Number(d.pop)).filter(Number.isFinite)),0)}%` : 'N/A'}</strong></span>
+                <span><small>RAIN TOTAL</small><strong>{next24.length ? `${fmt(next24.map(d=>Number(d.rain)).filter(Number.isFinite).reduce((a,b)=>a+b,0),1)} mm` : 'N/A'}</strong></span>
+                <span><small>MAX WIND</small><strong>{next24.length ? `${fmt(Math.max(...next24.map(d=>Number(d.wind)).filter(Number.isFinite)),0)} km/h` : 'N/A'}</strong></span>
+              </div>
+            </div>
+            {pager('24H', hourPage, setHourPage, next24.length, hourPageSize)}
           </div>
 
-          <div>
-            <div className="weather-section-label">5-DAY FORECAST • STATION POINT FORECAST</div>
+          <div className="weather-days-section">
+            <div className="weather-section-label">5-DAY FORECAST • GROUND STATION OPERATIONAL OUTLOOK</div>
             <div className="weather-days">
-              {dailyCards.length ? dailyCards.map((item, index) => (
-                <div className="weather-day" key={`${item.time}-${index}`} style={{ borderLeftColor: weatherAccent(item.code) }}>
-                  <div className="ico">{weatherIcon(item.code)}</div>
-                  <strong>{formatUtcDate(item.time)}</strong>
-                  <small>{fmt(item.tMin,0)}° / {fmt(item.tMax,0)}°C • RAIN {fmt(item.pop,0)}% ({fmt(item.rain,1)} mm)<br/>WIND {fmt(item.wind,0)} • GUST {fmt(item.gust,0)} km/h</small>
-                </div>
-              )) : <div style={{ color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani' }}>Daily forecast unavailable.</div>}
+              {dailyCards.length ? pageItems(dailyCards, dayPage, dayPageSize).map((item, index) => {
+                const impact = groundStationImpact({ code:item.code, gust:item.gust, rain:item.rain, pop:item.pop });
+                return <div className="weather-day" key={`${item.time}-${index}`} style={{ borderLeftColor: weatherAccent(item.code) }}>
+                  <div className="weather-day-top"><strong>{formatUtcDate(item.time)}</strong><div className="ico">{weatherIcon(item.code)}</div></div>
+                  <div className="weather-day-temp"><span style={{ color: temperatureColor(item.tMax) }}>{fmt(item.tMax,0)}°</span> / <span style={{ color: temperatureColor(item.tMin) }}>{fmt(item.tMin,0)}°C</span></div>
+                  <div className="weather-day-condition">{weatherLabel(item.code)}</div>
+                  <div className="weather-day-details">RAIN {fmt(item.pop,0)}% · {fmt(item.rain,1)} mm<br/>WIND {fmt(item.wind,0)} km/h · GUST {fmt(item.gust,0)} km/h</div>
+                  <span className={`weather-impact-badge weather-day-impact ${impact.level}`}>GROUND STATION • {impact.label} · DERIVED</span>
+                </div>;
+              }) : <div style={{ color: 'rgba(255,255,255,0.5)', fontFamily: 'Rajdhani' }}>Daily forecast unavailable.</div>}
             </div>
+            <div className="weather-5day-summary weather-summary-panel">
+              <div className="weather-timeline-title"><span>5-DAY OPERATIONAL SUMMARY</span><span>GROUND STATION OUTLOOK</span></div>
+              <div className="weather-summary-grid weather-summary-grid-5">
+                {(() => {
+                  const impacts = dailyCards.map(item => groundStationImpact({ code:item.code, gust:item.gust, rain:item.rain, pop:item.pop }));
+                  const count = (level) => impacts.filter(item => item.level === level).length;
+                  const pops = dailyCards.map(d=>Number(d.pop)).filter(Number.isFinite);
+                  const gusts = dailyCards.map(d=>Number(d.gust)).filter(Number.isFinite);
+                  return <>
+                    <span className="normal"><small>NORMAL</small><strong>{count('normal')} DAYS</strong></span>
+                    <span className="caution"><small>CAUTION</small><strong>{count('caution')} DAYS</strong></span>
+                    <span className="risk"><small>WEATHER RISK</small><strong>{count('risk')} DAYS</strong></span>
+                    <span><small>MAX RAIN PROB.</small><strong>{pops.length ? `${fmt(Math.max(...pops),0)}%` : 'N/A'}</strong></span>
+                    <span><small>MAX GUST</small><strong>{gusts.length ? `${fmt(Math.max(...gusts),0)} km/h` : 'N/A'}</strong></span>
+                  </>;
+                })()}
+              </div>
+            </div>
+            {pager('5 DAY', dayPage, setDayPage, dailyCards.length, dayPageSize)}
           </div>
         </div>
 
         <div className="weather-center-footer">
           <span>MODEL FORECAST: OPEN-METEO BEST MATCH • BASE: OPENSTREETMAP • CLOUD: NASA GIBS/VIIRS NOAA-20 • SATELLITE: NASA GIBS/VIIRS NOAA-20 • RAIN: NASA GIBS/GPM IMERG</span>
-          <span>{summaryMode === 'SIM' ? 'CLOUD SUMMARY: SIM-TIME' : 'CLOUD SUMMARY: LIVE WEATHER'}</span>
+          <span>{dataFreshLabel} • CURRENT WEATHER • INDEPENDENT OF SIM CLOCK</span>
         </div>
       </div>
     </div>
   );
 }
 
+
+// Data tools share measured, readable pages; only their visible rows are mounted.
+// The same component and selection state survive a move to another document.
+const SatDataScaleContext = React.createContext(1);
+function useSatDataScale(readingScale = 1) {
+  return readingScale * React.useContext(SatDataScaleContext);
+}
+
+const SAT_DATA_TOOL_CSS = `
+  .sat-data-modal { container-type: inline-size; padding: 0!important; box-sizing: border-box; min-width: 0!important; max-width: 100vw!important; max-height: 100dvh!important; --sat-data-accent: var(--cyan); font-family: Rajdhani,Arial,sans-serif; }
+  .sat-data-modal *, .sat-data-header * { box-sizing: border-box; }
+  .sat-data-header { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--sat-data-accent); background: linear-gradient(180deg,rgba(0,234,255,.10),transparent); user-select: none; }
+  .sat-data-title { margin: 0; min-width: 0; flex: 1; font: 800 calc(16px * var(--sat-text-scale,1))/1.35 Orbitron,Arial,sans-serif; color: var(--sat-data-accent); letter-spacing: .5px; overflow-wrap: normal; }
+  .sat-data-title small { display: block; margin-top: 3px; font: 700 calc(12px * var(--sat-text-scale,1))/1.3 Rajdhani,Arial,sans-serif; color: #dbe8ed; letter-spacing: .3px; }
+  .sat-data-header-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+  .sat-data-header-actions > button { min-width: 34px; min-height: 34px; padding: 4px 7px; margin: 0; }
+  .sat-data-action, .sat-data-modal select, .sat-data-modal input[type="search"], .sat-page-nav button { border: 1px solid var(--sat-data-accent); border-radius: 4px; background: #061823; color: #e7f9ff; font: 700 calc(13px * var(--sat-text-scale,1))/1.2 Rajdhani,Arial,sans-serif; padding: 6px 9px; min-height: 34px; min-width: 0; cursor: pointer; }
+  .sat-data-action[aria-pressed="true"] { background: var(--sat-data-accent); color: #001018; }
+  .sat-data-action:disabled, .sat-page-nav button:disabled { opacity: .35; cursor: default; }
+  .sat-data-action:hover:not(:disabled), .sat-page-nav button:hover:not(:disabled) { background: #174251; }
+  .sat-data-action:focus-visible, .sat-page-nav button:focus-visible, .sat-data-row:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+  .sat-data-body { min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; overflow: hidden; position: relative; z-index: 1; font-size: calc(14px * var(--sat-text-scale,1)); }
+  .sat-data-toolbar { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+  .sat-data-toolbar > select { flex: 1 1 220px; max-width: 100%; width: 0; }
+  .sat-data-toolbar > input[type="search"] { flex: 1 1 150px; width: 0; }
+  .sat-data-toolbar small { font-size: calc(12px * var(--sat-text-scale,1)); color: #bfd0d9; }
+  .sat-page-viewport { min-width: 0; min-height: 0; flex: 1; overflow: hidden; position: relative; scrollbar-width:none; -ms-overflow-style:none; }
+  .sat-page-viewport::-webkit-scrollbar { width:0!important; height:0!important; display:none!important; }
+  .sat-page-nav { flex: 0 0 auto; display: grid; grid-template-columns: max-content minmax(0,1fr) max-content; align-items: center; gap: 6px; border-top: 1px solid rgba(255,255,255,.18); padding-top: 6px; color: #c4d5dd; font: 700 calc(12px * var(--sat-text-scale,1))/1.3 Rajdhani,Arial,sans-serif; }
+  .sat-page-info { min-width: 0; text-align: center; font-variant-numeric: tabular-nums; }
+  .sat-page-info > span { display: block; white-space: nowrap; }
+  .sat-page-nav button { padding: 5px 9px; }
+  .sat-data-empty { margin: auto; padding: 12px; text-align: center; color: var(--sat-data-accent); font-size: calc(15px * var(--sat-text-scale,1)); overflow-wrap: anywhere; }
+  .sat-db-cards { display: grid; align-content: start; gap: 8px; }
+  .sat-db-card { min-width: 0; width: 100%; padding: 8px 10px; border: 1px solid rgba(0,255,102,.4); border-radius: 5px; background: rgba(0,255,102,.05); color: #fff; text-align: left; cursor: pointer; display: flex; flex-direction: column; justify-content: center; gap: 3px; font: 700 calc(14px * var(--sat-text-scale,1))/1.25 Rajdhani,Arial,sans-serif; }
+  .sat-db-card:disabled { opacity: .42; cursor: default; }
+  .sat-db-card[data-selected="main"] { background: linear-gradient(135deg,#b7202a,#601016); border-color: #ffacac; }
+  .sat-db-card[data-selected="secondary"] { background: linear-gradient(135deg,#007b38,#00481f); border-color: var(--green); }
+  .sat-db-card-line { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .sat-db-card-line strong { flex: 1; min-width: 0; overflow-wrap: normal; }
+  .sat-db-card-line img { width: 24px; height: 16px; object-fit: contain; flex: 0 0 auto; }
+  .sat-db-card small { font: 600 calc(11px * var(--sat-text-scale,1))/1.2 Rajdhani,Arial,sans-serif; color: #d5e5dd; overflow-wrap: normal; }
+  .sat-db-card-state { font-size: calc(11px * var(--sat-text-scale,1)); white-space: nowrap; }
+  .sat-data-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+  .sat-data-table th { padding: 6px 4px; color: #cbdae3; font: 700 calc(11px * var(--sat-text-scale,1))/1.25 Orbitron,Arial,sans-serif; border-bottom: 1px solid var(--sat-data-accent); overflow-wrap: normal; text-align: center; }
+  .sat-data-table td { padding: 5px 3px; font-size: calc(14px * var(--sat-text-scale,1)); line-height: 1.2; text-align: center; border-bottom: 1px dashed rgba(255,255,255,.13); }
+  .sat-data-table time { white-space: nowrap; }
+  .sat-data-row { cursor: pointer; }
+  .sat-data-row[data-status="active"] { background: rgba(0,255,102,.16); box-shadow: inset 3px 0 var(--green); }
+  .sat-data-row[data-status="past"] { color: #a0aab3; }
+  .sat-data-row:hover { background: rgba(255,255,255,.08); }
+  .sat-data-summary { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; border: 1px solid rgba(0,234,255,.32); border-radius: 4px; font-size: calc(13px * var(--sat-text-scale,1)); color: #dae9ef; }
+  .sat-data-summary strong { color: var(--sat-data-accent); }
+  .sat-data-summary button { margin-left: auto; }
+  .sat-pass-card { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: 6px 9px; border: 1px solid rgba(255,204,0,.22); border-radius: 5px; background: rgba(255,204,0,.035); color: #fff; text-align: left; width: 100%; font-family: Rajdhani,Arial,sans-serif; }
+  .sat-pass-card-head { display: flex; justify-content: space-between; align-items: center; gap: 5px; margin-bottom: 5px; font-size: calc(13px * var(--sat-text-scale,1)); }
+  .sat-pass-card-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 3px 8px; }
+  .sat-pass-card-grid div { min-width: 0; display: flex; flex-direction: column; font-size: calc(14px * var(--sat-text-scale,1)); }
+  .sat-pass-card-grid small { color: #a5b6c1; font-size: calc(10px * var(--sat-text-scale,1)); line-height: 1.15; }
+  .sat-pass-card-grid strong { line-height: 1.3; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sat-pass-table th { font-size:calc(10px * var(--sat-text-scale,1)); padding:5px 3px; white-space:nowrap; }
+  .sat-pass-table td { font-size:calc(12px * var(--sat-text-scale,1)); padding:5px 2px; white-space:nowrap; }
+  @container (max-width: 900px) { .sat-pass-table th { font-size:calc(9px * var(--sat-text-scale,1)); letter-spacing:0; } .sat-pass-table td { font-size:calc(11px * var(--sat-text-scale,1)); } }
+  .sat-gs-stations { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; }
+  .sat-gs-details { display: grid; grid-template-columns: minmax(0,1fr); min-height: 0; gap: 0 18px; flex: 1; align-content: center; }
+  .sat-gs-detail { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.2fr); gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px dashed rgba(255,102,0,.28); }
+  .sat-gs-detail dt { color: #c2bdba; font-size: calc(12px * var(--sat-text-scale,1)); }
+  .sat-gs-detail dd { margin: 0; text-align: right; color: #fff; font-size: calc(15px * var(--sat-text-scale,1)); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .sat-angles-summary { display: grid; flex: 0 0 auto; grid-template-columns: 1.25fr .8fr repeat(3,1fr); gap: 6px; }
+  .sat-angles-summary > div { min-width: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0,234,255,.07); border: 1px solid rgba(0,234,255,.28); border-radius: 4px; padding: 5px 3px; }
+  .sat-angles-summary small { color: #adc3ce; font-size: calc(10px * var(--sat-text-scale,1)); }
+  .sat-angles-summary strong { font: 800 calc(14px * var(--sat-text-scale,1))/1.4 Rajdhani,Arial,sans-serif; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .sat-angle-table { background: #f8fafc; color: #0f172a; }
+  .sat-angle-table th { background: #0b1121; }
+  .sat-angle-table td { font-family: monospace; font-size: calc(13px * var(--sat-text-scale,1)); border-bottom: 1px solid #dbe3e9; }
+  .sat-angle-table tr:nth-child(even) td { background: #edf3f8; }
+  .sat-angle-table .sat-pointing-value { white-space: nowrap; }
+  .sat-angle-table .sat-pointing-time { white-space: nowrap; }
+  .sat-mission-layout { display: flex; flex: 1; min-width: 0; min-height: 0; gap: 10px; }
+  .sat-mission-list-pane { flex: 0 0 42%; min-width: 0; min-height: 0; max-width: calc(420px * var(--sat-data-growth,1)); display: flex; }
+  .sat-mission-map-pane { min-width: 0; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .sat-mission-map-canvas { container-type: size; }
+  .sat-mission-map-image { width: min(100cqw,200cqh)!important; height: min(50cqw,100cqh)!important; max-width: none!important; max-height: none!important; flex: 0 0 auto; }
+  .sat-mission-map-tools { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .sat-mission-map-tools span { color: #d8e9ef; font-size: calc(12px * var(--sat-text-scale,1)); margin-right: auto; }
+  .sat-mission-upload { display: inline-flex; align-items: center; justify-content: center; gap: 4px; border: 1px dashed var(--cyan); border-radius: 4px; background: rgba(0,234,255,.08); color: var(--cyan); padding: 6px 9px; font-size: calc(12px * var(--sat-text-scale,1)); min-height: 34px; cursor: pointer; }
+  .sat-mission-layout[data-compact="true"] .sat-mission-list-pane { flex: 1; max-width: none; }
+  .sat-mission-layout [data-hidden="true"] { display: none; }
+  .sat-mission-list { min-height: 0; min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .sat-mission-list .sat-data-table th { font-family: Rajdhani,Arial,sans-serif; font-size: calc(12px * var(--sat-text-scale,1)); }
+  @container (min-width: 780px) { .sat-gs-details { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+  @container (max-width: 620px) { .sat-angles-summary { grid-template-columns: repeat(3,minmax(0,1fr)); } .sat-angles-summary > div:first-child { grid-column: span 2; } }
+  @container (max-width: 460px) { .sat-data-header { gap: 6px; padding: 8px; } .sat-data-title { font-size: calc(13px * var(--sat-text-scale,1)); } .sat-data-header-actions { gap: 4px; } .sat-data-header-actions > button { min-width: 30px; padding: 3px 5px; } .sat-data-body { padding: 8px; } .sat-gs-detail { grid-template-columns: 1fr 1.2fr; } .sat-page-nav { grid-template-columns: 1fr 1fr; } .sat-page-info { grid-column: 1 / -1; grid-row: 1; } .sat-page-nav button { justify-self: start; } .sat-page-nav button:last-child { justify-self: end; } }
+  @media (pointer: coarse) { .sat-data-modal button, .sat-data-modal select, .sat-data-modal input[type="search"], .sat-mission-upload { min-height: 40px; } .sat-data-modal input[type="range"] { min-height: 36px; } }
+`;
+
+function useSatDataMetrics(ref, hostRevision, scale = 1) {
+  const [bounds, setBounds] = useState({ width: 700, height: 300, touch: false });
+  React.useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const owner = node.ownerDocument.defaultView || window;
+    let active = true;
+    const measure = () => {
+      if (!active) return;
+      const rect = node.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const width = Math.floor(rect.width), height = Math.floor(rect.height);
+      const touch = !!owner.matchMedia?.('(pointer: coarse)').matches;
+      setBounds(previous => previous.width === width && previous.height === height && previous.touch === touch ? previous : { width, height, touch });
+    };
+    measure();
+    const observer = owner.ResizeObserver ? new owner.ResizeObserver(measure) : null;
+    observer?.observe(node);
+    owner.addEventListener('resize', measure);
+    node.ownerDocument.fonts?.ready.then(measure);
+    return () => { active = false; observer?.disconnect(); owner.removeEventListener('resize', measure); };
+  }, [ref, hostRevision, scale]);
+  return bounds;
+}
+
+function useSatDataPage(total, pageSize, resetKey) {
+  const [anchor, setAnchor] = useState(0);
+  const count = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(count - 1, Math.floor(anchor / pageSize));
+  useEffect(() => setAnchor(0), [resetKey]);
+  return { page, count, start: page * pageSize, end: Math.min(total, (page + 1) * pageSize),
+    go: next => setAnchor(Math.max(0, Math.min(count - 1, next)) * pageSize),
+    jump: index => setAnchor(Math.max(0, Math.min(Math.max(0, total - 1), index))) };
+}
+
+function SatDataPager({ paging, total, label = 'items' }) {
+  return <nav className="sat-page-nav" aria-label={`${label} pagination`}>
+    <button type="button" disabled={paging.page === 0} onClick={() => paging.go(paging.page - 1)}>‹ PREVIOUS</button>
+    <span className="sat-page-info"><span>PAGE {paging.page + 1} / {paging.count}</span><span>{total ? paging.start + 1 : 0}–{paging.end} / {total} {label}</span></span>
+    <button type="button" disabled={paging.page >= paging.count - 1} onClick={() => paging.go(paging.page + 1)}>NEXT ›</button>
+  </nav>;
+}
+
+function SatDataHeader({ title, subtitle, windowControl, onMaximize, onClose, onDrag, maximized }) {
+  return <>
+    <style>{SAT_DATA_TOOL_CSS}</style>
+    <header className="sat-data-header" onMouseDown={event => { if (!event.target.closest('button,input,select,label')) onDrag?.(event); }}>
+      <h2 className="sat-data-title">{title}{subtitle && <small>{subtitle}</small>}</h2>
+      <div className="sat-data-header-actions" onMouseDown={event => event.stopPropagation()}>
+        {windowControl}
+        <button type="button" className="sat-data-action" aria-label={`Maximize ${title}`} title="Maximize / Restore" onClick={onMaximize}><SatWindowIcon kind={maximized ? 'restore' : 'maximize'} /></button>
+        <button type="button" className="sat-data-action" aria-label={`Close ${title}`} title="Close Tool" onClick={onClose}>✕</button>
+      </div>
+    </header>
+  </>;
+}
+
+function SatDataWindow({ id, position, maximized, width, height, zIndex, accent = 'var(--cyan)', onFocus, dragging, hostRevision, scale = 1, children }) {
+  const frameRef = useRef(null), bounds = useSatDataMetrics(frameRef, hostRevision, scale);
+  // Grow type only when both panel dimensions provide room. The same factor
+  // reaches the row budgets below, so TV text never outruns its measured page.
+  const growth = Math.max(1, Math.min(2, bounds.width / 1280, bounds.height / 800));
+  return <SatDataScaleContext.Provider value={growth}><div ref={frameRef} className={`modal-box ${id}-modal sat-data-modal`} onMouseDownCapture={onFocus} style={{
+    position: 'fixed', top: maximized ? 0 : position.y, left: maximized ? 0 : position.x,
+    width: maximized ? '100vw' : `min(${width}px,95vw)`, height: maximized ? '100dvh' : `min(${height}px,85dvh)`,
+    minWidth: 'min(320px,95vw)', minHeight: 'min(360px,85dvh)', resize: maximized ? 'none' : 'both', overflow: 'hidden',
+    background: id === 'gs' ? 'linear-gradient(145deg,rgba(20,5,0,.96),rgba(10,2,0,.99))' : id === 'pass' ? 'linear-gradient(145deg,rgba(20,10,0,.96),rgba(10,5,0,.99))' : 'linear-gradient(145deg,rgba(0,10,25,.96),rgba(0,5,10,.99))',
+    backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)', border: maximized ? 'none' : `2px solid ${accent}`,
+    borderRadius: maximized ? 0 : 10, boxShadow: `0 0 28px color-mix(in srgb,${accent} 22%,transparent)`,
+    display: 'flex', flexDirection: 'column', zIndex, '--sat-data-accent': accent, '--sat-data-growth': growth, '--sat-text-scale': scale * growth,
+    transition: dragging ? 'none' : 'border-color .15s ease'
+  }}>{children}</div></SatDataScaleContext.Provider>;
+}
+
+function SatGroundStationData({ station, onStation, mask, antennaMode, linkActive }) {
+  const details = [
+    ['LOCATION', station.name], ['LATITUDE', `${Math.abs(station.lat).toFixed(4)}° ${station.lat >= 0 ? 'N' : 'S'}`],
+    ['LONGITUDE', `${Math.abs(station.lng).toFixed(4)}° ${station.lng >= 0 ? 'E' : 'W'}`], ['ALTITUDE (ASL)', `${station.alt} m`],
+    ['S-BAND (TT&C)', '2.0 – 2.3 GHz'], ['X-BAND (DOWNLINK)', '8.0 – 8.4 GHz'],
+    ['SYSTEM HARDWARE', 'VIASAT / KRATOS'], ['HORIZON MASK', `${Number(mask).toFixed(1)}°`]
+  ];
+  return <div className="sat-data-body">
+    <strong style={{ color: 'var(--cyan)', fontSize: 'calc(13px * var(--sat-text-scale,1))' }}>ACTIVE GROUND STATION NETWORK</strong>
+    <div className="sat-gs-stations">{GS_NETWORK.map(item => <button key={item.id} type="button" className="sat-data-action" aria-pressed={station.id === item.id} onClick={() => onStation(item)}>{item.id}</button>)}</div>
+    <dl className="sat-gs-details" style={{ margin: 0 }}>{details.map(([label, value]) => <div className="sat-gs-detail" key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+    <div className="sat-data-summary" style={{ borderColor: linkActive ? 'var(--green)' : '#ff6600', justifyContent: 'space-between' }}><span>ANTENNA STATUS</span><strong style={{ color: linkActive ? 'var(--green)' : '#ff6600' }}>{antennaMode}</strong></div>
+  </div>;
+}
+
+function SatDatabaseData({ options, satrecs, selectedCatnr, selectedCatnrs, onToggle, onGroupToggle, onClear, hostRevision, scale: readingScale }) {
+  const scale = useSatDataScale(readingScale);
+  const [group, setGroup] = useState('ALL');
+  const [query, setQuery] = useState('');
+  const groups = useMemo(() => Array.from(new Set(options.map(sat => sat.group))), [options]);
+  const filtered = useMemo(() => options.filter(sat => (group === 'ALL' || sat.group === group) && `${sat.displayName} ${sat.catnr} ${sat.group}`.toLowerCase().includes(query.trim().toLowerCase())), [options, group, query]);
+  const viewportRef = useRef(null), bounds = useSatDataMetrics(viewportRef, hostRevision, scale);
+  const columns = Math.max(1, Math.floor((bounds.width + 8) / (260 * scale + 8)));
+  const rowHeight = Math.ceil(88 * scale);
+  const perPage = columns * Math.max(1, Math.floor((bounds.height + 8) / (rowHeight + 8)));
+  const paging = useSatDataPage(filtered.length, perPage, `${group}|${query}`);
+  const groupCatnrs = options.filter(sat => sat.group === group && satrecs[sat.catnr]).map(sat => sat.catnr);
+  const allSelected = groupCatnrs.length > 0 && groupCatnrs.every(cat => selectedCatnrs.includes(cat));
+  return <div className="sat-data-body">
+    <div className="sat-data-toolbar">
+      <select aria-label="Satellite group" value={group} onChange={event => setGroup(event.target.value)}><option value="ALL">ALL GROUPS</option>{groups.map(name => <option key={name} value={name}>{name}</option>)}</select>
+      <input type="search" aria-label="Search satellites" placeholder="Search name / NORAD" value={query} onChange={event => setQuery(event.target.value)} />
+    </div>
+    <div className="sat-data-toolbar"><small>{selectedCatnrs.length} SELECTED · MAIN {options.find(sat => sat.catnr === selectedCatnr)?.displayName || selectedCatnr}</small>
+      {group !== 'ALL' && <button type="button" className="sat-data-action" disabled={!groupCatnrs.length} onClick={() => onGroupToggle(groupCatnrs, allSelected)}>{groupCatnrs.length ? (allSelected ? '− DESELECT GROUP' : '+ SELECT GROUP') : 'NO VALID TLE'}</button>}
+      <button type="button" className="sat-data-action" style={{ marginLeft: 'auto' }} onClick={onClear} title="Remove all secondary satellites">🧹 CLEAR</button>
+    </div>
+    <div className="sat-page-viewport" ref={viewportRef}>
+      {filtered.length ? <div className="sat-db-cards" style={{ gridTemplateColumns: `repeat(${columns},minmax(0,1fr))`, gridAutoRows: `${rowHeight}px` }}>{filtered.slice(paging.start, paging.end).map(sat => {
+        const hasTle = Boolean(satrecs[sat.catnr]);
+        return <button type="button" key={sat.catnr} className="sat-db-card" disabled={!hasTle} data-selected={sat.catnr === selectedCatnr ? 'main' : selectedCatnrs.includes(sat.catnr) ? 'secondary' : 'none'} aria-pressed={selectedCatnrs.includes(sat.catnr)} onClick={() => onToggle(sat)} title={hasTle ? sat.displayName : `${sat.displayName}: NO VALID TLE`}>
+          <div className="sat-db-card-line">{sat.flag && <img src={`https://flagcdn.com/w40/${sat.flag.toLowerCase()}.png`} alt="" />}<strong>{sat.displayName}</strong><span className="sat-db-card-state">{!hasTle ? 'NO TLE' : sat.catnr === selectedCatnr ? '🎯 MAIN' : selectedCatnrs.includes(sat.catnr) ? '● ON' : ''}</span></div>
+          <small>NORAD {sat.catnr} · {sat.group}</small>
+        </button>;
+      })}</div> : <div className="sat-data-empty">NO SATELLITES MATCH THE SEARCH</div>}
+    </div>
+    <SatDataPager paging={paging} total={filtered.length} label="satellites" />
+  </div>;
+}
+
+function SatPassData({ passes, simTime, days, onDays, calculating, note, onReplay, hostRevision, scale: readingScale }) {
+  const scale = useSatDataScale(readingScale);
+  const viewportRef = useRef(null), bounds = useSatDataMetrics(viewportRef, hostRevision, scale);
+  const nextIndex = passes.findIndex(pass => pass.losTime >= simTime), next = passes[nextIndex];
+  const status = pass => simTime > pass.losTime ? 'past' : simTime >= pass.aosTime ? 'active' : new Date(simTime).toISOString().slice(0,10) === new Date(pass.aosTime).toISOString().slice(0,10) ? 'today' : 'future';
+  const formatTime = time => new Date(time).toISOString().slice(11,19);
+  const duration = pass => `${Math.floor(pass.durationMs / 60000)}m ${pad2(Math.floor((pass.durationMs % 60000) / 1000))}s`;
+  const values = pass => [
+    ['AOS', formatTime(pass.aosTime), 'var(--green)'], ['MAX EL TIME', formatTime(pass.peakTime), 'var(--gold)'], ['LOS', formatTime(pass.losTime), 'var(--red)'],
+    ['DURATION', duration(pass), 'var(--cyan)'], ['MAX EL', `${pass.maxEl.toFixed(2)}°`, '#fff'], ['AOS / LOS AZ', `${pass.aosAz.toFixed(1)}° / ${pass.losAz.toFixed(1)}°`, '#d0dae0']
+  ];
+  const scrollToNext = () => {
+    if (nextIndex < 0 || !viewportRef.current) return;
+    const row = viewportRef.current.querySelector(`[data-pass-index="${nextIndex}"]`);
+    row?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  };
+  return <div className="sat-data-body">
+    <div className="sat-data-toolbar">{[1,3,7].map(value => <button type="button" key={value} className="sat-data-action" aria-pressed={days === value} onClick={() => onDays(value)}>±{value} DAYS</button>)}<small>Click a pass to replay in SIM</small></div>
+    {next && <div className="sat-data-summary"><strong>{simTime >= next.aosTime ? 'ACTIVE PASS' : 'NEXT PASS'}</strong><span>{new Date(next.aosTime).toISOString().slice(0,10)} · {formatTime(next.aosTime)} UTC</span><button type="button" className="sat-data-action" onClick={scrollToNext}>GO TO PASS</button></div>}
+    <div className="sat-page-viewport" ref={viewportRef} style={{ overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', scrollbarWidth:'none' }}>
+      {calculating ? <div className="sat-data-empty">CALCULATING ORBITAL TRAJECTORY…</div> : !passes.length ? <div className="sat-data-empty">{note || 'NO PASSES DETECTED IN THIS TIMEFRAME'}</div> :
+        <table className="sat-data-table sat-pass-table">
+          <colgroup><col style={{width:'10%'}}/><col style={{width:'13%'}}/><col style={{width:'10%'}}/><col style={{width:'12%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'25%'}}/></colgroup>
+          <thead style={{ position:'sticky', top:0, zIndex:4, background:'rgba(10,5,0,.98)' }}><tr>{['STATUS','DATE (UTC)','AOS','MAX EL TIME','LOS','DURATION','MAX EL','AOS / LOS AZ'].map(label => <th key={label}>{label}</th>)}</tr></thead>
+          <tbody>{passes.map((pass,index) => <tr key={pass.aosTime} data-pass-index={index} className="sat-data-row" data-status={status(pass)} tabIndex={0} onClick={() => onReplay(pass)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onReplay(pass); } }}>
+            <td style={{ fontWeight:800, color: status(pass)==='active' ? 'var(--green)' : undefined }}>{status(pass).toUpperCase()}</td><td>{new Date(pass.aosTime).toISOString().slice(0,10)}</td>{values(pass).map(([label,value,color]) => <td key={label} style={{ color }}>{value}</td>)}
+          </tr>)}</tbody>
+        </table>}
+    </div>
+  </div>;
+}
+
+function SatPointingData({ targetSatrec, passes, simTime, station, interval, onInterval, orbit, hostRevision, scale: readingScale }) {
+  const scale = useSatDataScale(readingScale);
+  const targetPass = passes.find(pass => pass.losTime > simTime) || passes[passes.length - 1];
+  const rows = useMemo(() => {
+    if (!targetSatrec || !targetPass) return [];
+    const getSunPos = timestamp => {
+      const d = new Date(timestamp), tDays = (d.getTime()/86400000)+2440587.5-2451545.0;
+      const L=(280.460+0.9856474*tDays)%360, g=(357.528+0.9856003*tDays)%360;
+      const lambda=L+1.915*Math.sin(g*Math.PI/180)+0.020*Math.sin(2*g*Math.PI/180), eps=23.439-0.0000004*tDays;
+      const alpha=Math.atan2(Math.cos(eps*Math.PI/180)*Math.sin(lambda*Math.PI/180),Math.cos(lambda*Math.PI/180))*180/Math.PI;
+      const delta=Math.asin(Math.sin(eps*Math.PI/180)*Math.sin(lambda*Math.PI/180))*180/Math.PI;
+      const gmst=(18.697374558+24.06570982441908*tDays)%24, lmst=(gmst*15+station.lng)%360, ha=(lmst-alpha+360)%360;
+      const latRad=station.lat*Math.PI/180, decRad=delta*Math.PI/180, haRad=ha*Math.PI/180;
+      const sunElArg=Math.max(-1,Math.min(1,Math.sin(decRad)*Math.sin(latRad)+Math.cos(decRad)*Math.cos(latRad)*Math.cos(haRad)));
+      const sunElRad=Math.asin(sunElArg), sunEl=sunElRad*180/Math.PI, azDen=Math.cos(sunElRad)*Math.cos(latRad);
+      const azCos=azDen===0?1:Math.max(-1,Math.min(1,(Math.sin(decRad)-Math.sin(sunElRad)*Math.sin(latRad))/azDen));
+      let sunAz=Math.acos(azCos)*180/Math.PI; if(Math.sin(haRad)>0) sunAz=360-sunAz;
+      return {el:sunEl,az:sunAz};
+    };
+    const result=[], stepMs=Math.max(1,Number(interval)||1)*1000;
+    for(let time=targetPass.aosTime;time<=targetPass.losTime;time+=stepMs){const pos=calculateSatData(new Date(time),targetSatrec,station),sun=getSunPos(time);result.push({time:new Date(time),satEl:pos?Math.max(0,pos.elevationDeg):0,satAz:pos?pos.azimuthDeg:0,sunEl:sun.el,sunAz:sun.az});}
+    return result;
+  }, [targetSatrec,targetPass?.aosTime,targetPass?.losTime,station.lat,station.lng,station.alt,interval]);
+  const fmtTime=time=>new Date(time).toISOString().slice(11,19);
+  return <div className="sat-data-body">
+    {targetPass && <div className="sat-angles-summary">{[['DATE',new Date(targetPass.aosTime).toISOString().slice(0,10)],['ORBIT',orbit],['AOS',fmtTime(targetPass.aosTime)],['PCA',fmtTime(targetPass.peakTime)],['LOS',fmtTime(targetPass.losTime)]].map(([label,value])=><div key={label}><small>{label}</small><strong>{value}</strong></div>)}</div>}
+    <div className="sat-data-toolbar"><label htmlFor="sat-angle-interval" style={{color:'var(--cyan)',fontWeight:800}}>INTERVAL</label><input id="sat-angle-interval" type="range" min="1" max="60" value={interval} onChange={event=>onInterval(Number(event.target.value))} className="sci-fi-slider" style={{flex:1,minWidth:'60px','--thumb-color':'var(--cyan)'}}/><strong style={{minWidth:'55px',textAlign:'right'}}>{interval} SEC</strong></div>
+    <div className="sat-page-viewport" style={{border:'1px solid var(--cyan)',borderRadius:'4px',overflowY:'auto',overflowX:'hidden',overscrollBehavior:'contain',WebkitOverflowScrolling:'touch'}}>
+      {!rows.length ? <div className="sat-data-empty">NO PASS SCHEDULE AVAILABLE</div> : <table className="sat-data-table sat-angle-table"><colgroup><col style={{width:'31%'}}/>{[0,1,2,3].map(n=><col key={n} style={{width:'17.25%'}}/>)}</colgroup><thead style={{position:'sticky',top:0,zIndex:4,background:'#0b1121'}}><tr><th rowSpan={2}>TIME (UTC)</th><th colSpan={2}>PREDICTED SATELLITE</th><th colSpan={2}>SUN POSITION</th></tr><tr><th>EL (°)</th><th>AZ (°)</th><th>EL (°)</th><th>AZ (°)</th></tr></thead><tbody>{rows.map(row=><tr key={row.time.getTime()}><td className="sat-pointing-time">{row.time.toISOString().slice(11,23)}</td><td className="sat-pointing-value" style={{color:'#0369a1'}}>{formatPointingAngle(row.satEl)}</td><td className="sat-pointing-value" style={{color:'#0369a1'}}>{formatPointingAngle(row.satAz)}</td><td className="sat-pointing-value" style={{color:'#b45309'}}>{formatPointingAngle(row.sunEl)}</td><td className="sat-pointing-value" style={{color:'#b45309'}}>{formatPointingAngle(row.sunAz)}</td></tr>)}</tbody></table>}
+    </div>
+  </div>;
+}
+
+function SatMissionListData({ plans, selectedId, onSelect, onReplay, hostRevision, scale: readingScale }) {
+  useSatDataScale(readingScale);
+  return <div className="sat-mission-list" style={{minHeight:0}}><div className="sat-page-viewport" style={{overflowY:'auto',overflowX:'hidden',WebkitOverflowScrolling:'touch',overscrollBehavior:'contain'}}>
+    {plans.length ? <table className="sat-data-table"><colgroup><col style={{width:'50%'}}/><col style={{width:'27%'}}/><col style={{width:'23%'}}/></colgroup><thead style={{position:'sticky',top:0,zIndex:3,background:'#07121d'}}><tr><th>DATE / TIME UTC</th><th>DURATION</th><th>PLAY</th></tr></thead><tbody>{plans.map(plan => {
+      const time = new Date(plan.start).toISOString();
+      return <tr key={plan.id} className="sat-data-row" style={{ background: selectedId === plan.id ? 'rgba(0,234,255,.18)' : undefined }} tabIndex={0} onClick={() => onSelect(selectedId === plan.id ? null : plan.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(selectedId === plan.id ? null : plan.id); } }}><td><strong>{time.slice(11,19)}</strong><small style={{display:'block',fontSize:'calc(11px * var(--sat-text-scale,1))',color:'#adc0cc'}}>{time.slice(0,10)}</small></td><td>{plan.duration.toFixed(0)} s</td><td><button type="button" className="sat-data-action" aria-label={`Play mission ${time}`} onClick={event => { event.stopPropagation(); onReplay(plan); }}>▶</button></td></tr>;
+    })}</tbody></table> : <div className="sat-data-empty">NO MISSION PLANS</div>}
+  </div></div>;
+}
+
+function SatMissionWorkspace({ list, children, showList, upload, mapTools, hostRevision, scale: readingScale }) {
+  const scale = useSatDataScale(readingScale);
+  const bodyRef = useRef(null), bounds = useSatDataMetrics(bodyRef, hostRevision, scale);
+  const [tab, setTab] = useState('map');
+  const compact = bounds.width < 730 * scale;
+  return <div className="sat-data-body" ref={bodyRef}>
+    <div className="sat-data-toolbar">{compact && showList && <><button type="button" className="sat-data-action" aria-pressed={tab === 'map'} onClick={() => setTab('map')}>MAP</button><button type="button" className="sat-data-action" aria-pressed={tab === 'list'} onClick={() => setTab('list')}>MISSION LIST</button></>}{upload}</div>
+    <div className="sat-mission-layout" data-compact={compact}>
+      <div className="sat-mission-list-pane" data-hidden={!showList || (compact && tab !== 'list')}>{list}</div>
+      <div className="sat-mission-map-pane" data-hidden={compact && showList && tab !== 'map'}>{mapTools}{children}</div>
+    </div>
+  </div>;
+}
+
+
+// Visual-only layouts share the existing RF state and clock. No new renderer loop.
+const SAT_VISUAL_CSS = `
+  .sat-visual-header { display:grid!important; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:6px!important; padding:7px 10px!important; flex:0 0 auto; box-sizing:border-box; position:relative; z-index:20; }
+  .sat-visual-heading { min-width:0; display:flex!important; flex-direction:column; align-items:flex-start; justify-content:center; gap:3px!important; }
+  .sat-visual-heading strong { color:#fff; font:900 calc(clamp(12px,1.65cqw,26px) * var(--sat-text-scale,1))/1.25 Orbitron,sans-serif; letter-spacing:.35px; overflow-wrap:normal; }
+  .sat-visual-heading .sat-visual-meta { display:flex; flex-wrap:wrap; gap:3px 9px; font:700 calc(clamp(12px,1.05cqw,20px) * var(--sat-text-scale,1))/1.2 Rajdhani,sans-serif; color:#bed4de; min-width:0; }
+  .sat-visual-heading .sat-visual-meta span { overflow-wrap:normal; }
+  .sat-visual-actions { display:flex!important; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:5px!important; min-width:0; }
+  .sat-visual-actions button, .sat-visual-actions .modal-close-btn { box-sizing:border-box; min-width:30px; min-height:30px; width:auto!important; height:auto!important; padding:5px 7px!important; line-height:1.1; font-size:13px!important; border-radius:4px; }
+  .sat-visual-actions .modal-close-btn { color:#c4f6ff; border:1px solid #337689; }
+  .sat-visual-actions .modal-close-btn[aria-label^="Close"] { color:var(--red); border-color:#805050; }
+  .sat-radar-header { align-items:flex-start!important; padding:10px 16px!important; }
+  .sat-radar-title-stack { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0; }
+  .sat-radar-title-badge { display:inline-flex; align-items:center; gap:9px; min-width:0; padding:5px 12px; border:1px solid var(--green); border-radius:7px; background:linear-gradient(135deg,rgba(0,255,102,.12),rgba(0,10,15,.88)); box-shadow:0 0 18px rgba(0,255,102,.28),inset 0 0 10px rgba(0,255,102,.08); }
+  .sat-radar-title-badge img { width:clamp(28px,2.6cqw,42px); height:auto; border:1px solid var(--cyan); border-radius:3px; box-shadow:0 0 9px rgba(0,234,255,.35); flex:0 0 auto; }
+  .sat-radar-title-badge strong { color:#fff; font:900 calc(clamp(18px,2cqw,30px) * var(--sat-text-scale,1))/1 Orbitron,sans-serif; letter-spacing:1px; white-space:nowrap; text-shadow:0 0 12px rgba(255,255,255,.24); }
+  .sat-radar-metrics { display:grid; grid-template-columns:1fr 1fr; align-items:start; gap:12px; padding:2px 18px 8px; z-index:10; flex:0 0 auto; pointer-events:none; }
+  .sat-radar-metric-card { display:inline-flex!important; align-items:baseline!important; justify-content:space-between!important; gap:8px!important; width:clamp(122px,13.5cqw,184px); min-width:0; box-sizing:border-box; padding:7px 12px; border:1px solid currentColor; border-radius:7px; background:linear-gradient(135deg,rgba(5,10,20,.92),rgba(0,5,10,.96)); box-shadow:0 0 16px rgba(0,0,0,.45),inset 0 0 10px rgba(255,255,255,.04); white-space:nowrap; }
+  .sat-radar-metric-card:first-child { justify-self:start; text-align:left; }
+  .sat-radar-metric-card:last-child { justify-self:end; text-align:right; }
+  .sat-radar-metric-label { color:#dbe3e8; font:900 calc(clamp(12px,1.05cqw,17px) * var(--sat-text-scale,1))/1 Rajdhani,sans-serif; letter-spacing:.5px; }
+  .sat-radar-metric-card strong { font:900 calc(clamp(22px,2.45cqw,38px) * var(--sat-text-scale,1))/1 Orbitron,sans-serif; letter-spacing:.3px; font-variant-numeric:tabular-nums; }
+  .sat-radar-audio { color:var(--green); background:#06231a; border:1px solid currentColor; border-radius:4px; padding:5px 8px; min-height:28px; cursor:pointer; font:700 calc(12px * var(--sat-text-scale,1)) Rajdhani,sans-serif; }
+  .sat-radar-plot { position:relative; min-width:0; min-height:0; flex:1 1 0; z-index:5; font-family:Rajdhani,sans-serif; }
+  .sat-radar-legend { position:relative; z-index:10; display:flex; flex-wrap:wrap; justify-content:center; gap:3px 13px; padding:4px 8px 7px; color:#c2d5db; flex:0 0 auto; font:700 calc(clamp(11px,1.05cqw,20px) * var(--sat-text-scale,1))/1.2 Rajdhani,sans-serif; }
+  .sat-radar-legend span { white-space:nowrap; }
+  /* RADAR SKYPLOT LOCK: medium/large hosts use overlays so Browser Full Screen and
+     detached windows preserve the same center/radius and do not lose plot height.
+     Compact Classic popups keep the existing stacked layout. No tracking math changes. */
+  @container (min-width: 650px) and (min-height: 560px) {
+    .sat-radar-metrics { position:absolute; top:72px; left:0; right:0; z-index:25; pointer-events:none; padding:0 24px; }
+    .sat-radar-legend { position:absolute; left:26px; right:auto; bottom:24px; z-index:25; pointer-events:none; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:5px; padding:9px 13px; border:1px solid #51646d; border-radius:6px; background:rgba(2,10,16,.82); box-shadow:0 5px 18px rgba(0,0,0,.55); }
+    .sat-radar-plot { flex:1 1 0; margin:0; min-height:0; }
+  }
+  .analyzer-modal { container-type:size; container-name:sat-analyzer; }
+  .rf-analyzer-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:5px 10px; padding:3px 9px 6px; flex:0 0 auto; color:#b5c8d6; font:700 calc(clamp(11px,1.05cqw,20px) * var(--sat-text-scale,1))/1.15 Rajdhani,sans-serif; }
+  .rf-analyzer-toolbar button { border:1px solid currentColor; border-radius:4px; min-height:27px; padding:4px 8px; font:700 calc(clamp(12px,1.1cqw,22px) * var(--sat-text-scale,1))/1.1 Rajdhani,sans-serif; cursor:pointer; }
+  .rf-analyzer-body { display:grid!important; grid-template-columns:minmax(78px,.7fr) minmax(0,2fr); gap:8px!important; padding:0 8px 8px!important; min-width:0; min-height:0; flex:1 1 0; }
+  .rf-iq-pane { min-width:0; min-height:0; padding:7px!important; display:flex; flex-direction:column; gap:5px; }
+  .rf-iq-heading { flex:0 0 auto; color:#afc3d3; text-align:center; font:700 calc(clamp(11px,1.05cqw,20px) * var(--sat-text-scale,1))/1.25 Rajdhani,sans-serif; }
+  .rf-iq-heading strong { display:block; color:#e6f2fa; }
+  .rf-iq-plot { flex:1 1 0; position:relative; min-width:0; min-height:0; }
+  .rf-iq-mod { flex:0 0 auto; display:flex; flex-wrap:wrap; justify-content:center; gap:3px 9px; color:#d8e6ef; text-align:center; font:700 calc(clamp(11px,1.05cqw,20px) * var(--sat-text-scale,1))/1.2 Rajdhani,sans-serif; }
+  .rf-channel-stack { display:flex; flex-direction:column; gap:7px!important; min-width:0; min-height:0; overflow:visible; }
+  .rf-spectrum-channel { flex:1 1 0!important; min-height:0!important; min-width:0; display:flex; flex-direction:column; gap:3px; padding:5px 7px!important; box-sizing:border-box; }
+  .rf-channel-header { display:flex; flex-wrap:wrap; justify-content:space-between; gap:2px 8px; flex:0 0 auto; min-width:0; margin:0!important; color:#c3d8e5; font:700 calc(clamp(11px,1.05cqw,20px) * var(--sat-text-scale,1))/1.15 Rajdhani,sans-serif!important; }
+  .rf-channel-header strong { font-weight:900; }
+  .rf-channel-header > * { white-space:normal!important; }
+  .rf-span-controls { display:flex; align-items:center; gap:7px; flex:0 0 auto; min-width:0; }
+  .rf-span-controls button { flex:0 0 auto; background:transparent; border:1px solid currentColor; border-radius:3px; padding:3px 5px; min-height:24px; color:inherit; font:700 calc(clamp(10px,1cqw,18px) * var(--sat-text-scale,1))/1 Rajdhani,sans-serif; cursor:pointer; }
+  .rf-span-controls input[type=range] { flex:1; min-width:28px; width:0!important; margin:0!important; height:5px!important; }
+  .rf-span-controls output { flex:0 0 auto; font:700 calc(clamp(11px,1.05cqw,20px) * var(--sat-text-scale,1))/1 Rajdhani,sans-serif; white-space:nowrap; }
+  .rf-spectrum-plot { flex:1 1 0; position:relative; width:100%; min-height:20px!important; min-width:0; }
+  .rf-spectrum-plot > canvas, .rf-iq-plot > canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .rf-spectrum-readout { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:2px 7px; flex:0 0 auto; min-width:0; color:#acc1d1; font:700 calc(clamp(10.5px,1cqw,18px) * var(--sat-text-scale,1))/1.15 Rajdhani,sans-serif; font-variant-numeric:tabular-nums; }
+  .rf-spectrum-readout span { white-space:nowrap; }
+  .rf-spectrum-readout b { color:#e8f5fa; }
+  .rf-analyzer-body.rf-spectrum-only { display:flex!important; padding:0 8px 8px!important; min-width:0; min-height:0; flex:1 1 0; }
+  .rf-analyzer-body.rf-spectrum-only .rf-channel-stack { flex:1 1 0; width:100%; }
+  .rf-instrument-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:3px 8px; padding:3px 2px 1px; color:#aebdca; font:700 calc(clamp(9.5px,.82cqw,15px) * var(--sat-text-scale,1))/1.15 Rajdhani,sans-serif; font-variant-numeric:tabular-nums; }
+  .rf-instrument-grid span { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rf-instrument-grid b { color:#f0f7fb; font-weight:900; }
+  .rf-analyzer-toolbar .rf-iq-open-btn { margin-left:auto; color:#aef7ff; border-color:#00a9c7; background:linear-gradient(180deg,#06202b,#03131b); box-shadow:inset 0 0 10px rgba(0,234,255,.08); }
+  .rf-analyzer-toolbar .rf-sim-badge { color:#9fb2c0; margin-left:2px; white-space:nowrap; }
+
+  /* SIGNAL ANALYZER INSTRUMENT UI — presentation only.
+     Keep the RF/DSP model untouched; this layer makes the popup read like a
+     professional bench/field spectrum analyzer without copying a vendor chassis. */
+  .analyzer-modal {
+    background:linear-gradient(180deg,#080b0f 0%,#05070a 100%)!important;
+    border-color:#43515b!important; border-radius:4px!important;
+    box-shadow:0 12px 42px rgba(0,0,0,.82),inset 0 0 0 1px rgba(255,255,255,.035)!important;
+  }
+  .analyzer-modal .sat-visual-header {
+    min-height:52px; padding:7px 12px!important; gap:10px!important;
+    background:linear-gradient(180deg,#20252a 0%,#12161a 100%);
+    border-bottom:1px solid #46515a; box-shadow:inset 0 -1px 0 #050607;
+  }
+  .analyzer-modal .sat-visual-heading { gap:1px!important; }
+  .analyzer-modal .sat-visual-heading strong {
+    font-family:Rajdhani,Arial,sans-serif!important; font-weight:900!important;
+    letter-spacing:.8px!important; color:#f4f7f9!important; text-shadow:none!important;
+  }
+  .analyzer-modal .sat-visual-heading .sat-visual-meta {
+    font-family:Rajdhani,Arial,sans-serif!important; color:#d0d8dd!important; gap:2px 10px!important;
+  }
+  .analyzer-modal .sat-visual-actions button,
+  .analyzer-modal .sat-visual-actions .modal-close-btn {
+    background:#11171b!important; border-color:#586873!important; border-radius:3px!important;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.025);
+  }
+  .analyzer-modal .rf-analyzer-toolbar {
+    min-height:39px; padding:5px 11px!important; gap:6px 10px!important;
+    background:linear-gradient(180deg,#11161a,#0b0e11); border-bottom:1px solid #39444c;
+  }
+  .analyzer-modal .rf-analyzer-toolbar button {
+    min-height:28px; border-radius:3px; background:#0a0d10!important;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.025); letter-spacing:.2px;
+  }
+  .analyzer-modal .rf-analyzer-toolbar button[aria-pressed="true"] {
+    box-shadow:0 0 9px color-mix(in srgb,currentColor,transparent 68%),inset 0 0 0 1px currentColor;
+  }
+  .analyzer-modal .rf-analyzer-toolbar .rf-iq-open-btn {
+    margin-left:auto; color:#c9f8ff!important; border-color:#528292!important;
+    background:linear-gradient(180deg,#15242a,#0b1418)!important; box-shadow:none;
+  }
+  .analyzer-modal .rf-analyzer-body.rf-spectrum-only { padding:7px 9px 9px!important; background:#05070a; }
+  .analyzer-modal .rf-channel-stack { gap:8px!important; }
+  .analyzer-modal .rf-spectrum-channel {
+    padding:0!important; gap:0!important; overflow:hidden;
+    background:#080b0f!important; border:1px solid #46545f!important; border-radius:3px!important;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.025);
+  }
+  .analyzer-modal .rf-channel-header {
+    min-height:29px; align-items:center; padding:4px 8px!important; margin:0!important;
+    background:linear-gradient(180deg,#181d22,#101419); border-bottom:1px solid #3d4850;
+  }
+  .analyzer-modal .rf-channel-header strong { letter-spacing:.25px; }
+  .analyzer-modal .rf-span-controls {
+    min-height:31px; padding:3px 8px; gap:8px; background:#0d1115; border-bottom:1px solid #2b343b;
+  }
+  .analyzer-modal .rf-span-controls button {
+    min-height:24px; border-radius:2px; background:#090b0e!important; font-weight:900;
+  }
+  .analyzer-modal .rf-span-controls input[type=range] { height:4px!important; }
+  .analyzer-modal .rf-span-controls output { min-width:78px; text-align:right; font-weight:900; }
+  .analyzer-modal .rf-instrument-grid {
+    grid-template-columns:repeat(8,minmax(0,1fr)); gap:2px 8px; padding:5px 8px;
+    background:#11161a; border-bottom:1px solid #303941; color:#b7c2c9;
+  }
+  .analyzer-modal .rf-instrument-grid span { text-align:left; }
+  .analyzer-modal .rf-instrument-grid b { color:#edf2f5; }
+  .analyzer-modal .rf-spectrum-plot { background:#07090c; min-height:70px!important; }
+  .analyzer-modal .rf-spectrum-readout {
+    min-height:27px; padding:4px 8px; background:linear-gradient(180deg,#11161a,#0b0e11);
+    border-top:1px solid #303941; color:#b8c5cc;
+  }
+  .analyzer-modal .rf-spectrum-readout b { color:#f0f4f6; }
+  @container sat-analyzer (max-width:1100px) {
+    .analyzer-modal .rf-instrument-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  }
+  @container sat-analyzer (max-width:650px) {
+    .analyzer-modal .rf-instrument-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .analyzer-modal .rf-analyzer-toolbar .rf-iq-open-btn { margin-left:0; }
+  }
+
+  .iq-modal { container-type:size; container-name:sat-iq; }
+  .rf-iq-popup-body { display:flex; flex-direction:column; flex:1 1 0; min-width:0; min-height:0; gap:7px; padding:0 10px 10px; }
+  .rf-iq-popup-toolbar { display:flex; align-items:center; gap:7px; flex-wrap:wrap; color:#b8cad5; font:700 calc(clamp(11px,1.05cqw,18px) * var(--sat-text-scale,1))/1.1 Rajdhani,sans-serif; }
+  .rf-iq-popup-toolbar button { border:1px solid currentColor; border-radius:4px; background:#06111c; padding:5px 9px; color:#b8cad5; cursor:pointer; font:800 inherit; }
+  .rf-iq-popup-toolbar button[data-active="true"] { color:#fff; box-shadow:0 0 12px currentColor; }
+  .rf-iq-popup-plot { flex:1 1 0; min-width:0; min-height:0; position:relative; border:1px solid #223445; border-radius:7px; background:#0b1121; overflow:hidden; }
+  .rf-iq-popup-plot > canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .rf-iq-popup-footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; color:#9eb1bf; font:700 calc(clamp(10px,1cqw,16px) * var(--sat-text-scale,1))/1.15 Rajdhani,sans-serif; }
+  @container sat-analyzer (max-width:720px) { .rf-instrument-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .rf-analyzer-toolbar .rf-iq-open-btn { margin-left:0; } }
+  .flow-viewport { flex:1 1 0; min-width:0; min-height:0; overflow:visible!important; }
+  .flow-content { width:100%; height:100%; min-width:0!important; min-height:0!important; position:relative; container-type:size; container-name:sat-flow; }
+  .sat-flow-layout { height:100%; width:100%; box-sizing:border-box; display:grid; grid-template-rows:minmax(38px,.22fr) minmax(0,1fr); gap:5px; padding:0 8px 8px; }
+  .sat-flow-spacecraft { min-width:0; min-height:0; display:flex; align-items:center; justify-content:center; gap:12px; position:relative; }
+  .sat-flow-spacecraft img { height:100%; max-height:100px; width:clamp(46px,14cqw,135px); min-width:0; object-fit:contain; filter:drop-shadow(0 5px 8px #000); }
+  .sat-flow-spacecraft span { color:#8ec8d4; font:700 calc(clamp(11px,1.4cqw,16px) * var(--sat-text-scale,1))/1.15 Rajdhani,sans-serif; text-align:center; }
+  .sat-flow-lanes { min-height:0; min-width:0; display:grid; grid-template-rows:repeat(2,minmax(0,1fr)); gap:7px; }
+  @keyframes sat-flow-pulse { 0%,100% { opacity:.45; } 50% { opacity:1; } }
+  .sat-flow-lanes[data-active="true"] .flow-node::before, .sat-flow-lanes[data-active="true"] .sat-flow-monitor::before { animation:sat-flow-pulse 1.1s infinite; }
+  .sat-flow-lane { display:flex; flex-direction:column; gap:4px; min-width:0; min-height:0; }
+  .sat-flow-lane-heading { display:flex; align-items:center; flex-wrap:wrap; justify-content:space-between; column-gap:8px; row-gap:1px; flex:0 0 auto; color:var(--lane-color); font:700 calc(clamp(11px,1.35cqw,15px) * var(--sat-text-scale,1))/1.15 Rajdhani,sans-serif; }
+  .sat-flow-lane-heading span { white-space:nowrap; }
+  .sat-flow-chain { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.3fr); column-gap:13px; min-width:0; min-height:0; flex:1 1 0; }
+  .sat-flow-chain .flow-node { width:auto; height:auto; min-width:0; min-height:0; margin:0; padding:4px; position:relative; transform:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; background:linear-gradient(145deg,#041927ee,#01060bee); border:1px solid var(--lane-color); border-radius:5px; box-sizing:border-box; box-shadow:inset 0 0 12px #002b3833; }
+  .sat-flow-chain .flow-node.active { box-shadow:0 0 7px color-mix(in srgb,var(--lane-color),transparent 65%),inset 0 0 10px #00362699; }
+  .sat-flow-chain .flow-node:not(:first-child)::before, .sat-flow-chain .sat-flow-monitor::before { content:attr(data-arrow); position:absolute; right:calc(100% + 1px); top:50%; width:11px; color:var(--lane-color); text-align:center; font:900 16px/1 Rajdhani,sans-serif; transform:translateY(-50%); }
+  .sat-flow-chain .n-icon { width:clamp(22px,3.4cqw,42px); height:clamp(22px,3.4cqw,42px); flex:0 0 auto; margin:0; }
+  .sat-flow-chain .n-title { color:#f3faff; font:900 calc(clamp(11px,1.4cqw,22px) * var(--sat-text-scale,1))/1.15 Orbitron,sans-serif; letter-spacing:0; text-align:center; max-width:100%; white-space:normal; overflow-wrap:normal; }
+  .sat-flow-chain .n-sub { color:#c6e0e9; font:700 calc(clamp(11px,1.35cqw,20px) * var(--sat-text-scale,1))/1.25 Rajdhani,sans-serif; letter-spacing:0; text-align:center; max-width:100%; white-space:normal; overflow-wrap:normal; margin:0; }
+  .sat-flow-monitor { min-width:0; min-height:0; position:relative; display:flex; flex-direction:column; gap:3px; padding:4px; color:var(--lane-color); background:#020b14; border:1px solid var(--lane-color); border-radius:5px; cursor:pointer; box-sizing:border-box; text-align:left; }
+  .sat-flow-monitor-header { display:flex; flex-wrap:wrap; justify-content:space-between; gap:1px 5px; font:700 calc(clamp(10px,1.2cqw,14px) * var(--sat-text-scale,1))/1.1 Rajdhani,sans-serif; }
+  .sat-flow-monitor-header span { white-space:nowrap; }
+  .sat-flow-monitor-charts { flex:1 1 0; min-width:0; min-height:0; display:flex; gap:4px; }
+  .sat-flow-mini-iq { width:36%; min-width:0; height:100%; }
+  .sat-flow-mini-spectrum { flex:1; min-width:0; height:100%; }
+  .sat-flow-monitor svg { background:#0b1121; border:1px solid #294357; border-radius:3px; box-sizing:border-box; }
+  @container sat-flow (max-width:540px) and (min-height:300px) {
+    .sat-flow-layout { grid-template-rows:minmax(40px,.15fr) minmax(0,1fr); }
+    .sat-flow-lanes { grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:minmax(0,1fr); gap:9px; }
+    .sat-flow-lane-heading { min-height:calc(3.45em + 2px); flex-direction:column; justify-content:center; align-items:flex-start; }
+    .sat-flow-lane-heading span { white-space:normal; max-width:100%; }
+    .sat-flow-chain { grid-template-columns:minmax(0,1fr); grid-template-rows:repeat(3,minmax(0,1fr)) minmax(48px,1.25fr); row-gap:11px; }
+    .sat-flow-chain .flow-node { display:grid; grid-template-columns:28px minmax(0,1fr); grid-template-rows:auto auto; column-gap:4px; align-content:center; padding:4px; }
+    .sat-flow-chain .n-icon { grid-row:1/3; width:26px; height:26px; }
+    .sat-flow-chain .n-title, .sat-flow-chain .n-sub { text-align:left; }
+    .sat-flow-chain .flow-node:not(:first-child)::before, .sat-flow-chain .sat-flow-monitor::before { content:attr(data-down-arrow); left:50%; right:auto; top:-11px; width:16px; height:10px; transform:translateX(-50%); line-height:10px; }
+  }
+  @container sat-flow (max-height:265px) {
+    .sat-flow-layout { grid-template-rows:30px minmax(0,1fr); gap:3px; padding:0 6px 6px; }
+    .sat-flow-lanes { gap:5px; }
+    .sat-flow-lane { gap:2px; }
+    .sat-flow-chain .n-icon { width:22px; height:22px; }
+    .sat-flow-chain .flow-node { padding:3px; gap:1px; }
+  }
+  @media (pointer:coarse) {
+    .sat-visual-actions button, .sat-visual-actions .modal-close-btn { min-height:36px; min-width:36px; }
+    .sat-radar-audio, .rf-analyzer-toolbar button, .rf-span-controls button { min-height:32px; }
+    .rf-span-controls input[type=range] { min-height:24px!important; }
+  }
+`;
+
+function SatSignalFlow({ rfState, rfProfile, satSpecs, stationId, miniSpectrumPath, sPoints, xPoints, satelliteImage, onSatelliteError, openAnalyzer }) {
+  const hardware = (kind, label, title, subtitle, color, arrow, downArrow) => (
+    <div className={`flow-node ${rfState.locked ? 'active' : ''}`} data-arrow={arrow} data-down-arrow={downArrow}>
+      <FlowHardwareIcon kind={kind} color={color} label={label} />
+      <div className="n-title">{title}</div><div className="n-sub">{subtitle}</div>
+    </div>
+  );
+  const monitor = (channel, isX, points) => (
+    <button type="button" className="sat-flow-monitor" data-arrow="→" data-down-arrow="↓" onClick={openAnalyzer} aria-label={`Open ${isX ? 'X-band' : 'S-band'} receiver in Signal Analyzer`}>
+      <div className="sat-flow-monitor-header"><strong>{isX ? 'BASEBAND' : 'TT&C'}</strong><span>{channel.mod} · {channel.freq} MHz</span></div>
+      <div className="sat-flow-monitor-charts">
+        <svg className="sat-flow-mini-iq" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Simulated ${isX ? 'X-band' : 'S-band'} IQ constellation`}>
+          <path d="M0 50 H100 M50 0 V100" stroke="#63748d" strokeWidth="1"/><circle cx="50" cy="50" r="35" fill="none" stroke="#607580" strokeDasharray="4 4"/>
+          {rfState.locked && points.map(([cx,cy],i)=><circle key={i} cx={cx} cy={cy} r="4" fill={isX?'#ffcc00':'#00eaff'}/>)}
+        </svg>
+        <svg className="sat-flow-mini-spectrum" preserveAspectRatio="none" viewBox="0 0 100 100" role="img" aria-label="Simulated receiver spectrum">
+          <title>{`SIM · ${channel.mod} · SPAN ${(channel.bw * 2.5).toFixed(3)} MHz`}</title>
+          <path d="M0 25H100 M0 50H100 M0 75H100 M25 0V100 M50 0V100 M75 0V100" stroke="#324251" strokeWidth=".6" fill="none"/>
+          <path d={miniSpectrumPath(channel,isX)} fill="none" stroke={rfState.eligible?(isX?'#ffcc00':'#00eaff'):'#7b8e9d'} strokeWidth="1.7"/>
+        </svg>
+      </div>
+    </button>
+  );
+  return <div className="sat-flow-layout">
+    <div className="sat-flow-spacecraft"><span>SPACE ↕ GROUND<br/>SIM PRESETS</span><img src={satelliteImage} onError={onSatelliteError} alt="Satellite"/><span>S-BAND ⇄ TT&C<br/>X-BAND → PAYLOAD</span></div>
+    <div className="sat-flow-lanes" data-active={rfState.locked}>
+      <section className="sat-flow-lane" style={{'--lane-color':'var(--cyan)'}} aria-label="S-band signal path">
+        <div className="sat-flow-lane-heading"><span><b>S-BAND</b> · TM ↓ {satSpecs.tmFreq}</span><span>TC ↑ {satSpecs.tcFreq}</span><span>IF 70 MHz</span></div>
+        <div className="sat-flow-chain">
+          {hardware('antenna','S-band antenna',stationId,'S-BAND ANTENNA','var(--cyan)','⇄','↕')}
+          {hardware('converter','S-band converter','UP/DOWN','S-BAND CONVERTER','var(--cyan)','⇄','↕')}
+          {hardware('router','TT and C baseband','TT&C','BASEBAND SYSTEM','var(--gold)','⇄','↕')}
+          {monitor(rfProfile.sBand,false,sPoints)}
+        </div>
+      </section>
+      <section className="sat-flow-lane" style={{'--lane-color':'var(--green)'}} aria-label="X-band signal path">
+        <div className="sat-flow-lane-heading"><span><b>X-BAND</b> · DOWNLINK ↓ {satSpecs.xBandFreq}</span><span>IF 720 MHz</span></div>
+        <div className="sat-flow-chain">
+          {hardware('antenna','X-band antenna',stationId,'X-BAND ANTENNA','var(--green)','→','↓')}
+          {hardware('tuner','Downconverter','X-BAND',<>DOWN<wbr/>CONVERTER</>,'#00aaff','→','↓')}
+          {hardware('baseband','Baseband demodulator','BASEBAND','DEMODULATOR','var(--red)','→','↓')}
+          {monitor(rfProfile.xBand,true,xPoints)}
+        </div>
+      </section>
+    </div>
+  </div>;
+}
+
+// A tool keeps one portal container across hosts. Moving it never mounts another
+// SatOrbitCore, orbit clock, audio engine, network poller or notification sender.
+const SAT_WORKSPACE_TOOLS = {
+  radar: 'Radar Skyplot', diagram: 'Signal Flow', analyzer: 'Signal Analyzer', iq: 'IQ Constellation',
+  antenna3d: 'Antenna 3D', weather: 'Weather Center', gs: 'Ground Station',
+  db: 'Satellite Database', pass: 'Pass Schedule', angles: 'Pointing Angles', img: 'Imaging Plan'
+};
+// These three tools, plus the existing Globe, are the optional Quad workspace.
+const SAT_QUAD_TOOL_IDS = ['radar', 'diagram', 'analyzer'];
+
+const SAT_WORKSPACE_CSS = `
+  .sat-globe-host { position: fixed; inset: 0; overflow: hidden; }
+  .sat-globe-host[data-quad="true"] { border: 1px solid #244755; border-radius: 8px; z-index: 20000; }
+  .sat-globe-host[data-quad="true"] .flat-map-wrap { position: absolute!important; inset: 0!important; width: 100%!important; height: 100%!important; margin: 0!important; transform: none!important; }
+  .sat-globe-host[data-quad="true"] .flat-map-container { width: 100%!important; max-height: 100%!important; transform: none!important; }
+  .sat-tool-placeholder { display: contents; }
+  .sat-tool-surface[data-host="quad"], .sat-tool-surface[data-host="window"] { position: fixed; overflow: hidden; z-index: 20001; border-radius: 8px; background: #010408; }
+  .sat-tool-surface[data-host="window"] { inset: 0 0 var(--sat-viewer-status-height,26px); border-radius: 0; }
+  .sat-tool-surface[data-host="quad"] > div, .sat-tool-surface[data-host="window"] > div {
+    position: absolute!important; inset: 0!important; width: 100%!important; height: 100%!important;
+    min-width: 0!important; min-height: 0!important; max-width: none!important; max-height: none!important;
+    resize: none!important; transform: none!important; margin: 0!important; transition: none!important; box-sizing: border-box;
+  }
+  .sat-tool-surface:not([data-host="classic"]) .modal-header { cursor: default!important; gap: 8px; padding: 8px 12px!important; }
+  .sat-tool-surface:not([data-host="classic"]) .modal-header > div { min-width: 0; }
+  .sat-tool-surface .modal-header { box-sizing: border-box; }
+  .sat-tool-surface .sat-popout-btn { flex-shrink: 0; }
+
+  /* MULTI-VIEW 4-UP NORMALIZATION — equal visual density inside equal 50/50 cells.
+     Classic windows and detached windows are intentionally excluded. */
+  .sat-tool-surface[data-host="quad"] {
+    --sat-text-scale:.78;
+    container-type:size;
+  }
+  .sat-tool-surface[data-host="quad"] > div {
+    inset:0!important; width:100%!important; height:100%!important;
+    min-width:0!important; min-height:0!important; max-width:none!important; max-height:none!important;
+    border-radius:8px!important; box-sizing:border-box!important;
+  }
+  .sat-tool-surface[data-host="quad"] .modal-header,
+  .sat-tool-surface[data-host="quad"] .sat-visual-header {
+    flex:0 0 46px!important; min-height:46px!important; max-height:46px!important;
+    padding:6px 10px!important; margin:0!important; box-sizing:border-box!important; overflow:hidden!important;
+  }
+  .sat-tool-surface[data-host="quad"] .sat-visual-actions button,
+  .sat-tool-surface[data-host="quad"] .modal-header button {
+    min-width:28px!important; min-height:28px!important; width:28px!important; height:28px!important;
+    padding:3px!important; margin:0!important;
+  }
+
+  /* Radar: metrics/legend become overlays in 4-UP so the circle receives the same
+     usable vertical area as the other three cells. */
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-header {
+    align-items:center!important; padding:5px 10px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-title-badge {
+    padding:3px 8px!important; gap:6px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-title-badge img { width:26px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-title-badge strong { font-size:16px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-metrics {
+    position:absolute!important; top:50px!important; left:0!important; right:0!important; z-index:25!important;
+    padding:0 12px!important; gap:8px!important; pointer-events:none!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-metric-card {
+    min-width:104px!important; padding:4px 8px!important; gap:5px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-metric-label { font-size:10px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-metric-card strong { font-size:22px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-plot {
+    flex:1 1 0!important; margin:0!important; min-height:0!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-legend {
+    position:absolute!important; left:50%!important; bottom:7px!important; transform:translateX(-50%)!important;
+    z-index:25!important; display:flex!important; flex-direction:row!important; flex-wrap:nowrap!important;
+    gap:10px!important; padding:3px 7px!important; border:0!important; background:rgba(1,4,8,.62)!important;
+    font-size:10px!important; white-space:nowrap!important;
+  }
+
+  /* Detached Radar keeps the same visual balance as Browser Full Screen. */
+  .sat-tool-surface[data-host="window"][data-tool="radar"] .sat-radar-header {
+    align-items:center!important; min-height:58px!important; padding:8px 14px!important;
+  }
+  .sat-tool-surface[data-host="window"][data-tool="radar"] .sat-radar-plot {
+    flex:1 1 0!important; min-height:0!important; margin:0!important;
+  }
+
+  /* Analyzer: reserve the same header baseline and compact the toolbar uniformly. */
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-analyzer-toolbar {
+    min-height:34px!important; max-height:34px!important; padding:3px 8px!important; gap:4px 8px!important; overflow:hidden!important;
+    font-size:10px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-analyzer-toolbar button {
+    min-height:24px!important; padding:3px 6px!important; font-size:10px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-analyzer-body {
+    padding:0 7px 7px!important; gap:7px!important;
+  }
+
+  /* Signal Flow: the original Classic header uses presentation-size inline fonts.
+     Normalize only inside 4-UP so the content area matches Radar/Analyzer visually. */
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header {
+    display:grid!important; grid-template-columns:minmax(0,1fr) auto!important; align-items:center!important; gap:8px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:first-child {
+    flex:initial!important; min-width:0!important; gap:8px!important; overflow:hidden!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:first-child > div:first-child {
+    font-size:13px!important; letter-spacing:1px!important; white-space:nowrap!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:first-child > div:first-child span { font-size:15px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .status-badge-top {
+    padding:2px 7px!important; border-width:1px!important; gap:4px!important; box-shadow:none!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .status-badge-top > div { width:7px!important; height:7px!important; margin-right:4px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .status-badge-top span { font-size:9px!important; letter-spacing:.7px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:nth-child(2) { display:none!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:nth-child(3) {
+    flex:initial!important; min-width:0!important; gap:7px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:nth-child(3) > div:first-child {
+    padding-right:7px!important; min-width:0!important; overflow:hidden!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:nth-child(3) > div:first-child img { width:22px!important; margin-right:6px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:nth-child(3) > div:first-child span {
+    font-size:13px!important; letter-spacing:1px!important; overflow:hidden!important; text-overflow:ellipsis!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:nth-child(3) > div:last-child { gap:5px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .flow-content { overflow:hidden!important; }
+  /* MULTI-VIEW FINAL PHASE — presentation dashboard only.
+     Protected full-size tools remain untouched; every rule below applies ONLY in 4-UP. */
+  .sat-globe-host[data-quad="true"],
+  .sat-tool-surface[data-host="quad"] {
+    background:#010408!important;
+    box-shadow:0 0 0 1px rgba(255,255,255,.025), 0 10px 28px rgba(0,0,0,.48)!important;
+    box-sizing:border-box!important;
+    overflow:hidden!important;
+  }
+  .sat-globe-host[data-quad="true"] { border-color:rgba(0,234,255,.42)!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] { border:1px solid rgba(0,255,102,.52)!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] { border:1px solid rgba(255,0,255,.42)!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] { border:1px solid rgba(0,234,255,.42)!important; }
+
+  /* Keep the 4-UP dashboard clean: detailed controls stay available after Expand. */
+  .sat-tool-surface[data-host="quad"] .sat-popout-btn { display:none!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-audio { display:none!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-visual-actions .modal-close-btn:last-child,
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .sat-visual-actions .modal-close-btn:last-child,
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:nth-child(3) > div:last-child .modal-close-btn:last-child {
+    display:none!important;
+  }
+
+  /* Analyzer compact summary: two live traces remain visible; dense instrument rows move to Expand view. */
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-iq-open-btn,
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-instrument-grid { display:none!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .sat-visual-heading strong { font-size:15px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .sat-visual-meta { font-size:9px!important; gap:2px 6px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-analyzer-toolbar {
+    flex-wrap:nowrap!important; min-height:30px!important; max-height:30px!important; padding:3px 7px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-analyzer-toolbar .rf-sim-badge {
+    overflow:hidden!important; text-overflow:ellipsis!important; white-space:nowrap!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-channel-stack { gap:5px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-channel-header {
+    min-height:22px!important; padding:2px 6px!important; font-size:9px!important; flex-wrap:nowrap!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-channel-header > * {
+    white-space:nowrap!important; overflow:hidden!important; text-overflow:ellipsis!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-span-controls {
+    min-height:22px!important; padding:2px 6px!important; gap:5px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-span-controls button {
+    min-height:20px!important; padding:2px 4px!important; font-size:9px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-span-controls output { min-width:58px!important; font-size:9px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-spectrum-readout {
+    min-height:20px!important; padding:2px 6px!important; font-size:9px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .rf-spectrum-plot { min-height:34px!important; }
+
+  /* Radar summary keeps the locked geometry but removes header clutter in 4-UP. */
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-header { min-height:40px!important; max-height:40px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-metrics { top:44px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-metric-card strong { font-size:20px!important; }
+
+  /* Signal Flow uses the exact locked diagram; only its chrome is compressed in 4-UP. */
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header {
+    min-height:40px!important; max-height:40px!important; padding:4px 8px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:first-child > div:first-child { font-size:12px!important; }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:nth-child(3) > div:first-child span { font-size:12px!important; }
+
+  /* Toolbar remains one stable presentation strip on 1920/4K screens. */
+  .sat-workspace-toolbar {
+    flex-wrap:nowrap!important; overflow-x:auto!important; overflow-y:hidden!important; scrollbar-width:none;
+  }
+  .sat-workspace-toolbar::-webkit-scrollbar { display:none; }
+  .sat-workspace-toolbar > strong {
+    color:#ffffff; font-family:Orbitron,Rajdhani,sans-serif; font-weight:900; letter-spacing:1px; white-space:nowrap;
+  }
+  .sat-workspace-toolbar .sat-workspace-time { margin-left:auto; color:#8ff7ff; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .sat-workspace-toolbar select { min-width:140px; max-width:190px; }
+  .sat-globe-caption {
+    background:linear-gradient(90deg,rgba(1,10,18,.86),rgba(1,10,18,.28),transparent);
+    border-left:2px solid rgba(0,234,255,.7); border-radius:4px; padding:4px 6px;
+  }
+
+  @media (max-width:1450px) {
+    .sat-workspace-toolbar { gap:4px!important; padding:4px 6px!important; }
+    .sat-workspace-toolbar button, .sat-workspace-toolbar select { padding:4px 6px!important; font-size:10px!important; }
+    .sat-workspace-toolbar select { min-width:112px; max-width:150px; }
+    .sat-tool-surface[data-host="quad"] { --sat-text-scale:.72; }
+  }
+  .sat-workspace-toolbar { position: fixed; top: 0; left: 0; right: 0; min-height: 46px; box-sizing: border-box; z-index: 20010; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 10px; background: #06101b; border-bottom: 1px solid #285462; color: #e6fbff; font: 600 calc(clamp(12px,.7vw,20px) * var(--sat-text-scale,1)) Rajdhani,Arial,sans-serif; }
+  .sat-workspace-toolbar button, .sat-workspace-toolbar select, .sat-popout-btn, .sat-workspace-toggle { border: 1px solid #337689; border-radius: 4px; background: #0c2431; color: #b7f6ff; padding: 5px 9px; cursor: pointer; font: 600 12px Rajdhani,Arial,sans-serif; white-space: nowrap; }
+  .sat-workspace-toolbar select { max-width: 180px; }
+  .sat-workspace-toolbar button:hover, .sat-popout-btn:hover, .sat-workspace-toggle:hover { background: #164559; color: white; }
+  .sat-workspace-toggle { margin: 0; padding: 4px 8px; }
+  .sat-hud-multiview { margin-left:auto; flex:0 0 auto; padding:3px 7px!important; min-height:24px!important; font-size:10px!important; letter-spacing:.5px; line-height:1!important; }
+  .sat-empty-tool { position: fixed; z-index: 20000; box-sizing:border-box; overflow:hidden; border: 1px dashed #337689; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #040e18; color: #acc7d3; font: 16px Rajdhani,Arial,sans-serif; }
+  .sat-empty-tool button { cursor: pointer; padding: 8px 16px; border: 1px solid #00eaff; color: #00eaff; background: #06202b; border-radius: 5px; }
+  .sat-globe-caption { position: absolute; left: 10px; right: 10px; top: 8px; z-index: 2; color: #d6f5ff; font: 600 calc(clamp(12px,.9vw,22px) * var(--sat-text-scale,1)) Rajdhani,Arial,sans-serif; pointer-events: none; text-shadow: 0 1px 5px #000; }
+  .sat-globe-caption > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .sat-tool-surface[data-host="classic"] { display: contents; container-type: normal; }
+  .sat-tool-surface:not([data-host="classic"]) { container-type: inline-size; }
+  .sat-tool-surface .modal-header, .sat-tool-surface .sat-data-header { touch-action: none; }
+  .sat-popout-btn, .sat-reading-btn { min-height: 30px; min-width: 30px; touch-action: manipulation; }
+  .sat-popout-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+  .sat-window-icon { display: inline-block; width: 16px; height: 16px; vertical-align: middle; flex-shrink: 0; }
+  .sat-reading-btn { padding: 3px 6px; font-family: Arial,sans-serif; }
+  .sat-reading-btn[aria-pressed="true"] { background: #184d5c; color: white; border-color: #83f4ff; }
+  .sat-workspace-toolbar > * { min-width: 0; }
+  .sat-workspace-toolbar button, .sat-workspace-toolbar select { min-height: 32px; font-size: calc(clamp(12px,.7vw,20px) * var(--sat-text-scale, 1)); }
+  .sat-workspace-toolbar select { flex: 0 1 180px; }
+  .sat-workspace-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sat-notice { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); width: min(580px, calc(100vw - 24px)); box-sizing: border-box; padding: 14px 48px 14px 18px; z-index: 1000000; background: #081d28; border: 1px solid #50d9e8; border-radius: 9px; color: white; box-shadow: 0 8px 40px #000b; font: 600 16px/1.45 Rajdhani,Arial,sans-serif; overflow-wrap: anywhere; }
+  .sat-notice[data-error="true"] { border-color: #ff736a; background: #2b1114; }
+  .sat-notice p { margin: 5px 0 0; max-height: 55vh; overflow: auto; white-space: pre-wrap; }
+  .sat-notice button { position: absolute; right: 8px; top: 8px; width: 32px; height: 32px; border: 1px solid #7293a0; border-radius: 4px; color: white; background: transparent; cursor: pointer; }
+  /* Full Classic keeps its floating globe and both complete side panels. */
+  .ui-layer .sat-tle-source { white-space:normal!important; overflow:visible!important; text-overflow:clip!important; overflow-wrap:break-word; line-height:1.25!important; }
+  .ui-layer .sat-hud-weather [style*="text-overflow"], .ui-layer .sat-hud-status strong { white-space:normal!important; overflow:visible!important; text-overflow:clip!important; overflow-wrap:break-word; }
+  .ui-layer[data-hud-fit="true"] .left-panel, .ui-layer[data-hud-fit="true"] .right-panel { gap:7px!important; padding-bottom:0!important; }
+  .ui-layer[data-hud-fit="true"] .left-container > div:first-child, .ui-layer[data-hud-fit="true"] .right-container > div:first-child { margin-bottom:10px!important; }
+  .ui-layer[data-hud-fit="true"] .global-clock-hud { padding:8px 14px!important; }
+  .ui-layer[data-hud-fit="true"] .panel-box, .ui-layer[data-hud-fit="true"] .control-group { padding:8px 11px!important; }
+  .ui-layer[data-hud-fit="true"] .control-group { margin-top:0!important; }
+  .ui-layer[data-hud-fit="true"] .target-header { gap:10px!important; margin-bottom:6px!important; padding-bottom:6px!important; }
+  .ui-layer[data-hud-fit="true"] .target-header img { width:48px!important; height:32px; object-fit:cover; }
+  .ui-layer[data-hud-fit="true"] .target-header h2 { font-size:24px!important; letter-spacing:1px!important; white-space:normal!important; overflow-wrap:break-word; }
+  .ui-layer[data-hud-fit="true"] .status-banner { gap:3px!important; padding:8px 10px!important; margin-bottom:7px!important; }
+  .ui-layer[data-hud-fit="true"] .status-banner > span { font-size:12px!important; line-height:1.2; }
+  .ui-layer[data-hud-fit="true"] .status-banner > span:nth-child(2) { font-size:26px!important; margin:2px 0!important; line-height:1!important; }
+  .ui-layer[data-hud-fit="true"] .status-banner > span > strong { font-size:20px!important; }
+  .ui-layer[data-hud-fit="true"] .telemetry-grid { gap:5px!important; margin-bottom:6px!important; }
+  .ui-layer[data-hud-fit="true"] .t-box { box-sizing:border-box; padding:4px 10px; min-height:46px; }
+  .ui-layer[data-hud-fit="true"] .t-box span { line-height:1.15; letter-spacing:.8px; }
+  .ui-layer[data-hud-fit="true"] .t-box strong { font-size:20px; line-height:1.1; }
+  .ui-layer[data-hud-fit="true"] .info-list { margin-top:5px; padding-top:5px; line-height:1.25; }
+  .ui-layer[data-hud-fit="true"] .info-list li { gap:8px; padding-bottom:2px; margin-bottom:3px; align-items:flex-start; }
+  .ui-layer[data-hud-fit="true"] .info-list span, .ui-layer[data-hud-fit="true"] .info-list strong { font-size:14px; letter-spacing:.4px; }
+  .ui-layer[data-hud-fit="true"] .info-list li > span { flex:0 0 130px; max-width:45%; }
+  .ui-layer[data-hud-fit="true"] .info-list li > strong { min-width:0; overflow-wrap:break-word; }
+  .ui-layer[data-hud-fit="true"] .info-list .sat-hud-tle-row > span { flex-basis:56px; }
+  .ui-layer[data-hud-fit="true"] .sat-tle-source { font-size:12px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-antenna .status-badge { width:auto; min-width:88px; padding:3px 8px!important; font-size:11px!important; letter-spacing:1px; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-antenna > div:first-child > span:first-child { font-size:12px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-weather > div:first-child { margin-bottom:5px!important; padding-bottom:4px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-weather > div:first-child > span:first-child { font-size:12px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-weather > div:nth-child(2) > div:first-child { width:50px!important; height:50px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-weather > div:nth-child(2) > div:nth-child(2) > div:nth-child(2) { font-size:14px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-weather > div:nth-child(2) > div:last-child > div { font-size:24px!important; }
+  .ui-layer[data-hud-fit="true"] .control-group div[style*="grid"] { gap:5px!important; }
+  .ui-layer[data-hud-fit="true"] .btn { min-height:34px; box-sizing:border-box; padding:6px 7px!important; font-size:15px!important; line-height:1.2; letter-spacing:1px!important; margin-bottom:0!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-time > button { padding:8px!important; margin-bottom:6px!important; font-size:16px!important; line-height:1.2; letter-spacing:1.5px!important; }
+  .ui-layer[data-hud-fit="true"] .speed-row { margin-top:6px!important; margin-bottom:6px!important; }
+  .ui-layer[data-hud-fit="true"] .speed-row .btn { min-height:28px; padding:4px 2px!important; font-size:13px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-transport { height:34px!important; margin-top:6px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-transport .status-badge { box-sizing:border-box; padding:3px 0!important; }
+  .ui-layer[data-hud-fit="true"] .time-scrubber-container { margin-top:7px!important; padding-top:7px!important; }
+  .ui-layer[data-hud-fit="true"] .scrubber-labels { margin-bottom:4px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-time-track .sci-fi-slider { margin:6px 0; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-time-track > div { top:6px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-current-time { margin-top:6px!important; font-size:14px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-current-time > strong { font-size:20px!important; margin-left:8px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-season { margin-top:6px!important; padding-top:6px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-season > div:first-child { margin-bottom:5px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-season button { padding:4px!important; font-size:12px!important; line-height:1.15!important; white-space:normal!important; overflow:visible!important; text-overflow:clip!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-tools > div { margin-bottom:6px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-tools > div:last-child { margin-bottom:0!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-status { margin-top:0!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-status > div:first-child { margin-bottom:5px!important; padding-bottom:4px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-status > div:nth-child(2) { row-gap:4px!important; }
+  .ui-layer[data-hud-fit="true"] .sat-hud-credits { margin-top:0!important; font-size:14px!important; line-height:1.2!important; }
+
+  .sat-hud-pages, .sat-hud-page { display: contents; }
+  .sat-hud-tabs { display: none; }
+  .sat-hud-pages[data-paged="true"] { display: flex; flex: 1; flex-direction: column; min-height: 0; width: 100%; gap: 8px; }
+  .sat-hud-pages[data-paged="true"] .sat-hud-tabs { display: flex; flex-wrap: wrap; gap: 4px; flex-shrink: 0; padding: 5px; background: #061420ed; border: 1px solid #285462; border-radius: 6px; }
+  .sat-hud-tabs button { flex: 1 1 auto; min-height: 32px; padding: 5px 8px; border: 1px solid #306477; border-radius: 4px; background: #091f2b; color: #cbeaf0; font: 700 14px Rajdhani,Arial,sans-serif; cursor: pointer; }
+  .sat-hud-tabs button[aria-selected="true"] { background: #154654; border-color: #00eaff; color: white; }
+  .sat-hud-pages[data-paged="true"] .sat-hud-page { display: block; min-width: 0; min-height: 0; }
+  .sat-hud-pages[data-paged="true"] .sat-hud-page[hidden] { display: none; }
+  .sat-hud-pages[data-paged="true"] .control-group { margin-top: 0!important; }
+  .ui-layer[data-compact="true"] { flex-direction: row; overflow: hidden; gap: 12px; }
+  .ui-layer[data-compact="true"] .left-container, .ui-layer[data-compact="true"] .right-container { width: min(420px, calc(50vw - 28px))!important; min-width: 0; }
+  .ui-layer[data-compact="true"] .left-panel, .ui-layer[data-compact="true"] .right-panel { overflow: hidden!important; padding-bottom: 0; }
+  .ui-layer[data-compact="true"] .sat-hud-page [style*="text-overflow"] { white-space: normal!important; overflow-wrap: break-word; overflow: visible!important; text-overflow: clip!important; }
+  .ui-layer[data-compact="true"] .sat-tle-source { font-size: calc(12px * var(--sat-text-scale, 1))!important; line-height: 1.25!important; }
+  .ui-layer[data-compact="true"] .target-header h2 { white-space: normal!important; overflow-wrap: break-word; font-size: 22px!important; letter-spacing: .5px!important; }
+  .ui-layer[data-compact="true"] .global-clock-hud { padding: 8px!important; }
+  .ui-layer[data-compact="true"] .global-clock-hud strong { font-size: 22px!important; letter-spacing: .5px!important; }
+  .ui-layer[data-compact="true"] .panel-box, .ui-layer[data-compact="true"] .control-group { padding: 10px!important; }
+  .ui-layer[data-compact="true"] .btn { font-size: 14px!important; letter-spacing: .6px!important; }
+  .ui-layer[data-compact="true"] .sat-hud-page > .control-group > div { gap: 8px!important; }
+  .ui-layer[data-compact="true"] .t-box strong { font-size: 18px!important; }
+  .ui-layer[data-narrow="true"] { display: block; padding: 8px!important; }
+  .ui-layer[data-narrow="true"] .left-container, .ui-layer[data-narrow="true"] .right-container { position: absolute; top: 8px; width: calc(50% - 12px)!important; height: calc(100% - 16px)!important; transform: none!important; }
+  .ui-layer[data-narrow="true"] .left-container { left: 8px; }
+  .ui-layer[data-narrow="true"] .right-container { right: 8px; }
+  .ui-layer[data-narrow="true"] .left-container > div:first-child, .ui-layer[data-narrow="true"] .right-container > div:first-child { gap: 6px!important; margin-bottom: 8px!important; }
+  .ui-layer[data-narrow="true"] .menu-toggle-btn-left { margin-right: 0; }
+  .ui-layer[data-narrow="true"] .global-clock-hud { min-width: 0; padding: 6px!important; }
+  .ui-layer[data-narrow="true"] .global-clock-hud strong { font-size: clamp(14px, 2.4vw, 20px)!important; }
+  .ui-layer[data-narrow="true"] .global-clock-hud span { font-size: 10px; letter-spacing: .2px!important; }
+  .ui-layer[data-narrow="true"] .global-clock-hud strong span { font-size: inherit; }
+  .ui-layer[data-narrow="true"] .left-panel, .ui-layer[data-narrow="true"] .right-panel { position: fixed; left: 8px; right: 8px; top: 84px; bottom: 8px; width: calc(100vw - 16px)!important; background: #010b14f5; border: 1px solid #285462; border-radius: 8px; padding: 8px!important; box-sizing: border-box; }
+  .ui-layer[data-narrow="true"]:not([data-active-hud="left"]) .left-panel, .ui-layer[data-narrow="true"]:not([data-active-hud="right"]) .right-panel { display: none; }
+  /* ---------------------------------------------------------------------
+     INTERNATIONAL MASTER v1.1 — ADAPTIVE HUD BALANCE
+     Viewport tiers + Globe Safe Zone + equal HUD baselines.
+     These rules intentionally override older fixed widths without changing
+     orbit/RF/TLE/antenna calculations or the Classic visual identity.
+     --------------------------------------------------------------------- */
+  .ui-layer[data-master-responsive="true"] {
+    padding: var(--sat-hud-outer)!important;
+    gap: 0!important;
+  }
+  .ui-layer[data-master-responsive="true"] .left-container,
+  .ui-layer[data-master-responsive="true"] .right-container {
+    width: var(--sat-hud-panel-width)!important;
+    max-width: var(--sat-hud-panel-width)!important;
+    min-width: 0!important;
+    /* FIX6: do not override inline height compensation after HUD scale.
+       The Classic production build relies on logical height = viewport / scale,
+       so the whole side HUD remains visible in both browser and Full Screen modes. */
+    box-sizing: border-box!important;
+  }
+  .ui-layer[data-master-responsive="true"] .left-panel,
+  .ui-layer[data-master-responsive="true"] .right-panel {
+    width: 100%!important;
+    min-height: 0!important;
+    box-sizing: border-box!important;
+  }
+  /* Use spare vertical space before growing horizontally. */
+  .ui-layer[data-hud-fill="true"] .left-panel,
+  .ui-layer[data-hud-fill="true"] .right-panel {
+    /* HUD AUTOFIT COMPACT: never distribute spare viewport height between cards.
+       Auto-scale already guarantees the whole stack fits; keep the Classic cards
+       visually grouped from top to bottom in Browser and Full Screen. */
+    justify-content: flex-start!important;
+    gap: clamp(7px, 0.9vh, 10px)!important;
+    padding-bottom: 0!important;
+    overflow-y: hidden!important;
+  }
+  .ui-layer[data-hud-fill="true"] .panel-box,
+  .ui-layer[data-hud-fill="true"] .control-group {
+    flex-shrink: 0!important;
+  }
+  /* Wide TV / presentation canvases: one-screen Classic HUD, no side scrolling. */
+  .ui-layer[data-wide-tv="true"] .left-panel,
+  .ui-layer[data-wide-tv="true"] .right-panel {
+    overflow-y:hidden!important; overflow-x:hidden!important; scrollbar-width:none!important;
+    /* Do not stretch the gaps on 16:9 TV / Full Screen. */
+    justify-content:flex-start!important; gap:clamp(7px, 0.9vh, 10px)!important; padding-bottom:0!important;
+  }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .left-container > div:first-child,
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .right-container > div:first-child { margin-bottom:6px!important; }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .panel-box,
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .control-group { padding:6px 10px!important; }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .target-header { margin-bottom:4px!important; padding-bottom:4px!important; }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .status-banner { padding:6px 8px!important; margin-bottom:4px!important; }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .t-box { min-height:40px!important; padding:3px 8px!important; }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .info-list { margin-top:3px!important; padding-top:3px!important; }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .info-list li { margin-bottom:1px!important; padding-bottom:1px!important; }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .btn { min-height:31px!important; padding:4px 6px!important; }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .speed-row { margin-top:4px!important; margin-bottom:4px!important; }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .sat-hud-season { margin-top:4px!important; padding-top:4px!important; }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .sat-hud-tools > div { margin-bottom:4px!important; }
+  .ui-layer[data-wide-tv="true"][data-hud-fit="true"] .sat-hud-credits { font-size:11px!important; line-height:1.05!important; }
+  /* Desktop keeps the full Classic HUD; only truly narrow/portrait screens page it. */
+  .ui-layer[data-hud-tier="desktop"] .sat-hud-tabs,
+  .ui-layer[data-hud-tier="presentation"] .sat-hud-tabs,
+  .ui-layer[data-hud-tier="compact"] .sat-hud-tabs { display:none!important; }
+
+  /* Presentation / large TV: improve distance readability while retaining hierarchy. */
+  .ui-layer[data-hud-tier="presentation"] .global-clock-hud { padding:14px 18px!important; }
+  .ui-layer[data-hud-tier="presentation"] .global-clock-hud strong { font-size:32px!important; }
+  .ui-layer[data-hud-tier="presentation"] .panel-box,
+  .ui-layer[data-hud-tier="presentation"] .control-group { padding:13px 15px!important; }
+  .ui-layer[data-hud-tier="presentation"] .status-banner > span:nth-child(2) { font-size:30px!important; }
+  .ui-layer[data-hud-tier="presentation"] .t-box { min-height:50px!important; padding:6px 11px!important; }
+  .ui-layer[data-hud-tier="presentation"] .t-box strong { font-size:22px!important; }
+  .ui-layer[data-hud-tier="presentation"] .info-list span,
+  .ui-layer[data-hud-tier="presentation"] .info-list strong { font-size:14px!important; }
+  .ui-layer[data-hud-tier="presentation"] .btn { min-height:42px!important; font-size:16px!important; padding:8px 7px!important; }
+  .ui-layer[data-hud-tier="presentation"] .speed-row .btn { min-height:32px!important; font-size:13px!important; }
+  .ui-layer[data-hud-tier="presentation"] .sat-hud-tools .btn { min-height:48px!important; }
+  .ui-layer[data-hud-tier="presentation"] .sat-hud-status strong { font-size:13px!important; }
+
+  /* Desktop: full Classic panels, balanced top/bottom baseline. */
+  .ui-layer[data-hud-tier="desktop"] .left-panel,
+  .ui-layer[data-hud-tier="desktop"] .right-panel,
+  .ui-layer[data-hud-tier="presentation"] .left-panel,
+  .ui-layer[data-hud-tier="presentation"] .right-panel { overflow-y:hidden!important; overflow-x:hidden!important; scrollbar-width:none!important; }
+  .ui-layer[data-hud-tier="desktop"] .btn { min-height:36px; }
+
+  /* Compact landscape: reduce whitespace/padding first; do not uniformly shrink text. */
+  .ui-layer[data-hud-tier="compact"] { padding:10px!important; }
+  .ui-layer[data-hud-tier="compact"] .left-container,
+  .ui-layer[data-hud-tier="compact"] .right-container {
+    width: var(--sat-hud-panel-width)!important;
+    /* FIX6: height is intentionally supplied inline as viewport/scale. */
+  }
+  .ui-layer[data-hud-tier="compact"] .left-panel,
+  .ui-layer[data-hud-tier="compact"] .right-panel { gap:5px!important; overflow-y:hidden!important; overflow-x:hidden!important; scrollbar-width:none!important; }
+  .ui-layer[data-hud-tier="compact"] .panel-box,
+  .ui-layer[data-hud-tier="compact"] .control-group { padding:7px 9px!important; margin-top:4px!important; }
+  .ui-layer[data-hud-tier="compact"] .target-header { margin-bottom:4px!important; padding-bottom:4px!important; }
+  .ui-layer[data-hud-tier="compact"] .status-banner { padding:6px 8px!important; margin-bottom:5px!important; }
+  .ui-layer[data-hud-tier="compact"] .t-box { min-height:39px!important; padding:3px 8px!important; }
+  .ui-layer[data-hud-tier="compact"] .t-box strong { font-size:17px!important; }
+  .ui-layer[data-hud-tier="compact"] .info-list span,
+  .ui-layer[data-hud-tier="compact"] .info-list strong { font-size:12px!important; }
+  .ui-layer[data-hud-tier="compact"] .btn { min-height:30px!important; padding:4px 5px!important; font-size:13px!important; }
+  .ui-layer[data-hud-tier="compact"] .sat-hud-tools .btn { min-height:34px!important; }
+  .ui-layer[data-hud-tier="compact"] .sat-hud-credits { font-size:11px!important; }
+
+
+  /* DEPLOY HUD LOCK — desktop / TV / Full Screen only.
+     Match the working deployed reference; adaptive MASTER overrides are reserved for compact/narrow. */
+  .ui-layer:not([data-master-responsive="true"]) .left-container {
+    width: clamp(380px, 28vw, 460px)!important; max-width:none!important; min-width:0!important;
+  }
+  .ui-layer:not([data-master-responsive="true"]) .right-container {
+    width: clamp(380px, 28vw, 460px)!important; max-width:none!important; min-width:0!important;
+  }
+  .ui-layer:not([data-master-responsive="true"]) .left-container,
+  .ui-layer:not([data-master-responsive="true"]) .right-container {
+    box-sizing:border-box!important;
+  }
+  .ui-layer:not([data-master-responsive="true"]) .left-container > div:first-child,
+  .ui-layer:not([data-master-responsive="true"]) .right-container > div:first-child {
+    gap:15px!important; margin-bottom:15px!important;
+  }
+  .ui-layer:not([data-master-responsive="true"]) .left-panel,
+  .ui-layer:not([data-master-responsive="true"]) .right-panel {
+    justify-content:flex-start!important; gap:clamp(9px, 1.45vh, 16px)!important;
+    padding-bottom:clamp(10px, 2vh, 20px)!important;
+    overflow-y:auto!important; overflow-x:hidden!important; scrollbar-width:none!important;
+  }
+  .ui-layer:not([data-master-responsive="true"]) .left-panel::-webkit-scrollbar,
+  .ui-layer:not([data-master-responsive="true"]) .right-panel::-webkit-scrollbar { display:none!important; }
+
+  /* FULL SCREEN ONLY — Browser mode is intentionally untouched.
+     Native Fullscreen and browser/F11 fullscreen-like viewports share the same rule.
+     Both HUD columns consume the exact same remaining height and distribute their
+     existing cards between one top baseline and one bottom baseline. */
+  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .left-panel,
+  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .right-panel {
+    display:flex!important;
+    flex-direction:column!important;
+    flex:1 1 0!important;
+    height:auto!important;
+    min-height:0!important;
+    justify-content:space-between!important;
+    gap:clamp(10px,1.15vh,16px)!important;
+    padding-bottom:0!important;
+    overflow-y:hidden!important;
+  }
+  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .sat-hud-status,
+  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .sat-hud-credits {
+    margin-top:0!important;
+  }
+
+  /* FULL SCREEN ONLY — SatHudPages is the real direct child of each side panel.
+     Stretch that wrapper and distribute its section pages, otherwise space-between on
+     left/right-panel sees only one child and leaves a large unused band at the bottom. */
+  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .left-panel > .sat-hud-pages,
+  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .right-panel > .sat-hud-pages {
+    display:flex!important;
+    flex-direction:column!important;
+    flex:1 1 0!important;
+    width:100%!important;
+    height:100%!important;
+    min-height:0!important;
+    justify-content:space-between!important;
+    gap:clamp(10px,1.15vh,16px)!important;
+  }
+  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .sat-hud-pages > .sat-hud-page {
+    display:block!important;
+    flex:0 0 auto!important;
+    width:100%!important;
+    min-height:0!important;
+    margin:0!important;
+  }
+
+  /* Narrow / portrait: the globe remains unobstructed; side HUD becomes an intentional drawer. */
+  .ui-layer[data-hud-tier="narrow"] { display:block!important; padding:8px!important; }
+  .ui-layer[data-hud-tier="narrow"] .left-container,
+  .ui-layer[data-hud-tier="narrow"] .right-container {
+    position:absolute!important; top:8px!important; height:calc(100dvh - 16px)!important;
+    max-height:calc(100dvh - 16px)!important; transform:none!important;
+  }
+  .ui-layer[data-hud-tier="narrow"] .left-container { left:8px!important; width:calc(50% - 12px)!important; max-width:none!important; }
+  .ui-layer[data-hud-tier="narrow"] .right-container { right:8px!important; width:calc(50% - 12px)!important; max-width:none!important; }
+  .ui-layer[data-hud-tier="narrow"] .left-panel,
+  .ui-layer[data-hud-tier="narrow"] .right-panel {
+    position:fixed!important; left:8px!important; right:8px!important; top:84px!important; bottom:8px!important;
+    width:calc(100vw - 16px)!important; height:auto!important; max-height:none!important;
+    overflow:auto!important; background:#010b14f5; border:1px solid #285462; border-radius:8px; padding:8px!important;
+  }
+
+  /* Keep the center visually clean: panel width is calculated in JS from --sat-globe-safe-min. */
+  .ui-layer[data-master-responsive="true"] .left-container { margin-right:auto; }
+  .ui-layer[data-master-responsive="true"] .right-container { margin-left:auto; }
+
+  @media (pointer: coarse) {
+    .sat-popout-btn, .sat-reading-btn, .sat-workspace-toolbar button, .sat-workspace-toolbar select, .sat-hud-tabs button { min-width: 40px; min-height: 40px; }
+    .sat-tool-surface button { touch-action: manipulation; }
+    .sat-tool-surface input[type="range"] { min-height: 32px; }
+    .menu-toggle-btn, .menu-toggle-btn-left { width: 40px; height: 40px; }
+  }
+`;
+
+function SatToolSurface({ id, viewer, quad, rect, hidden, children }) {
+  const homeRef = useRef(null);
+  const [container] = useState(() => {
+    const node = document.createElement('div');
+    node.className = 'sat-tool-surface';
+    node.dataset.tool = id;
+    return node;
+  });
+  React.useLayoutEffect(() => {
+    const destination = viewer?.mount?.isConnected ? viewer.mount : homeRef.current;
+    if (destination && container.parentNode !== destination) destination.appendChild(container);
+    return () => { if (container.parentNode) container.parentNode.removeChild(container); };
+  }, [container, viewer]);
+  React.useLayoutEffect(() => {
+    container.dataset.host = viewer ? 'window' : quad ? 'quad' : 'classic';
+    container.style.cssText = '';
+    if (quad && !viewer && rect) Object.assign(container.style, {
+      left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`,
+      visibility: hidden ? 'hidden' : 'visible'
+    });
+  }, [container, viewer, quad, rect?.left, rect?.top, rect?.width, rect?.height, hidden]);
+  useEffect(() => {
+    let pointer = null;
+    const mouse = (type, event, target) => target.dispatchEvent(new (container.ownerDocument.defaultView.MouseEvent)(type, {
+      bubbles: true, cancelable: true, clientX: event.clientX, clientY: event.clientY, button: 0, buttons: type === 'mouseup' ? 0 : 1
+    }));
+    const down = event => {
+      if (pointer !== null || event.isPrimary === false || event.pointerType === 'mouse' || container.dataset.host !== 'classic') return;
+      const header = event.target.closest('.modal-header,.sat-data-header');
+      if (!header || event.target.closest('button,input,select,a,label')) return;
+      event.preventDefault(); pointer = event.pointerId;
+      container.setPointerCapture?.(pointer);
+      mouse('mousedown', event, header);
+    };
+    // Bubble through document and window: Classic tools use both listener hosts.
+    const move = event => { if (pointer === event.pointerId) { event.preventDefault(); mouse('mousemove', event, container.ownerDocument); } };
+    const up = event => {
+      if (pointer !== event.pointerId) return;
+      const releasedPointer = pointer; pointer = null;
+      mouse('mouseup', event, container.ownerDocument);
+      if (container.hasPointerCapture?.(releasedPointer)) container.releasePointerCapture?.(releasedPointer);
+    };
+    container.addEventListener('pointerdown', down);
+    container.addEventListener('pointermove', move);
+    container.addEventListener('pointerup', up);
+    container.addEventListener('pointercancel', up);
+    container.addEventListener('lostpointercapture', up);
+    return () => { container.removeEventListener('pointerdown', down); container.removeEventListener('pointermove', move); container.removeEventListener('pointerup', up); container.removeEventListener('pointercancel', up); container.removeEventListener('lostpointercapture', up); };
+  }, [container]);
+  return <div className="sat-tool-placeholder" data-sat-home={id} ref={homeRef}>{createPortal(children, container, id)}</div>;
+}
+
+
+// Pagination changes visibility only; the original controls keep their React state.
+function SatHudPages({ active, labels, children }) {
+  const [page, setPage] = useState(0);
+  const items = React.Children.toArray(children).filter(React.isValidElement);
+  const selected = Math.min(page, Math.max(0, items.length - 1));
+  return <div className="sat-hud-pages" data-paged={active}>
+    <div className="sat-hud-tabs" role="tablist" aria-label="Control sections">
+      {items.map((_, i) => <button key={i} role="tab" aria-selected={selected === i} onClick={() => setPage(i)}>{labels[i] || `SECTION ${i + 1}`}</button>)}
+    </div>
+    {items.map((item, i) => <div className="sat-hud-page" data-section-index={i} key={item.key || i} hidden={active && selected !== i}>{item}</div>)}
+  </div>;
+}
+
+function SatFeedback({ alert, onDismiss }) {
+  if (!alert?.show) return null;
+  return <aside className="sat-notice" role="alert" data-error={alert.type === 'error'}>
+    <strong>{alert.type === 'error' ? 'SAT-Orbit · ERROR' : 'SAT-Orbit · NOTICE'}</strong>
+    <p>{alert.message}</p><button onClick={onDismiss} aria-label="Dismiss notification">✕</button>
+  </aside>;
+}
+
+function SatWindowIcon({ kind = 'maximize' }) {
+  return <svg className="sat-window-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    {kind === 'detach' ? <><path d="M14 4h6v6M20 4l-9 9"/><path d="M10 5H4v15h15v-6"/></>
+      : kind === 'return' ? <><path d="M13 4h7v16H4v-7"/><path d="M4 4v6h6M4 10l9-9"/></>
+      : kind === 'restore' ? <><path d="M8 8V4h12v12h-4"/><rect x="4" y="8" width="12" height="12" rx="1"/></>
+      : <rect x="4" y="4" width="16" height="16" rx="1"/>}
+  </svg>;
+}
+
+function buildSatDetachedUrl(toolId, sessionId = '') {
+  const url = new URL(window.location.href);
+  url.searchParams.set('satDetached', toolId);
+  if (sessionId) url.searchParams.set('satSession', sessionId);
+  else url.searchParams.delete('satSession');
+  url.hash = '';
+  return url.toString();
+}
+
+function getSatDetachedToolFromLocation(targetWindow = window) {
+  try {
+    const url = new URL(targetWindow.location.href);
+    const toolId = url.searchParams.get('satDetached');
+    return toolId && SAT_WORKSPACE_TOOLS[toolId] ? toolId : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function rehomeSatToolSurface(toolId, viewerMount) {
+  // Keep the single live React/Canvas surface inside the MAIN document before a
+  // detached browser document disappears. Moving it while the child document is
+  // still alive preserves event bindings, canvas state and the existing React tree.
+  try {
+    const home = document.querySelector(`[data-sat-home="${toolId}"]`);
+    const liveSurface = viewerMount?.querySelector?.('.sat-tool-surface');
+    if (!home || !liveSurface) return false;
+    if (liveSurface.parentNode !== home) home.appendChild(liveSurface);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function createSatViewerDocument(viewerWindow, title, toolId, sessionId = '') {
+  // Detached tools use a real SAT-Orbit URL while the live DOM stays owned by the main Core.
+  const doc = viewerWindow.document;
+  doc.documentElement.lang = document.documentElement.lang || 'th';
+  doc.head.replaceChildren();
+  const titleNode = doc.createElement('title');
+  titleNode.textContent = `SAT-Orbit — ${title}`;
+  doc.head.appendChild(titleNode);
+  doc.title = `SAT-Orbit — ${title}`;
+  try {
+    viewerWindow.history.replaceState(
+      { satOrbitDetached: true, toolId, sessionId },
+      '',
+      buildSatDetachedUrl(toolId, sessionId)
+    );
+  } catch (_) { /* Keep the viewer alive even if browser URL decoration is restricted. */ }
+  const base = doc.createElement('base');
+  base.href = document.baseURI;
+  doc.head.appendChild(base);
+  const viewport = doc.createElement('meta');
+  viewport.name = 'viewport';
+  viewport.content = 'width=device-width, initial-scale=1';
+  doc.head.appendChild(viewport);
+  let measureStatus = () => {};
+  const syncStyles = () => {
+    doc.querySelectorAll('[data-sat-copied-style]').forEach(node => node.remove());
+    document.querySelectorAll('style, link[rel="stylesheet"]').forEach(node => {
+      const copy = node.cloneNode(true);
+      copy.setAttribute('data-sat-copied-style', 'true');
+      doc.head.appendChild(copy);
+    });
+    doc.documentElement.style.cssText = document.documentElement.style.cssText;
+    measureStatus();
+  };
+  syncStyles();
+  const style = doc.createElement('style');
+  style.textContent = SAT_WORKSPACE_CSS + '\nhtml,body {margin:0!important;width:100%;height:100%;overflow:hidden!important;background:#010408;color:#e6fbff;} #sat-viewer-status{position:fixed;bottom:0;left:0;right:0;min-height:26px;box-sizing:border-box;padding:5px 10px;background:#071720;border-top:1px solid #244755;color:#a5c4ce;font:calc(clamp(12px,.7vw,20px) * var(--sat-text-scale,1))/1.3 Arial,sans-serif;z-index:50000;white-space:normal;overflow-wrap:break-word;}';
+  doc.head.appendChild(style);
+  doc.body.replaceChildren();
+  const mount = doc.createElement('div');
+  mount.id = 'sat-viewer-mount';
+  doc.body.appendChild(mount);
+  const status = doc.createElement('div');
+  status.id = 'sat-viewer-status';
+  status.textContent = 'CONNECTING TO MAIN SAT-ORBIT SESSION…';
+  doc.body.appendChild(status);
+  let active = true;
+  let teardownRescued = false;
+
+  // Browser-X / tab-close / detached navigation hardening:
+  // rescue the live surface synchronously BEFORE the child document is destroyed.
+  // The existing 500 ms controller poll remains responsible for state cleanup and
+  // reload re-attachment, so this handler never resets tool/application state.
+  const rescueBeforeDetachedTeardown = () => {
+    if (!active || teardownRescued) return;
+    teardownRescued = true;
+    rehomeSatToolSurface(toolId, mount);
+  };
+
+  measureStatus = () => {
+    if (!active || viewerWindow.closed) return;
+    const height = `${Math.ceil(status.getBoundingClientRect().height)}px`;
+    if (mount.style.getPropertyValue('--sat-viewer-status-height') !== height) mount.style.setProperty('--sat-viewer-status-height', height);
+  };
+  measureStatus();
+  const statusObserver = viewerWindow.ResizeObserver ? new viewerWindow.ResizeObserver(measureStatus) : null;
+  statusObserver?.observe(status);
+  viewerWindow.addEventListener('resize', measureStatus);
+  // pagehide fires while the detached document is still valid, which is the safe
+  // moment to adopt the live surface back into the main SAT-Orbit document.
+  viewerWindow.addEventListener('pagehide', rescueBeforeDetachedTeardown);
+  // unload is a fallback for browser/window-close paths that skip pagehide. The
+  // rescue function is idempotent, so receiving both events is safe.
+  viewerWindow.addEventListener('unload', rescueBeforeDetachedTeardown);
+  doc.fonts?.addEventListener?.('loadingdone', measureStatus);
+  return { win: viewerWindow, mount, status, syncStyles, measureStatus, document: doc, rescueBeforeDetachedTeardown, dispose: () => {
+    active = false;
+    statusObserver?.disconnect();
+    viewerWindow.removeEventListener('resize', measureStatus);
+    viewerWindow.removeEventListener('pagehide', rescueBeforeDetachedTeardown);
+    viewerWindow.removeEventListener('unload', rescueBeforeDetachedTeardown);
+    doc.fonts?.removeEventListener?.('loadingdone', measureStatus);
+  } };
+}
+
+function getWorkspaceRects(width, height, toolbarHeight = 46) {
+  const gap = 8, top = toolbarHeight + gap;
+  const cellWidth = Math.max(1, (width - gap * 3) / 2);
+  const cellHeight = Math.max(1, (height - top - gap * 2) / 2);
+  return {
+    globe: { left: gap, top, width: cellWidth, height: cellHeight },
+    radar: { left: gap * 2 + cellWidth, top, width: cellWidth, height: cellHeight },
+    diagram: { left: gap, top: top + gap + cellHeight, width: cellWidth, height: cellHeight },
+    analyzer: { left: gap * 2 + cellWidth, top: top + gap + cellHeight, width: cellWidth, height: cellHeight }
+  };
+}
+
+// One RF simulation model supplies the Analyzer, Signal Flow and status labels.
+// These are existing application presets at the IF outputs, not verified hardware
+// specifications or measurements from a receiver. Real carrier lock requires RF telemetry.
+const SIM_RF_PROFILES = {
+  // RF = spacecraft downlink center; freq = receiver IF used by this simulator.
+  // THEOS-2 symbol rates are the engineering baseline used by the SIM trace model.
+  '33396': { name: 'THEOS', xBand: { freq: 720, rf: 8140, bw: 120, mod: 'QPSK' }, sBand: { freq: 70, rf: 2211, bw: 0.8, mod: 'BPSK' } },
+  '58016': { name: 'THEOS-2', xBand: { freq: 720, rf: 8150, bw: 310, mod: 'O-QPSK', symbolRateMsps: 155 }, sBand: { freq: 70, rf: 2244.228, bw: 0.235, mod: 'QPSK', symbolRateMsps: 0.117647 } },
+  '27424': { name: 'AQUA', xBand: { freq: 720, bw: 15, mod: 'SQPSK' }, sBand: { freq: 70, bw: 2, mod: 'BPSK' } },
+  '25994': { name: 'TERRA', xBand: { freq: 720, bw: 15, mod: 'SQPSK' }, sBand: { freq: 70, bw: 2, mod: 'BPSK' } },
+  '49260': { name: 'LANDSAT-9', xBand: { freq: 720, bw: 384, mod: 'O-QPSK' }, sBand: { freq: 70, bw: 3, mod: 'BPSK' } },
+  '39084': { name: 'LANDSAT-8', xBand: { freq: 720, bw: 384, mod: 'O-QPSK' }, sBand: { freq: 70, bw: 3, mod: 'BPSK' } },
+  '54234': { name: 'NOAA-21', xBand: { freq: 720, bw: 30, mod: 'QPSK' }, sBand: { freq: 70, bw: 2, mod: 'BPSK' } },
+  '43013': { name: 'NOAA-20', xBand: { freq: 720, bw: 30, mod: 'QPSK' }, sBand: { freq: 70, bw: 2, mod: 'BPSK' } },
+  '37849': { name: 'SUOMI NPP', xBand: { freq: 720, bw: 30, mod: 'QPSK' }, sBand: { freq: 70, bw: 2, mod: 'BPSK' } },
+  '39634': { name: 'SENTINEL-1A', xBand: { freq: 720, bw: 300, mod: 'QPSK' }, sBand: { freq: 70, bw: 2, mod: 'BPSK' } },
+};
+
+function getRfProfile(catnr, config = {}) {
+  if (SIM_RF_PROFILES[catnr]) return SIM_RF_PROFILES[catnr];
+  let xBand = { freq: 720, bw: 100, mod: 'QPSK' };
+  if (config.group === 'SYNTHETIC APERTURE RADAR (SAR)') xBand = { freq: 720, bw: 300, mod: 'QPSK' };
+  else if (config.group === 'WEATHER & EARTH RESOURCES' || config.group === 'GLOBAL EESS & SCIENCE') xBand = { freq: 720, bw: 150, mod: 'O-QPSK' };
+  else if (config.group === 'MEGA CONSTELLATIONS') xBand = { freq: 720, bw: 250, mod: 'QPSK' };
+  else if (config.group === 'GLOBAL NAVIGATION (GNSS)') xBand = { freq: 720, bw: 20, mod: 'BPSK' };
+  else if (config.group === 'THAI CUBESAT & MICROSAT') xBand = { freq: 720, bw: 5, mod: 'BPSK' };
+  return { name: config.name || 'UNKNOWN', xBand, sBand: { freq: 70, bw: 1, mod: 'BPSK' } };
+}
+
+function getRfState(target, stationMask) {
+  const elevationDeg = Number.isFinite(target?.elevationDeg) ? target.elevationDeg : null;
+  const mask = Number.isFinite(stationMask) ? Math.max(0, stationMask) : 0;
+  const acquisitionEl = Math.max(3, mask);
+  const visible = elevationDeg !== null && elevationDeg >= 0;
+  const eligible = visible && elevationDeg >= mask;
+  const locked = eligible && elevationDeg >= acquisitionEl;
+  const status = !visible ? 'NO_CARRIER' : !eligible ? 'MASKED' : locked ? 'LOCKED' : 'ACQUIRING';
+  const label = { NO_CARRIER: 'NO CARRIER', MASKED: 'BELOW MASK', LOCKED: 'RF LOCKED (SIM)', ACQUIRING: 'ACQUIRING' }[status];
+  const color = locked ? '#00ff66' : eligible ? '#ffcc00' : '#ff5555';
+  const acquisitionProgress = !eligible ? 0 : locked ? 1 : acquisitionEl <= mask + 1e-6 ? 1 : Math.max(0, Math.min(1, (elevationDeg - mask) / (acquisitionEl - mask)));
+  const quality = locked ? 1 : eligible ? 0.18 + acquisitionProgress * 0.62 : 0;
+  const geometricRatio = Number.isFinite(target?.altKm) && Number.isFinite(target?.rangeKm) && target.rangeKm > 0
+    ? Math.max(0, Math.min(1, target.altKm / target.rangeKm)) : 0.25;
+  const strength = locked ? 0.82 + 0.18 * Math.sqrt(geometricRatio) : eligible ? 0.20 + 0.45 * acquisitionProgress : 0;
+  return { mode: 'SIM', elevationDeg, stationMask: mask, acquisitionEl, visible, eligible, locked, status, label, color, quality, acquisitionProgress, strength };
+}
+
+function rfConstellationAngles(modulation) {
+  return modulation === 'BPSK' ? [0, Math.PI] : [Math.PI / 4, 3 * Math.PI / 4, 5 * Math.PI / 4, 7 * Math.PI / 4];
+}
+
+// Deterministic visual noise follows simulation time, so a paused replay stays still.
+function rfVisualNoise(seed) {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function rfSpectrumPowerDb(channel, offsetMHz, state, simulatedTimeMs, isXBand) {
+  const referenceDbm = isXBand ? -35 : -20;
+  // Bench-analyzer visual cadence: keep the deterministic SIM noise alive, but
+  // update it slowly enough that a stable carrier does not appear to "breathe".
+  const tick = Math.floor(simulatedTimeMs / 220);
+  const t = simulatedTimeMs / 1000;
+
+
+  // CH1 X-BAND: restore the ACTUAL continuously-rendered reference silhouette
+  // from Sat-Orbit-23202026-Old(4).txt. The deployed reference did NOT use the
+  // later flat-top/RRC block for the visible moving trace; it used a linear
+  // amplitude-domain cos^0.6 main lobe plus two sidelobe regions.
+  //
+  // Keep the current analyzer dBm grid/readouts, but map the old amplitude
+  // silhouette linearly onto that 50 dB display range. This preserves the old
+  // visual geometry while keeping the present instrument UI and SIM labeling.
+  if (isXBand) {
+    const progress = state.locked ? 1 : Math.max(0, Math.min(1, state.acquisitionProgress ?? state.quality ?? 0));
+    const residual = 1 - progress;
+
+    // NO CARRIER must be instrument noise only. Do not render a synthetic payload
+    // envelope before acquisition begins. Noise still moves subtly like a real trace.
+    if (!state.eligible) {
+      const floorNoise = (rfVisualNoise(tick * 0.73 + offsetMHz * 173.1 + 11) - 0.5) * 1.2;
+      return referenceDbm - 44 + floorNoise;
+    }
+
+    // Same AFC search used before lock. It collapses completely at LOCK.
+    const driftMHz = state.locked
+      ? 0
+      : (Number(channel.bw) || 310) * 0.055 * residual * Math.sin(t * 1.15 + 0.3);
+    const effectiveOffset = offsetMHz - driftMHz;
+
+    // EXACT reference horizontal geometry.
+    const visualCompression = 0.65;
+    const halfBwMHz = Math.max(1e-9, (Number(channel.bw) || 310) * visualCompression / 2);
+    const xNorm = Math.abs(effectiveOffset) / halfBwMHz;
+
+    let shapeAmp = 0;
+    if (xNorm <= 1.0) {
+      shapeAmp = Math.pow(Math.max(0, Math.cos((xNorm * Math.PI) / 2)), 0.6);
+    } else if (xNorm < 1.8) {
+      shapeAmp = Math.abs(Math.sin((xNorm - 1.0) * Math.PI)) * 0.30 / Math.max(xNorm, 1e-9);
+    } else if (xNorm < 2.6) {
+      shapeAmp = Math.abs(Math.sin((xNorm - 1.8) * Math.PI)) * 0.15 / Math.max(xNorm, 1e-9);
+    }
+
+    // Reference trace noise was 0.02..0.08 plus a small per-pixel vertical jitter.
+    // Use deterministic SIM noise so PAUSE still freezes the current application.
+    const noiseAmp = 0.02 + 0.06 * rfVisualNoise(tick * 0.73 + effectiveOffset * 173.1 + 11);
+    // Keep the locked payload silhouette stationary. Any visible motion belongs to
+    // the noise floor, not to the occupied-band envelope itself.
+    const jitterAmp = state.locked
+      ? 0
+      : (rfVisualNoise(tick * 1.37 + effectiveOffset * 91.7 + 211) - 0.5) * 0.008;
+
+    // Acquisition gain follows acquisition progress only; remove periodic amplitude
+    // breathing so the analyzer behaves like a stable bench instrument.
+    const acquisitionGain = state.locked
+      ? 1
+      : Math.max(0, Math.min(1, 0.35 + 0.65 * progress));
+    const signalAmp = shapeAmp * acquisitionGain;
+    const totalAmp = Math.max(0, Math.min(1, Math.max(noiseAmp, signalAmp) + jitterAmp * (0.25 + 0.75 * shapeAmp)));
+
+    // Old canvas Y was linear in amplitude. Because the present Y axis is linear
+    // in dB, a linear amplitude->display-dB mapping reproduces that silhouette.
+    // Floor ~= -80 dBm and locked center ~= -40 dBm, matching the old marker text.
+    const noiseFloorDbm = referenceDbm - 45;
+    const peakDbm = referenceDbm - 5;
+    return noiseFloorDbm + totalAmp * (peakDbm - noiseFloorDbm);
+  }
+
+  // Engineering SIM model: QPSK and O-QPSK have the same ideal PSD when the
+  // pulse shape is the same. With no receiver ICD pulse-shaping coefficient in
+  // this UI, use the rectangular-symbol reference PSD: sinc^2(f/Rs).  The first
+  // nulls occur at +/-Rs, so the null-to-null width is 2Rs.  THEOS-2 therefore
+  // uses Rs=155 MSym/s for the 310 MHz X-band model and 117.647 kSym/s for the
+  // 0.235 MHz S-band telemetry model.  This is a SIM reference, not an RF capture.
+  const symbolRateMHz = Math.max(1e-6, Number(channel.symbolRateMsps) || Math.max(1e-6, Number(channel.bw) / 2));
+
+  // Instrument-like noise floor: deterministic in SIM time so PAUSE freezes the trace.
+  const fastNoise = (rfVisualNoise(tick * 0.731 + offsetMHz * (isXBand ? 47.3 : 811.7) + (isXBand ? 13 : 37)) - 0.5) * (isXBand ? 1.2 : 1.0);
+  // At RF LOCK the spectral envelope is stationary; only the noise floor updates.
+  // Before lock, a small correlated component remains to suggest acquisition activity.
+  const correlatedTime = state.locked ? 0 : t;
+  const correlatedNoise =
+    Math.sin(offsetMHz * (isXBand ? 0.043 : 19.0) + correlatedTime * 0.91) * (isXBand ? 0.22 : 0.12) +
+    Math.sin(offsetMHz * (isXBand ? 0.017 : 7.3) - correlatedTime * 0.47) * (isXBand ? 0.12 : 0.08);
+  const noiseDbm = referenceDbm - 44 + fastNoise + correlatedNoise;
+  if (!state.eligible) return noiseDbm;
+
+  const progress = state.locked ? 1 : Math.max(0, Math.min(1, state.acquisitionProgress ?? state.quality ?? 0));
+  const residual = 1 - progress;
+
+  // AFC/AGC search during acquisition. Drift and amplitude breathing collapse at lock.
+  const driftMHz = state.locked ? 0 : symbolRateMHz * (isXBand ? 0.08 : 0.22) * residual * Math.sin(t * (isXBand ? 0.73 : 1.17) + (isXBand ? 0.35 : 1.1));
+  const effectiveOffset = offsetMHz - driftMHz;
+  const x = effectiveOffset / symbolRateMHz;
+  const ax = Math.abs(x);
+
+  // sinc^2 power spectral density of NRZ QPSK/O-QPSK symbols.
+  const sinc = ax < 1e-8 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
+  let psdLinear = sinc * sinc;
+
+  // A practical receiver chain suppresses very distant sidelobes. This gentle
+  // envelope keeps the first sidelobes visible while preventing an unrealistic
+  // comb across a wide display span.
+  const receiverEnvelope = Math.exp(-0.10 * Math.pow(ax, 1.35));
+  psdLinear *= receiverEnvelope;
+
+  const peakDbm = referenceDbm - 5 - (1 - state.strength) * 12 - (state.locked ? 0 : 9 * residual);
+  let signalPower = Math.pow(10, peakDbm / 10) * psdLinear;
+
+  // Small in-band texture represents modulation statistics / detector variance,
+  // not a second synthetic lobe generator.
+  if (signalPower > 0) {
+    const textureWindow = Math.exp(-0.22 * ax * ax);
+    const textureTime = state.locked ? 0 : t;
+    const textureDb = textureWindow * (
+      (isXBand ? 0.26 : 0.16) * Math.sin(effectiveOffset * (isXBand ? 0.091 : 28.0) + textureTime * 0.42) +
+      (isXBand ? 0.15 : 0.09) * Math.sin(effectiveOffset * (isXBand ? 0.027 : 11.0) - textureTime * 0.31)
+    );
+    signalPower *= Math.pow(10, textureDb / 10);
+  }
+
+  if (!state.locked && signalPower > 0) {
+    const flutterDb = residual * (
+      0.8 * Math.sin(t * 2.1 + (isXBand ? 0.4 : 1.7)) +
+      0.35 * Math.sin(t * 4.3 + (isXBand ? 2.2 : 0.6))
+    );
+    signalPower *= Math.pow(10, flutterDb / 10);
+  }
+
+  const floorPower = Math.pow(10, noiseDbm / 10);
+  return 10 * Math.log10(Math.max(1e-30, signalPower + floorPower));
+}
+
+function formatRfMHz(valueMHz, digits = 3) {
+  const value = Number(valueMHz);
+  if (!Number.isFinite(value)) return 'N/A';
+  if (Math.abs(value) >= 1000) return `${value.toFixed(digits)} MHz`;
+  if (Math.abs(value) >= 1) return `${value.toFixed(digits)} MHz`;
+  if (Math.abs(value) >= 0.001) return `${(value * 1000).toFixed(3)} kHz`;
+  return `${(value * 1e6).toFixed(1)} Hz`;
+}
+
+function getRfInstrumentSettings(channel, span, isXBand) {
+  // Use conservative AUTO display settings: resolve at least ~40 points across
+  // the modeled occupied band while keeping the analyzer span responsive.
+  const bw = Math.max(1e-6, Number(channel?.bw) || 1);
+  const displaySpan = Math.max(1e-6, Number(span) || bw * 3);
+  const rbwMHz = Math.max(0.000001, Math.min(displaySpan / 106, bw / 40));
+  const vbwMHz = rbwMHz * 3;
+  return {
+    refDbm: isXBand ? -35 : -20,
+    rbwMHz,
+    vbwMHz,
+    detector: 'RMS',
+    attenuationDb: 10,
+  };
+}
+
+function drawRfSpectrumFrame(surface, channel, span, state, simulatedTimeMs, isXBand) {
+  const { ctx, width: w, height: h } = surface;
+  const externalLabels = !!surface.externalLabels;
+  if (w < 30 || h < (externalLabels ? 16 : 50)) return;
+  ctx.fillStyle = '#07090c'; ctx.fillRect(0, 0, w, h);
+  const left = externalLabels && w >= 360 ? 42 : 10, right = w - 10, graphW = right - left;
+  const top = externalLabels ? 7 : 18, bottom = Math.max(top + 1, h - (externalLabels ? 7 : 32));
+  const referenceDbm = isXBand ? -35 : -20;
+  const dbToY = db => Math.max(top, Math.min(bottom, top + (referenceDbm - db) / 50 * (bottom - top)));
+  ctx.strokeStyle = 'rgba(150,165,174,0.20)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+  ctx.beginPath();
+  for (let i = 0; i <= 10; i++) {
+    const x = left + i * graphW / 10, y = top + i * (bottom - top) / 10;
+    ctx.moveTo(x, top); ctx.lineTo(x, bottom);
+    ctx.moveTo(left, y); ctx.lineTo(right, y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+  if (externalLabels && w >= 360 && h >= 90) {
+    ctx.save();
+    ctx.fillStyle = '#93a2aa';
+    ctx.font = '700 10px Rajdhani, Arial, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i <= 10; i += 2) {
+      const y = top + i * (bottom - top) / 10;
+      ctx.fillText(String(referenceDbm - i * 5), left - 7, y);
+    }
+    ctx.restore();
+  }
+  const traceColor = isXBand ? '#ffcc00' : '#00eaff';
+  const sampleCount = Math.max(2, Math.ceil(graphW) + 1);
+  const rawDb = new Array(sampleCount);
+  for (let i = 0; i < sampleCount; i++) {
+    const plotX = Math.min(i, graphW);
+    const offset = (plotX / graphW - 0.5) * span;
+    rawDb[i] = rfSpectrumPowerDb(channel, offset, state, simulatedTimeMs, isXBand);
+  }
+  // Display detector / VBW smoothing. The S-band trace stays narrow but no
+  // longer becomes a one-pixel carrier; X-band keeps the physical sinc^2 sidelobes.
+  const settings = getRfInstrumentSettings(channel, span, isXBand);
+  const rbwPixels = Math.max(1, Math.round((settings.rbwMHz / Math.max(1e-9, span)) * graphW));
+  const halfKernel = Math.max(1, Math.min(isXBand ? 4 : 3, Math.ceil(rbwPixels * 0.8)));
+  // The old X-band reference was drawn sample-for-sample with no RBW/VBW
+  // convolution. Do not smooth CH1 or its deep nulls / small sidelobes disappear.
+  // Keep the current S-band detector smoothing unchanged.
+  const smoothedDb = isXBand ? rawDb : rawDb.map((value, i) => {
+    let weighted = 0, weightSum = 0;
+    for (let k = -halfKernel; k <= halfKernel; k++) {
+      const idx = Math.max(0, Math.min(sampleCount - 1, i + k));
+      const weight = halfKernel + 1 - Math.abs(k);
+      weighted += rawDb[idx] * weight;
+      weightSum += weight;
+    }
+    return weighted / Math.max(1, weightSum);
+  });
+  ctx.strokeStyle = traceColor; ctx.lineWidth = 1.35; ctx.beginPath();
+  for (let i = 0; i < sampleCount; i++) {
+    const plotX = Math.min(i, graphW);
+    const y = dbToY(smoothedDb[i]);
+    if (i === 0) ctx.moveTo(left + plotX, y); else ctx.lineTo(left + plotX, y);
+  }
+  ctx.stroke();
+  if (externalLabels) {
+    if (state.eligible) {
+      const markerDbm = rfSpectrumPowerDb(channel, 0, state, simulatedTimeMs, isXBand);
+      const markerX = left + graphW / 2, markerY = dbToY(markerDbm);
+      ctx.fillStyle = traceColor; ctx.beginPath();
+      ctx.moveTo(markerX, markerY); ctx.lineTo(markerX - 4, markerY - 6); ctx.lineTo(markerX + 4, markerY - 6); ctx.closePath(); ctx.fill();
+    }
+    return;
+  }
+  ctx.font = 'bold 11px Rajdhani, monospace'; ctx.textAlign = 'left'; ctx.fillStyle = '#e2e8f0';
+  const utcTime = new Date(simulatedTimeMs).toISOString().slice(11, 19);
+  ctx.fillText(`${utcTime} UTC · SIM`, left + 4, 13);
+  // dBm values belong to the synthetic trace; marker uses the exact same function.
+  if (h >= 130) ctx.fillText(`REF ${referenceDbm.toFixed(1)} dBm · 5 dB/div`, left + 4, 29);
+  ctx.fillStyle = state.color;
+  ctx.fillText(`${state.label} · EL ≥ ${state.acquisitionEl.toFixed(1)}°`, left + 4, h >= 130 ? 44 : 28);
+  if (state.eligible) {
+    const markerDbm = rfSpectrumPowerDb(channel, 0, state, simulatedTimeMs, isXBand);
+    const markerX = left + graphW / 2, markerY = dbToY(markerDbm);
+    ctx.fillStyle = traceColor; ctx.beginPath();
+    ctx.moveTo(markerX, markerY); ctx.lineTo(markerX - 4, markerY - 7); ctx.lineTo(markerX + 4, markerY - 7); ctx.closePath(); ctx.fill();
+    ctx.textAlign = 'right';
+    if (w >= 340) {
+      ctx.fillText(`MKR ${channel.freq.toFixed(1)} MHz`, right - 4, 13);
+      ctx.fillStyle = '#fff'; ctx.fillText(`${markerDbm.toFixed(2)} dBm (SIM)`, right - 4, 29);
+    }
+  }
+  ctx.fillStyle = '#e2e8f0'; ctx.textAlign = 'left';
+  ctx.fillText(`IF CENTER ${channel.freq.toFixed(1)} MHz`, left + 4, h - 17);
+  ctx.textAlign = 'right';
+  ctx.fillText(`SPAN ${span >= 1000 ? (span / 1000).toFixed(3) + ' GHz' : span.toFixed(1) + ' MHz'}`, right - 4, h - 17);
+  ctx.textAlign = 'left'; ctx.fillStyle = '#91a2ba';
+  ctx.fillText(`SIM PRESET · BW ${channel.bw} MHz`, left + 4, h - 4);
+  if (w >= 340) { ctx.textAlign = 'right'; ctx.fillText('SYNTHETIC RF', right - 4, h - 4); }
+  ctx.textAlign = 'left';
+}
+
+function drawRfIqFrame(surface, profile, state, simulatedTimeMs, showXBand, showSBand) {
+  const { ctx, width: w, height: h } = surface;
+  if (w < 10 || h < 10) return;
+  ctx.fillStyle = '#0b1121'; ctx.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2, radius = Math.min(w, h) * 0.35;
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; ctx.beginPath();
+  ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,204,0,0.35)'; ctx.setLineDash([4, 4]); ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+  const tick = Math.floor(simulatedTimeMs / 40), t = simulatedTimeMs / 1000;
+
+  const gaussianPair = (seed) => {
+    const u1 = Math.max(0.0001, rfVisualNoise(seed + 1));
+    const u2 = rfVisualNoise(seed + 2);
+    const mag = Math.sqrt(-2 * Math.log(u1));
+    return [mag * Math.cos(2 * Math.PI * u2), mag * Math.sin(2 * Math.PI * u2)];
+  };
+
+  const drawChannel = (channel, color, seedOffset) => {
+    const angles = rfConstellationAngles(channel.mod); // BPSK=2, QPSK/O-QPSK=4 ideal symbols.
+    const count = angles.length === 2 ? 150 : 260;
+    const progress = state.locked ? 1 : Math.max(0, Math.min(1, state.acquisitionProgress ?? 0));
+    ctx.fillStyle = color;
+    for (let i = 0; i < count; i++) {
+      const seed = tick * 4096 + seedOffset + i * 11;
+      let x, y;
+      if (!state.eligible) {
+        // No carrier: thermal/noise cloud remains around the origin, not a square of random symbols.
+        const [gx, gy] = gaussianPair(seed);
+        const sigma = radius * 0.22;
+        x = cx + gx * sigma; y = cy + gy * sigma;
+      } else {
+        const ideal = angles[i % angles.length];
+        const [gx, gy] = gaussianPair(seed);
+        if (state.locked) {
+          const sigma = radius * (channel.mod === 'O-QPSK' ? 0.038 : 0.030);
+          x = cx + radius * Math.cos(ideal) + gx * sigma;
+          y = cy - radius * Math.sin(ideal) + gy * sigma;
+        } else {
+          // Acquisition: residual carrier/phase error produces a rotating arc/ring that
+          // progressively collapses into the correct 2- or 4-cluster constellation.
+          const residual = 1 - progress;
+          const phaseError = residual * (0.95 * Math.sin(t * 1.35 + seedOffset * 0.001) + 0.38 * Math.sin(t * 3.7));
+          const phaseJitter = gx * (0.42 * residual + 0.06);
+          const r = radius * (0.72 + 0.28 * progress) + gy * radius * (0.20 * residual + 0.045);
+          const angle = ideal + phaseError + phaseJitter;
+          x = cx + r * Math.cos(angle);
+          y = cy - r * Math.sin(angle);
+        }
+      }
+      ctx.globalAlpha = 0.55 + rfVisualNoise(seed + 3) * 0.45;
+      ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+    }
+    ctx.globalAlpha = 1;
+  };
+  if (showXBand) drawChannel(profile.xBand, '#ffcc00', 0);
+  if (showSBand) drawChannel(profile.sBand, '#00eaff', 2000);
+}
+
+// TSX 2026: Premium neutral spacecraft used only when the selected satellite
+// does not have a verified mission-specific image asset.  This avoids visually
+// misrepresenting another spacecraft as THEOS/THEOS-2 while keeping the TSX
+// demonstration polished and self-contained (no extra /textures file required).
+const GENERIC_LEO_SATELLITE_SVG = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 430" role="img" aria-label="Generic LEO satellite">
+  <defs>
+    <linearGradient id="busGold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff1aa"/>
+      <stop offset="0.22" stop-color="#d6a83d"/>
+      <stop offset="0.58" stop-color="#8d5f18"/>
+      <stop offset="1" stop-color="#f1cc67"/>
+    </linearGradient>
+    <linearGradient id="busSide" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6c4610"/>
+      <stop offset="1" stop-color="#2f1d08"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#163d74"/>
+      <stop offset="0.52" stop-color="#071d43"/>
+      <stop offset="1" stop-color="#020c25"/>
+    </linearGradient>
+    <radialGradient id="aperture" cx="40%" cy="35%" r="70%">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="0.42" stop-color="#99b6c9"/>
+      <stop offset="0.72" stop-color="#26394c"/>
+      <stop offset="1" stop-color="#08111c"/>
+    </radialGradient>
+    <filter id="shadow" x="-30%" y="-50%" width="160%" height="200%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.75"/>
+    </filter>
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g transform="translate(500 215) rotate(-4)" filter="url(#shadow)">
+    <g transform="translate(-300 -8) skewY(-5)">
+      <polygon points="-165,-63 122,-48 122,54 -165,73" fill="url(#panel)" stroke="#7197c8" stroke-width="5"/>
+      <g stroke="#315f9d" stroke-width="3" opacity="0.9">
+        <path d="M-118 -61V70M-70 -58V67M-22 -56V64M26 -53V61M74 -51V58"/>
+        <path d="M-160 -26L120 -15M-162 8L120 18M-164 42L120 50"/>
+      </g>
+      <path d="M122 -26L177 -18V28L122 34Z" fill="#7b8790" stroke="#c6d0d7" stroke-width="4"/>
+    </g>
+    <g transform="translate(300 8) skewY(5)">
+      <polygon points="-122,-54 165,-73 165,63 -122,48" fill="url(#panel)" stroke="#7197c8" stroke-width="5"/>
+      <g stroke="#315f9d" stroke-width="3" opacity="0.9">
+        <path d="M-74 -51V45M-26 -54V48M22 -57V51M70 -60V54M118 -64V58"/>
+        <path d="M-120 -18L163 -39M-120 15L164 -6M-120 47L164 27"/>
+      </g>
+      <path d="M-122 -31L-177 -28V18L-122 26Z" fill="#7b8790" stroke="#c6d0d7" stroke-width="4"/>
+    </g>
+    <g>
+      <polygon points="-104,-115 82,-92 108,72 -70,110 -122,24" fill="url(#busGold)" stroke="#f6df8a" stroke-width="5"/>
+      <polygon points="82,-92 139,-48 150,43 108,72" fill="url(#busSide)" stroke="#b17b27" stroke-width="4"/>
+      <polygon points="-70,110 108,72 150,43 -27,89" fill="#51350d" opacity="0.8"/>
+      <g fill="none" stroke="#fff0a1" stroke-width="3" opacity="0.55">
+        <path d="M-91 -79L78 -60M-104 -32L94 -15M-104 18L103 30M-90 66L82 57"/>
+        <path d="M-53 -106L-61 95M-2 -101L-9 91M48 -96L42 83"/>
+      </g>
+      <circle cx="-5" cy="-14" r="58" fill="#d9e4ea" stroke="#fff7cb" stroke-width="8"/>
+      <circle cx="-5" cy="-14" r="45" fill="url(#aperture)" stroke="#607c8d" stroke-width="5"/>
+      <circle cx="-17" cy="-26" r="13" fill="#ffffff" opacity="0.75" filter="url(#softGlow)"/>
+      <path d="M-25 49L21 42L28 76L-20 84Z" fill="#202c35" stroke="#d4b55b" stroke-width="4"/>
+      <path d="M-95 0L-143 10L-147 43L-106 37Z" fill="#4e5960" stroke="#d6bd72" stroke-width="4"/>
+      <path d="M76 -69L112 -89L128 -74L94 -52Z" fill="#d9e3e7" stroke="#fff" stroke-width="3" opacity="0.9"/>
+    </g>
+    <g transform="translate(40 95)">
+      <path d="M0 0L16 34" stroke="#cbd5dc" stroke-width="7"/>
+      <ellipse cx="22" cy="46" rx="39" ry="17" fill="#c8d1d6" stroke="#f7fbff" stroke-width="5"/>
+      <ellipse cx="22" cy="46" rx="24" ry="10" fill="#50616d"/>
+    </g>
+  </g>
+</svg>`)}`;
 
 function SatOrbitCore() {
   
@@ -4450,6 +6977,228 @@ function SatOrbitCore() {
   const [activeStation, setActiveStation] = useState(GS_NETWORK[0]);
 
   const globeRef = useRef(null);
+// Optional workspaces start in Classic every time. Keep the Globe and Core alive.
+const [workspaceMode, setWorkspaceMode] = useState('classic');
+const [presentationScale, setPresentationScale] = useState(1);
+const [narrowHudPanel, setNarrowHudPanel] = useState(null);
+const workspaceToolbarRef = useRef(null);
+const [workspaceToolbarHeight, setWorkspaceToolbarHeight] = useState(46);
+React.useLayoutEffect(() => {
+  document.documentElement.style.setProperty('--sat-text-scale', String(presentationScale));
+}, [presentationScale]);
+React.useLayoutEffect(() => {
+  const bar = workspaceToolbarRef.current;
+  if (!bar) return;
+  const measure = () => setWorkspaceToolbarHeight(value => {
+    const height = Math.ceil(bar.getBoundingClientRect().height);
+    return height > 0 && value !== height ? height : value;
+  });
+  measure();
+  const observer = new ResizeObserver(measure); observer.observe(bar);
+  return () => observer.disconnect();
+}, [workspaceMode]);
+const [focusedWorkspacePanel, setFocusedWorkspacePanel] = useState(null);
+const [toolWindows, setToolWindows] = useState({});
+const toolWindowsRef = useRef({});
+const [toolHostRevision, setToolHostRevision] = useState(0);
+const classicToolsRef = useRef(null);
+const workspaceSessionRef = useRef(`sat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+const workspaceRuntimeRef = useRef({});
+const globeHostRef = useRef(null);
+const [globeSize, setGlobeSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+
+const publishToolWindows = (next) => {
+  toolWindowsRef.current = next;
+  setToolWindows(next);
+  setToolHostRevision(revision => revision + 1);
+};
+
+const setToolOpen = (id, open) => {
+  if (id === 'radar') setIsRadarOpen(open);
+  if (id === 'analyzer') setIsAnalyzerOpen(open);
+  if (id === 'iq') setIsIqOpen(open);
+  if (id === 'diagram') setIsDiagramOpen(open);
+  if (id === 'antenna3d') setIsAntenna3DOpen(open);
+  if (id === 'weather') setIsWeatherOpen(open);
+  if (id === 'gs') setIsGsModalOpen(open);
+  if (id === 'db') setIsModalOpen(open);
+  if (id === 'pass') setIsPassModalOpen(open);
+  if (id === 'angles') setIsAnglesOpen(open);
+  if (id === 'img') setIsImgOpen(open);
+};
+
+const returnToolToMain = (id, closeWindow = true) => {
+  const viewer = toolWindowsRef.current[id];
+  if (!viewer) return;
+  // Normal RETURN and browser-X recovery now share the same safe re-home path.
+  // If pagehide already rescued the surface this is intentionally a no-op.
+  rehomeSatToolSurface(id, viewer.mount);
+  viewer.dispose?.();
+  const next = { ...toolWindowsRef.current };
+  delete next[id];
+  publishToolWindows(next);
+  setToolOpen(id, true);
+  if (closeWindow && !viewer.win.closed) viewer.win.close();
+};
+
+const openToolWindow = (id) => {
+  if (!SAT_WORKSPACE_TOOLS[id]) return;
+  const existing = toolWindowsRef.current[id];
+  if (existing && !existing.win.closed) { existing.win.focus(); return; }
+  let child;
+  let attachTimer = null;
+  try {
+    const width = Math.min(id === 'radar' ? 760 : 1180, window.screen?.availWidth || window.innerWidth);
+    const height = Math.min(820, Math.max(400, (window.screen?.availHeight || window.innerHeight) - 70));
+    const detachedUrl = buildSatDetachedUrl(id, workspaceSessionRef.current);
+    child = window.open(detachedUrl, `${workspaceSessionRef.current}-${id}`, `popup=yes,width=${width},height=${height},resizable=yes,scrollbars=no`);
+    if (!child) throw new Error('POPUP_BLOCKED');
+
+    const attachViewer = () => {
+      try {
+        if (!child || child.closed) { if (attachTimer) clearInterval(attachTimer); return; }
+        const childUrl = new URL(child.location.href);
+        const correctTool = childUrl.origin === window.location.origin && childUrl.searchParams.get('satDetached') === id;
+        if (!correctTool || child.document.readyState !== 'complete') return;
+        if (attachTimer) clearInterval(attachTimer);
+        attachTimer = null;
+        const viewer = createSatViewerDocument(child, SAT_WORKSPACE_TOOLS[id], id, workspaceSessionRef.current);
+        publishToolWindows({ ...toolWindowsRef.current, [id]: viewer });
+        setToolOpen(id, true);
+        child.focus();
+      } catch (_) { /* Navigation is still completing; the short poll will retry. */ }
+    };
+
+    attachTimer = setInterval(attachViewer, 50);
+    attachViewer();
+    setTimeout(() => {
+      if (!attachTimer) return;
+      clearInterval(attachTimer);
+      attachTimer = null;
+      try { if (child && !child.closed) child.close(); } catch (_) {}
+      setCustomAlert({ show: true, type: 'error', message: 'Detached tool did not finish loading. Allow pop-ups for SAT-Orbit and press ↗ again. The tool remains available in the main window.' });
+    }, 6000);
+  } catch (error) {
+    if (attachTimer) clearInterval(attachTimer);
+    if (child && !child.closed) child.close();
+    setCustomAlert({ show: true, type: 'error', message: 'Unable to open a detached window. Allow pop-ups for SAT-Orbit and press ↗ again. The tool remains available in the main window.' });
+  }
+};
+
+const toggleToolVisibility = (id, currentlyOpen) => {
+  const viewer = toolWindowsRef.current[id];
+  if (viewer && !viewer.win.closed) { viewer.win.focus(); return; }
+  setToolOpen(id, !currentlyOpen);
+  if (!currentlyOpen) bringToFront(id);
+};
+
+const closeTool = (id) => {
+  if (toolWindowsRef.current[id]) returnToolToMain(id);
+  else setToolOpen(id, false);
+};
+
+const startQuadWorkspace = () => {
+  if (workspaceMode === 'quad') return;
+  // MULTI-VIEW FINAL: guarantee a deterministic 4-UP dashboard. If one of the
+  // protected tools is detached, return that SAME live surface before arranging it.
+  SAT_QUAD_TOOL_IDS.forEach(id => { if (toolWindowsRef.current[id]) returnToolToMain(id); });
+  classicToolsRef.current = {
+    radar: isRadarOpen, analyzer: isAnalyzerOpen, diagram: isDiagramOpen,
+    showXBand, showSBand
+  };
+  // Dashboard summary always presents both receiver channels. Classic state is restored on exit.
+  setShowXBand(true); setShowSBand(true);
+  setIsRadarOpen(true); setIsAnalyzerOpen(true); setIsDiagramOpen(true);
+  setFocusedWorkspacePanel(null);
+  setWorkspaceMode('quad');
+};
+
+const returnClassicWorkspace = () => {
+  const before = classicToolsRef.current;
+  if (before) {
+    SAT_QUAD_TOOL_IDS.forEach(id => setToolOpen(id, !!toolWindowsRef.current[id] || before[id]));
+    if (typeof before.showXBand === 'boolean') setShowXBand(before.showXBand);
+    if (typeof before.showSBand === 'boolean') setShowSBand(before.showSBand);
+  }
+  classicToolsRef.current = null;
+  setFocusedWorkspacePanel(null);
+  setWorkspaceMode('classic');
+};
+
+const toolDetachButton = (id) => <button className="sat-popout-btn" aria-label={toolWindows[id] ? `Return ${SAT_WORKSPACE_TOOLS[id]} to main` : `Detach ${SAT_WORKSPACE_TOOLS[id]}`}
+    title={toolWindows[id] ? 'Return tool to main window' : 'Open tool in a detachable window'}
+    onMouseDown={event => event.stopPropagation()}
+    onClick={event => { event.stopPropagation(); toolWindows[id] ? returnToolToMain(id) : openToolWindow(id); }}>
+    <SatWindowIcon kind={toolWindows[id] ? 'return' : 'detach'} />{toolWindows[id] && 'RETURN'}
+  </button>;
+const toolWindowButton = (id) => <>{toolDetachButton(id)}</>;
+
+React.useLayoutEffect(() => {
+  const host = globeHostRef.current;
+  if (!host) return;
+  const measure = () => {
+    const rect = host.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) setGlobeSize(previous => {
+      const next = { width: Math.round(rect.width), height: Math.round(rect.height) };
+      return previous.width === next.width && previous.height === next.height ? previous : next;
+    });
+  };
+  measure();
+  const observer = new ResizeObserver(measure);
+  observer.observe(host);
+  return () => observer.disconnect();
+}, []);
+
+useEffect(() => {
+  const timer = setInterval(() => {
+    for (const [id, viewer] of Object.entries(toolWindowsRef.current)) {
+      try {
+        if (viewer.win.closed) { returnToolToMain(id, false); continue; }
+        // Reloading a detached SAT-Orbit URL reattaches the live panel without starting a second Core.
+        if (viewer.win.document !== viewer.document || !viewer.mount.isConnected) {
+          let detachedTool = null;
+          try { detachedTool = getSatDetachedToolFromLocation(viewer.win); } catch (_) {}
+          if (detachedTool !== id) { returnToolToMain(id, false); continue; }
+          if (viewer.win.document.readyState !== 'complete') continue;
+          viewer.dispose?.();
+          const refreshed = createSatViewerDocument(viewer.win, SAT_WORKSPACE_TOOLS[id], id, workspaceSessionRef.current);
+          publishToolWindows({ ...toolWindowsRef.current, [id]: refreshed });
+          continue;
+        }
+        viewer.mount.style.pointerEvents = '';
+        viewer.mount.style.opacity = '';
+        viewer.status.style.background = '';
+        const state = workspaceRuntimeRef.current;
+        viewer.status.textContent = `${state.clockMode || 'SIM'} · ${state.isPlaying ? 'RUNNING' : 'PAUSED'} · ${new Date(state.time || Date.now()).toISOString().replace('T', ' ').slice(0, 19)} UTC · ${state.station || ''} · ${state.muted ? 'MUTE' : 'AUDIO'} · CONTROLLED BY MAIN WINDOW`;
+        viewer.measureStatus?.();
+      } catch (_) { returnToolToMain(id, false); }
+    }
+  }, 500);
+  const syncTheme = () => Object.values(toolWindowsRef.current).forEach(viewer => {
+    try { if (!viewer.win.closed) viewer.syncStyles(); } catch (_) { /* window closed */ }
+  });
+  const styles = new MutationObserver(syncTheme);
+  styles.observe(document.head, { childList: true, subtree: true, characterData: true });
+  const theme = new MutationObserver(syncTheme);
+  theme.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+  const controllerStopped = () => Object.values(toolWindowsRef.current).forEach(viewer => {
+    try {
+      if (!viewer.win.closed) {
+        viewer.status.textContent = 'MAIN SAT-ORBIT SESSION DISCONNECTED — DATA IS NO LONGER UPDATING. Reopen SAT-Orbit and detach this tool again.';
+        viewer.status.style.background = '#5b1414';
+        viewer.mount.style.pointerEvents = 'none';
+        viewer.mount.style.opacity = '.45';
+      }
+    } catch (_) { /* window closed */ }
+  });
+  window.addEventListener('pagehide', controllerStopped);
+  return () => {
+    clearInterval(timer); styles.disconnect(); theme.disconnect();
+    window.removeEventListener('pagehide', controllerStopped);
+    controllerStopped();
+  };
+}, []);
+
   const fileInputRef = useRef(null); 
   const isTrackingRef = useRef(false);
   // 📍 ฟันธง: ประกาศ State ควบคุม Station Mask (มุมเงยรับสัญญาณ)
@@ -4459,6 +7208,13 @@ function SatOrbitCore() {
   const [stationDisplayMode, setStationDisplayMode] = useState('both');
 
   const [size, setSize] = useState(() => ({ width: typeof window !== 'undefined' ? window.innerWidth : 1920, height: typeof window !== 'undefined' ? window.innerHeight : 1080 }));
+  // Full Screen is handled separately from normal Browser mode so the already-correct
+  // Browser layout remains byte-for-byte visually unchanged.
+  const [isMainFullscreen, setIsMainFullscreen] = useState(() => typeof document !== 'undefined' && Boolean(document.fullscreenElement));
+
+  // MAIN HUD — DEPLOY-LOCKED RESPONSIVE BEHAVIOR.
+  // Desktop/TV uses the proven deployed HUD scale directly from viewport width + height.
+  // Compact/Narrow keeps the newer adaptive drawer behavior; no Globe/orbit logic is touched.
   
   const [tles, setTles] = useState(() => {
     try {
@@ -4482,12 +7238,30 @@ function SatOrbitCore() {
     }
   });
 
+  const [tleUpdatedAtMs, setTleUpdatedAtMs] = useState(() => {
+    const saved = Number(safeStorageGet('localStorage', 'gistda_tle_updated_at'));
+    return Number.isFinite(saved) && saved > 0 ? saved : null;
+  });
+  const markTleUpdated = (timestamp = Date.now()) => {
+    setTleUpdatedAtMs(timestamp);
+    safeStorageSet('localStorage', 'gistda_tle_updated_at', String(timestamp));
+  };
+
   const [isUpdatingTle, setIsUpdatingTle] = useState(false);
   const tleFetchControllerRef = useRef(null);
   const [selectedCatnr, setSelectedCatnr] = useState(SATELLITE_OPTIONS[0].catnr);
   const [selectedCatnrs, setSelectedCatnrs] = useState([SATELLITE_OPTIONS[0].catnr]); 
   
-  const [simulatedTimeMs, setSimulatedTimeMs] = useState(Date.now());
+  const [simulatedTimeMs, setSimulatedTimeValue] = useState(Date.now());
+  const [clockMode, setClockModeValue] = useState('LIVE');
+  const clockModeRef = useRef('LIVE');
+  const setClockMode = (mode) => { clockModeRef.current = mode; setClockModeValue(mode); };
+  const manualSeekRevisionRef = useRef(0);
+  const setSimulatedTimeMs = (value) => {
+    manualSeekRevisionRef.current += 1;
+    setClockMode('SIM');
+    setSimulatedTimeValue(value);
+  };
   
   const [sliderMode, setSliderMode] = useState('DAILY');
 
@@ -4596,13 +7370,22 @@ const mapThemes = [
   const [isModalOpen, setIsModalOpen] = useState(false);
 
 // 📍 สมองกลดึงข้อมูลเปอร์เซ็นต์เมฆจาก Open-Meteo API
-const [cloudCover, setCloudCover] = useState(null);
+const cloudStationKey = weatherStationKey(activeStation);
+const [cloudSample, setCloudSample] = useState({ stationKey: null, value: null });
+const setCloudCover = (value) => setCloudSample({ stationKey: cloudStationKey, value });
+const cloudCover = cloudSample.stationKey === cloudStationKey ? cloudSample.value : null;
 const [isFetchingCloud, setIsFetchingCloud] = useState(false);
 const [cloudDataCache, setCloudDataCache] = useState(null);
 const [cloudDataOutOfRange, setCloudDataOutOfRange] = useState(false);
-const [cloudDataMode, setCloudDataMode] = useState('SIM');
+const [storedCloudDataMode, setCloudDataMode] = useState('SIM');
+const cloudDataMode = cloudSample.stationKey === cloudStationKey ? storedCloudDataMode : 'SIM';
+const [cloudRefreshKey, setCloudRefreshKey] = useState(0);
+useEffect(() => {
+  const refreshTimer = setInterval(() => setCloudRefreshKey((value) => value + 1), WEATHER_REFRESH_MS);
+  return () => clearInterval(refreshTimer);
+}, []);
 
-// 1. Request a 3-day forecast only when the selected station changes.
+// 1. Refresh the station forecast periodically; never retain another station's data.
 useEffect(() => {
   const controller = new AbortController();
   let active = true;
@@ -4625,13 +7408,21 @@ useEffect(() => {
     .then(data => {
       if (!active) return;
       if (data && data.hourly && Array.isArray(data.hourly.time) && Array.isArray(data.hourly.cloud_cover)) {
-        setCloudDataCache({ hourly: data.hourly, current: data.current || null });
+        setCloudDataCache({ stationKey: cloudStationKey, hourly: data.hourly, current: data.current || null, fetchedAt: Date.now() });
+      } else if (weatherHasNumber(data?.current?.cloud_cover)) {
+        setCloudDataCache({ stationKey: cloudStationKey, hourly: { time: [], cloud_cover: [] }, current: data.current, fetchedAt: Date.now() });
+      } else {
+        throw new Error('Cloud forecast unavailable');
       }
       setIsFetchingCloud(false);
     })
     .catch(err => {
       if (!active) return;
       if (err?.name !== 'AbortError') console.warn('Cloud API Error:', err);
+      setCloudDataCache(null);
+      setCloudCover(null);
+      setCloudDataMode('OFFLINE');
+      setCloudDataOutOfRange(true);
       setIsFetchingCloud(false);
     })
     .finally(() => clearTimeout(timeoutId));
@@ -4641,18 +7432,20 @@ useEffect(() => {
     clearTimeout(timeoutId);
     controller.abort();
   };
-}, [activeStation.id]);
+}, [activeStation.id, activeStation.lat, activeStation.lng, cloudRefreshKey]);
 
 // 2. Use forecast data only inside the actual forecast window. Seasonal validation dates must not display fake weather.
 useEffect(() => {
+  if (cloudDataCache?.stationKey !== cloudStationKey) return;
   const hourly = cloudDataCache?.hourly;
   if (!hourly || !Array.isArray(hourly.time) || !Array.isArray(hourly.cloud_cover)) return;
 
   const samples = hourly.time
     .map((tStr, idx) => { const stamp = /(?:Z|[+-]\d{2}:?\d{2})$/.test(tStr) ? tStr : `${tStr}Z`; return { t: new Date(stamp).getTime(), value: hourly.cloud_cover[idx] }; })
-    .filter(s => Number.isFinite(s.t) && Number.isFinite(Number(s.value)));
+    .filter(s => Number.isFinite(s.t) && weatherHasNumber(s.value));
 
-  const liveFallback = Number(cloudDataCache?.current?.cloud_cover);
+  const liveValue = cloudDataCache?.current?.cloud_cover;
+  const liveFallback = weatherHasNumber(liveValue) ? Number(liveValue) : NaN;
   if (samples.length === 0) {
     if (Number.isFinite(liveFallback)) {
       setCloudCover(liveFallback);
@@ -4699,7 +7492,7 @@ useEffect(() => {
   setCloudDataOutOfRange(false);
   setCloudDataMode('SIM');
   setCloudCover(Number(closest.value));
-}, [Math.floor(simulatedTimeMs / 3600000), cloudDataCache]);
+}, [Math.floor(simulatedTimeMs / 3600000), cloudDataCache, cloudStationKey]);
 
   // --- ระบบ PASS PREDICTION ---
   const [isPassModalOpen, setIsPassModalOpen] = useState(false);
@@ -4883,6 +7676,7 @@ useEffect(() => {
   const dragRadarRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
   const handleRadarMouseDown = (e) => {
+    if (workspaceMode !== 'classic' || toolWindowsRef.current.radar || e.target.closest('button,input,select')) return;
     setIsDraggingRadar(true);
     dragRadarRef.current = { startX: e.clientX, startY: e.clientY, initX: radarPos.x, initY: radarPos.y };
   };
@@ -4932,20 +7726,33 @@ useEffect(() => {
   const [isDraggingPass, setIsDraggingPass] = useState(false);
   const dragPassRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
-  const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996, img: 10000, analyzer: 10001, angles: 10002, diagram: 10003, antenna3d: 10004, weather: 10005 });
-  const [maximizedWins, setMaximizedWins] = useState({ radar: false, pass: false, db: false, img: false, gs: false, analyzer: false, angles: false });
+  const [windowZ, setWindowZ] = useState({ radar: 9997, pass: 9998, db: 9999, gs: 9996, img: 10000, analyzer: 10001, iq: 10002, angles: 10003, diagram: 10004, antenna3d: 10005, weather: 10006 });
+  const [maximizedWins, setMaximizedWins] = useState({ radar: false, pass: false, db: false, img: false, gs: false, analyzer: false, iq: false, angles: false });
 
   const toggleMaximize = (winName) => {
+    const viewer = toolWindowsRef.current[winName];
+    if (viewer && !viewer.win.closed) {
+      const doc = viewer.win.document;
+      const action = doc.fullscreenElement ? doc.exitFullscreen?.() : doc.documentElement.requestFullscreen?.();
+      action?.catch?.(() => {});
+      return;
+    }
+    if (workspaceMode === 'quad' && (SAT_QUAD_TOOL_IDS.includes(winName) || winName === 'globe')) {
+      setFocusedWorkspacePanel(previous => previous === winName ? null : winName);
+      return;
+    }
     startTransition(() => {
       setMaximizedWins(prev => ({ ...prev, [winName]: !prev[winName] }));
       bringToFront(winName);
     });
   };
  
+  const toggleWorkspacePanel = (id) => toggleMaximize(id);
+
   const bringToFront = (winName) => {
     startTransition(() => {
       setWindowZ(prev => {
-        const maxZ = Math.max(...Object.values(prev).map(Number));
+        const maxZ = Math.max(workspaceMode === 'quad' ? 20020 : 9999, ...Object.values(prev).map(Number));
         if (prev[winName] === maxZ) return prev; 
         return { ...prev, [winName]: maxZ + 1 }; 
       });
@@ -4984,154 +7791,60 @@ useEffect(() => {
 
  const [sourcePlans, setSourcePlans] = useState(typeof THEOS2_IMAGING_PLAN !== 'undefined' ? THEOS2_IMAGING_PLAN : []);
 
-// 📍 ฟันธง: ฟังก์ชันอ่านไฟล์ Mission Plan (รองรับการอัปโหลด PDF และ JSON พร้อมกัน)
-const handleMissionPlanUpload = async (e) => {
-  const files = Array.from(e.target.files || []);
-  if (files.length === 0) return;
+// Read every selected file, then commit one merged dataset after all parsing finishes.
+const missionUploadRunRef = useRef(0);
+const handleMissionPlanUpload = async (event) => {
+  const files = Array.from(event.target.files || []);
+  event.target.value = '';
+  if (!files.length) return;
   if (files.length > 10) {
-    setCustomAlert({ show: true, message: '⚠️ เลือกไฟล์ได้ไม่เกิน 10 ไฟล์ต่อครั้ง', type: 'error' });
+    setCustomAlert({ show: true, message: '⚠️ Select no more than 10 files per import.', type: 'error' });
     return;
   }
-
-  let newImagingPlans = [];
-  let pdfFile = null;
-
+  const run = ++missionUploadRunRef.current;
+  const imported = [], failures = [];
+  let validFiles = 0;
   for (const file of files) {
-    const lowerName = String(file.name || '').toLowerCase();
-    if (lowerName.endsWith('.pdf')) {
-      if (file.size > 25 * 1024 * 1024) {
-        setCustomAlert({ show: true, message: `⚠️ PDF ${file.name} มีขนาดเกิน 25 MB`, type: 'error' });
-        continue;
-      }
-      pdfFile = file; 
-    } else if (lowerName.endsWith('.json') || lowerName.endsWith('.geojson')) {
-      if (file.size > 10 * 1024 * 1024) {
-        setCustomAlert({ show: true, message: `⚠️ JSON/GeoJSON ${file.name} มีขนาดเกิน 10 MB`, type: 'error' });
-        continue;
-      }
-      const text = await file.text();
-      try {
-        const geoData = JSON.parse(text);
-        if (Array.isArray(geoData.features)) {
-          if (geoData.features.length > 5000) throw new Error('GeoJSON contains more than 5000 features');
-          newImagingPlans = geoData.features.map((feat, index) => {
-            const props = feat?.properties || {};
-            const coords = feat?.geometry?.coordinates?.[0];
-            if (!Array.isArray(coords) || coords.length < 3 || !Array.isArray(coords[0]) || !Array.isArray(coords[2])) {
-              throw new Error(`Invalid geometry in feature ${index}`);
-            }
-            const startLng = Number(coords[0][0]);
-            const startLat = Number(coords[0][1]);
-            const endLng = Number(coords[2][0]); 
-            const endLat = Number(coords[2][1]);
-            if (![startLng, startLat, endLng, endLat].every(Number.isFinite) || Math.abs(startLat) > 90 || Math.abs(endLat) > 90 || Math.abs(startLng) > 180 || Math.abs(endLng) > 180) {
-              throw new Error(`Invalid coordinates in feature ${index}`);
-            }
-
-            const startTime = new Date(props.acqStart).getTime();
-            const endTime = new Date(props.acqEnd).getTime();
-            if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) {
-              throw new Error(`Invalid acquisition time in feature ${index}`);
-            }
-
-            return {
-              id: props.id || `plan-${index}`,
-              start: startTime,
-              end: endTime,
-              duration: (endTime - startTime) / 1000,
-              startLat: startLat,
-              startLng: startLng,
-              endLat: endLat,
-              endLng: endLng
-            };
-          });
-          
-          newImagingPlans.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-        }
-      } catch (error) {
-        console.error("❌ Error parsing GeoJSON:", error);
-        if (typeof setCustomAlert === 'function') {
-          setCustomAlert({ show: true, message: "⚠️ ไฟล์ JSON ข้อมูลพิกัดผิดพลาด!", type: 'error' });
-        }
-      }
-    }
+    try {
+      const name = String(file.name || ''), lowerName = name.toLowerCase();
+      let records;
+      if (lowerName.endsWith('.pdf')) {
+        if (file.size > 25 * 1024 * 1024) throw new Error('PDF exceeds the 25 MB limit');
+        if (!window.pdfjsLib) throw new Error('PDF library failed to load. Check the network connection.');
+        records = parseMissionPdfRecords(parsePlanText(await extractPdfText(file)), name);
+      } else if (lowerName.endsWith('.json') || lowerName.endsWith('.geojson')) {
+        if (file.size > 10 * 1024 * 1024) throw new Error('JSON exceeds the 10 MB limit');
+        records = parseMissionGeoJson(JSON.parse(await file.text()), name);
+      } else throw new Error('Only PDF, JSON and GeoJSON are supported');
+      if (imported.length + records.length > 10000) throw new Error('Import exceeds 10,000 records');
+      imported.push(...records);
+      validFiles++;
+    } catch (error) { failures.push(`${file.name}: ${error.message}`); }
   }
-
-  if (newImagingPlans.length > 0) {
-    setSourcePlans(newImagingPlans);
-    imagingSwathCache.current = {};
-  }
-
-  if (pdfFile) {
-    // โยนไฟล์ PDF ให้ระบบเดิมของคุณอ่านตารางเวลา (ถ้าฟังก์ชันเดิมชื่ออื่น ให้เปลี่ยนชื่อตามนั้นครับ)
-    if (typeof handlePdfUpload === 'function') {
-       handlePdfUpload({ target: { files: [pdfFile] } }); 
-    }
-  }
-};
-
-
-// 📍 ฟังก์ชันจัดการเมื่อกดอัปโหลดไฟล์ PDF
-const handlePdfUpload = async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  if (file.size > 25 * 1024 * 1024) {
-    setCustomAlert({ show: true, message: '⚠️ PDF มีขนาดเกิน 25 MB', type: 'error' });
+  if (run !== missionUploadRunRef.current) return;
+  if (!imported.length) {
+    setCustomAlert({ show: true, message: `⚠️ No valid mission plans were imported.\n${failures.join('\n')}`, type: 'error' });
     return;
   }
-  
-  // 📍 ฟันธง: ดักจับกรณีหน้างานเน็ตสะดุด โหลดไลบรารี PDF ไม่ขึ้น ป้องกันแอปพัง 100%
-  if (typeof window.pdfjsLib === 'undefined') {
-    setCustomAlert({ show: true, message: "⚠️ SYSTEM ERROR: ไม่พบไลบรารีถอดรหัส PDF โปรดตรวจสอบอินเทอร์เน็ต", type: 'error' });
-    return;
-  }
-
-  try {
-    const text = await extractPdfText(file);
-    const parsedData = parsePlanText(text);
-    
-    // 📍 แปลงข้อมูลดิบจาก PDF ให้อยู่ในฟอร์แมตที่ตาราง React เข้าใจ
-    const formattedPlans = parsedData.map(p => {
-      const [dateStr, timeStr] = String(p.acq_start || '').split(' ');
-      if (!dateStr || !timeStr) return null;
-      const [y, m, d] = dateStr.split('/').map(Number);
-      const [hr, min, sec] = timeStr.split(':').map(Number);
-      const duration = Number(p.acq_duration_s || 0);
-      const startMs = Date.UTC(y, m - 1, d, hr, min, sec);
-      if (![y, m, d, hr, min, sec, duration, startMs].every(Number.isFinite) || duration < 0) return null;
-      const startDate = new Date(startMs);
-      return {
-        id: p.file_nb,
-        start: startDate,
-        end: new Date(startMs + duration * 1000),
-        duration
-      };
-    }).filter(Boolean);
-
-    if (formattedPlans.length === 0) throw new Error('No valid imaging records found in PDF');
-    setSourcePlans(formattedPlans);
-    imagingSwathCache.current = {};
-    
-    // 📍 เรียก Popup Sci-Fi แทน alert() แบบเก่า
-    setCustomAlert({ 
-      show: true, 
-      message: `สกัดข้อมูลสำเร็จ! พบแผนถ่ายภาพทั้งหมด ${formattedPlans.length} คิว`, 
-      type: 'success' 
-    });
-
-  } catch (error) {
-    setCustomAlert({ 
-      show: true, 
-      message: "เกิดข้อผิดพลาดในการอ่านไฟล์ PDF โปรดลองอีกครั้ง", 
-      type: 'error' 
-    });
-  }
+  const incoming = mergeMissionPlans(imported);
+  setSourcePlans(previous => mergeMissionPlans([...previous.filter(plan => plan.sourceKind !== 'BUILTIN'), ...incoming]));
+  setSelectedPlanId(null);
+  setCustomAlert({ show: true,
+    message: `Imported ${incoming.length} mission records from ${validFiles} file(s)${failures.length ? `\nFiles that failed:\n${failures.join('\n')}` : ''}`,
+    type: failures.length ? 'error' : 'success' });
 };
+const handlePdfUpload = handleMissionPlanUpload;
 
  const [imgPos, setImgPos] = useState({ x: 150, y: 100 });
  const [isDraggingImg, setIsDraggingImg] = useState(false);
  const dragImgRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
  const [selectedPlanId, setSelectedPlanId] = useState(null);
+ const missionOrbitLabel = useMemo(() => {
+   const selected = sourcePlans.find(plan => plan.id === selectedPlanId);
+   const orbits = [...new Set((selected ? [selected] : sourcePlans).map(plan => plan.orbit).filter(orbit => orbit !== null && orbit !== undefined && String(orbit).trim() !== '').map(String))];
+   return orbits.length === 1 ? orbits[0] : orbits.length > 1 ? 'MULTI' : 'N/A';
+ }, [sourcePlans, selectedPlanId]);
+
 
 // 📍 ฟันธง: เพิ่มตัวแปรควบคุมระยะซูมของแผนที่ 2D (ค่าเริ่มต้น = 15 ให้เห็นกว้างระดับภูมิภาค)
 // 📍 ฟันธง: เปลี่ยนมาใช้ระบบเลนส์ซูม (Scale) เริ่มต้นที่ 1X (ระดับโลก)
@@ -5214,6 +7927,7 @@ const [isDraggingAnalyzer, setIsDraggingAnalyzer] = useState(false);
 const dragAnalyzerRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
 const handleAnalyzerMouseDown = (e) => {
+  if (workspaceMode !== 'classic' || toolWindowsRef.current.analyzer || e.target.closest('button,input,select')) return;
   setIsDraggingAnalyzer(true);
   bringToFront('analyzer');
   dragAnalyzerRef.current = { startX: e.clientX, startY: e.clientY, initX: analyzerPos.x, initY: analyzerPos.y };
@@ -5238,12 +7952,37 @@ useEffect(() => {
   };
 }, [isDraggingAnalyzer]);
 
+// SIGNAL ANALYZER PHASE: IQ is a separate popup so the spectrum display can
+// behave like a real analyzer screen. This does not join Multi-View yet.
+const [isIqOpen, setIsIqOpen] = useState(false);
+const [iqDisplayChannel, setIqDisplayChannel] = useState('x');
+const [iqPos, setIqPos] = useState({ x: 170, y: 150 });
+const [isDraggingIq, setIsDraggingIq] = useState(false);
+const dragIqRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
+const handleIqMouseDown = (e) => {
+  if (e.target.closest('button,input,select')) return;
+  setIsDraggingIq(true);
+  bringToFront('iq');
+  dragIqRef.current = { startX: e.clientX, startY: e.clientY, initX: iqPos.x, initY: iqPos.y };
+};
+useEffect(() => {
+  const move = (e) => {
+    if (!isDraggingIq) return;
+    setIqPos({ x: dragIqRef.current.initX + (e.clientX - dragIqRef.current.startX), y: dragIqRef.current.initY + (e.clientY - dragIqRef.current.startY) });
+  };
+  const up = () => setIsDraggingIq(false);
+  if (isDraggingIq) { window.addEventListener('mousemove', move); window.addEventListener('mouseup', up); }
+  return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+}, [isDraggingIq]);
+
   const toggleLeftPanel = () => {
-    setIsLeftPanelOpen(!isLeftPanelOpen);
+    if (hudTier === 'narrow') { setIsLeftPanelOpen(true); setNarrowHudPanel(value => value === 'left' ? null : 'left'); }
+    else setIsLeftPanelOpen(!isLeftPanelOpen);
   };
 
   const toggleRightPanel = () => {
-    setIsRightPanelOpen(!isRightPanelOpen);
+    if (hudTier === 'narrow') { setIsRightPanelOpen(true); setNarrowHudPanel(value => value === 'right' ? null : 'right'); }
+    else setIsRightPanelOpen(!isRightPanelOpen);
   };
 
 // คำนวณตำแหน่งดวงอาทิตย์ (NOAA-style approximation: declination + equation of time)
@@ -5302,7 +8041,12 @@ useEffect(() => {
   useEffect(() => {
     injectStyles();
     const handleResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
+    const handleFullscreenChange = () => {
+      setIsMainFullscreen(Boolean(document.fullscreenElement));
+      handleResize();
+    };
     window.addEventListener('resize', handleResize);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
 
     const initialCameraTimer = setTimeout(() => {
       if (globeRef.current) {
@@ -5315,27 +8059,32 @@ useEffect(() => {
     return () => {
       clearTimeout(initialCameraTimer);
       window.removeEventListener('resize', handleResize);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
   }, []);
 
  // 📍 1. สมองกลควบคุมเวลา (ล็อก Tick Rate ที่ 40ms ให้ CPU หายใจ และส่งไม้ต่อให้ WebGL เกลี่ยเฟรม)
  useEffect(() => {
   if (!isPlaying) return;
-  let lastTick = Date.now(); 
+  let lastTick = performance.now();
+  let cancelled = false;
   const timer = setInterval(() => {
     const now = Date.now();
-    const deltaMs = now - lastTick;
-    lastTick = now;
+    const tick = performance.now();
+    const deltaMs = Math.max(0, tick - lastTick);
+    lastTick = tick;
 
-    setSimulatedTimeMs(prev => {
-      if (isNaN(prev)) return now;
+    const seekRevision = manualSeekRevisionRef.current;
+    setSimulatedTimeValue(prev => {
+      if (cancelled || seekRevision !== manualSeekRevisionRef.current || clockModeRef.current !== clockMode) return prev;
+      if (!Number.isFinite(prev)) return now;
       // ป้องกัน Time Drift ตอนโหมด LIVE
-      if (speedMult === 1 && Math.abs(prev - now) < 300000) return now;
+      if (clockMode === 'LIVE' && speedMult === 1) return now;
       return prev + (deltaMs * speedMult);
     });
   }, 40); // 📍 ฟันธง: ล็อกรอบการอัปเดตที่ 40ms (25fps)
-  return () => clearInterval(timer);
-}, [isPlaying, speedMult]);
+  return () => { cancelled = true; clearInterval(timer); };
+}, [isPlaying, speedMult, clockMode]);
 
   // 📍 ฟันธง: เปลี่ยนกลับเป็น React.useEffect เพื่อให้กล้องขยับ "พร้อมกับ" การอัปเดตโมเดล 3D (สังหารบั๊กภาพสั่นเวลา Target Lock)
   React.useEffect(() => {
@@ -5547,10 +8296,21 @@ const targetData = useMemo(() => {
 }, [simulatedTimeMs, targetSatrec, activeStation.id]);
 
 const targetConfig = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr) || SATELLITE_OPTIONS[0];
-const selectedTleEpochMs = selectedCatnr && tles[selectedCatnr] ? getTleEpochMs(tles[selectedCatnr].line1) : null;
-const selectedTleAgeDays = selectedTleEpochMs === null ? null : Math.abs(Date.now() - selectedTleEpochMs) / 86400000;
+const selectedTlePair = selectedCatnr ? tles[selectedCatnr] : null;
+const selectedTleEpochMs = selectedTlePair ? getTleEpochMs(selectedTlePair.line1) : null;
+const selectedTleAgeDays = selectedTleEpochMs === null ? null : Math.abs(simulatedTimeMs - selectedTleEpochMs) / 86400000;
 const selectedTleIsStale = selectedTleAgeDays !== null && selectedTleAgeDays > 14;
+const selectedTleMatchesBuiltin = Boolean(selectedTlePair && selectedTlePair.line1 === FALLBACK_TLES[selectedCatnr]?.line1 && selectedTlePair.line2 === FALLBACK_TLES[selectedCatnr]?.line2);
+const selectedTleSourceLabel = !selectedTlePair ? 'NO TLE' : selectedTleMatchesBuiltin ? 'Built-in match (DEGRADED)' : (tleSource === 'Live Sync' ? 'Live Sync / Stored' : tleSource === 'Manual Upload' ? 'Manual Upload / Stored' : 'Stored TLE');
+const tleUpdateAgeMs = tleUpdatedAtMs ? Math.max(0, Date.now() - tleUpdatedAtMs) : null;
+const tleUpdateAgeLabel = tleUpdateAgeMs === null ? 'N/A' : tleUpdateAgeMs < 60000 ? '<1 min ago' : tleUpdateAgeMs < 3600000 ? `${Math.floor(tleUpdateAgeMs / 60000)} min ago` : tleUpdateAgeMs < 86400000 ? `${Math.floor(tleUpdateAgeMs / 3600000)}h ${Math.floor((tleUpdateAgeMs % 3600000) / 60000)}m ago` : `${Math.floor(tleUpdateAgeMs / 86400000)}d ${Math.floor((tleUpdateAgeMs % 86400000) / 3600000)}h ago`;
+const tleUpdatedLabel = tleUpdatedAtMs ? new Date(tleUpdatedAtMs).toISOString().replace('T',' ').slice(0,19) + ' UTC' : 'N/A';
+const tleLastSyncTimeLabel = tleUpdatedAtMs ? new Date(tleUpdatedAtMs).toISOString().slice(11,19) + ' UTC' : 'N/A';
+const tleSyncStatusLabel = isUpdatingTle ? 'SYNCING' : tleSource.includes('Failed') ? 'FAILED' : tleUpdatedAtMs ? 'SYNCED' : 'NO SYNC';
+const tleSyncStatusColor = isUpdatingTle ? 'var(--cyan)' : tleSource.includes('Failed') ? 'var(--red)' : tleUpdatedAtMs ? 'var(--green)' : 'var(--gold)';
 const linkActive = targetData && targetData.elevationDeg >= stationMask;
+const rfProfile = useMemo(() => getRfProfile(selectedCatnr, targetConfig), [selectedCatnr, targetConfig]);
+const rfState = getRfState(targetData, stationMask);
 
 // =========================================================================
 // 📍 GISTDA ANTENNA BRIDGE v1.4 - MOUNT POINT
@@ -5585,6 +8345,19 @@ const nextPassTimestamp = useMemo(() => {
   return null;
 }, [simulatedTimeMs, passSchedule, linkActive]);
 
+// Shared by main telemetry and the 3D antenna view; closing a view does not reset it.
+const antennaState = useAntennaSimulation({
+  sourceKey: `${activeStation.id}:${selectedCatnr || ''}:${manualSeekRevisionRef.current}`,
+  az: targetData?.azimuthDeg,
+  el: targetData?.elevationDeg,
+  linkActive: Boolean(linkActive),
+  stationMask,
+  simulatedTimeMs,
+  nextPassTimeMs: nextPassTimestamp?.time ?? null,
+  speedMult,
+  isPlaying
+});
+
 // Production hardening: LINE alert delivery uses in-flight de-duplication, timeout and retry cooldown.
 // The endpoint remains a client-visible integration URL; protect/rate-limit the Apps Script before public deployment.
 const LINE_ALERT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbycFFsbPQW1tc6GJXyKZ9B4h31BY1-OK735ukxpflIRjUKIsEznMkUIMA4Ha-ywN5TL/exec';
@@ -5593,6 +8366,7 @@ const lineAlertRetryAtRef = useRef(new Map());
 const lineAlertControllersRef = useRef(new Set());
 
 const sendLineAlert = async (alertId, payloadData) => {
+  if (clockModeRef.current !== 'LIVE') return false;
   if (safeStorageGet('sessionStorage', alertId)) return true;
   if (lineAlertInFlightRef.current.has(alertId)) return false;
   const retryAt = lineAlertRetryAtRef.current.get(alertId) || 0;
@@ -5637,7 +8411,7 @@ useEffect(() => () => {
 
 // 📍 เซนเซอร์จับเวลา PRE-PASS (แจ้งล่วงหน้า 10 นาทีลง LINE)
 useEffect(() => {
-  const isStrictLive = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
+  const isStrictLive = clockMode === 'LIVE' && Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
   if (!isStrictLive || !nextPassTimestamp || !nextPassTimestamp.time) return;
   
   const timeToAos = nextPassTimestamp.time - simulatedTimeMs;
@@ -5667,11 +8441,11 @@ useEffect(() => {
       });
     }
   }
-}, [simulatedTimeMs, nextPassTimestamp, selectedCatnr, targetConfig, speedMult, isPlaying, passSchedule, activeStation.id]);
+}, [clockMode, simulatedTimeMs, nextPassTimestamp, selectedCatnr, targetConfig, speedMult, isPlaying, passSchedule, activeStation.id]);
 
 // 📍 เซนเซอร์จับจังหวะจบ Pass (แจ้ง LOS ลง LINE)
 useEffect(() => {
-  const isLiveStrict = Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
+  const isLiveStrict = clockMode === 'LIVE' && Math.abs(simulatedTimeMs - Date.now()) < 5000 && speedMult === 1 && isPlaying;
   if (!isLiveStrict || passSchedule.length === 0) return;
 
   passSchedule.forEach(pass => {
@@ -5698,7 +8472,7 @@ useEffect(() => {
       });
     }
   });
-}, [simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying, activeStation.id]);
+}, [clockMode, simulatedTimeMs, passSchedule, selectedCatnr, targetConfig, speedMult, isPlaying, activeStation.id]);
 
 // =========================================================================
 // 📍 จบก้อนระบบประมวลผล (ถัดจากบรรทัดนี้คือ return ( ... ) ของคุณครับ)
@@ -5813,63 +8587,23 @@ const allSatObjects = useMemo(() => {
   }, [selectedCatnrs, selectedCatnr, satrecs, orbitUpdateTrigger]);
 
 
-// 📍 ฟันธง 2: ระบบวาดเส้นแดงบน 3D ใช้ useRef เป็นโกดัง Cache (ลดภาระ CPU ไม่ต้องคำนวณใหม่ทุก 16ms)
-const imagingSwathCache = useRef({});
-useEffect(() => {
-  imagingSwathCache.current = {};
-}, [sourcePlans, tles['58016']?.line1, tles['58016']?.line2]);
+// Geometry/TLE propagation is cached independently of the simulation clock.
+const missionPathData = useMemo(() => buildMissionPathData(sourcePlans, satrecs['58016'], calculateSatData), [sourcePlans, satrecs['58016']]);
+const missionPathById = useMemo(() => new Map(missionPathData.map(plan => [plan.id, plan])), [missionPathData]);
 const imagingSwathPaths = useMemo(() => {
-  if (!targetSatrec || selectedCatnr !== '58016') return []; 
-  const paths = [];
-  
-  sourcePlans.forEach(plan => {
-    const pStart = new Date(plan.start).getTime();
-    const pEnd = new Date(plan.end).getTime();
-
-    if (simulatedTimeMs > pEnd) return;
-
-    const swathCacheKey = `${plan.id}|${pStart}|${pEnd}`;
-    if (!imagingSwathCache.current[swathCacheKey]) {
-      const points = [];
-      for (let t = pStart; t <= pEnd; t += 1000) {
-        const pos = calculateSatData(new Date(t), targetSatrec, activeStation);
-        if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-          points.push({ lat: pos.lat, lng: pos.lng, alt: 0.002 });
-        }
-      }
-      imagingSwathCache.current[swathCacheKey] = { id: plan.id, points };
-    }
-    
-    const cachedPlan = imagingSwathCache.current[swathCacheKey];
-    if (cachedPlan.points.length >= 2) {
-      const isImagingNow = simulatedTimeMs >= pStart && simulatedTimeMs <= pEnd;
-      cachedPlan.color = isImagingNow ? 'rgba(255, 51, 51, 1)' : 'rgba(255, 100, 51, 0.45)';
-      cachedPlan.stroke = isImagingNow ? 6.0 : 4.0;
-      paths.push(cachedPlan);
-    }
+  if (selectedCatnr !== '58016') return [];
+  return missionPathData.flatMap(plan => {
+    if (simulatedTimeMs > plan.end) return [];
+    const active = simulatedTimeMs >= plan.start && simulatedTimeMs <= plan.end;
+    return plan.paths.filter(points => points.length > 1).map((points, index) => ({ id: `${plan.id}-${index}`, points,
+      color: active ? 'rgba(255,51,51,1)' : 'rgba(255,100,51,0.45)',
+      stroke: plan.importedGeometry ? (active ? 2.5 : 1.5) : (active ? 6 : 4) }));
   });
-  return paths;
-}, [selectedCatnr, targetSatrec, simulatedTimeMs, sourcePlans]);
+}, [selectedCatnr, missionPathData, simulatedTimeMs]);
 
+// Imported coordinates remain authoritative; only missing positions use a TLE estimate.
+const imagingPlansData = useMemo(() => sourcePlans.map(plan => missionPlanCoordinates(plan, satrecs['58016'], calculateSatData)), [sourcePlans, satrecs['58016']]);
 
-// 📍 ฟันธง 3: สมองกลสกัดข้อมูลพิกัด (Lat/Lng) จาก THEOS2_IMAGING_PLAN เพื่อเอาไปวาดบนหน้าต่างแผนที่ 2D
-const imagingPlansData = useMemo(() => {
-  if (!satrecs['58016']) return [];
-  const rec = satrecs['58016'];
-  return sourcePlans.map((plan, idx) => {
-    const startPos = calculateSatData(new Date(plan.start), rec);
-    const endPos = calculateSatData(new Date(plan.end), rec);
-    const duration = (new Date(plan.end).getTime() - new Date(plan.start).getTime()) / 1000;
-    return {
-      id: plan.id,
-      ...plan,
-      startLat: startPos?.lat, startLng: startPos?.lng,
-      endLat: endPos?.lat, endLng: endPos?.lng,
-      duration
-    };
-  });
-}, [satrecs, sourcePlans]);
-  
 // 📍 ฟันธง 1.2: สังหารฟังก์ชัน getCirclePolygon ทิ้ง! คำนวณสดลงในโกดังรีไซเคิล (Zero Memory Allocation)
 const footprintPtsRef = useRef({}); 
 const footprintBoundaryPath = useMemo(() => {
@@ -5910,89 +8644,34 @@ const footprintBoundaryPath = useMemo(() => {
   return paths;
 }, [allSatObjects, selectedCatnrs, selectedCatnr, stationMask]);
 
-// 📍 ฟันธง 2: ระบบเสียง Sonar Ping วนลูปตลอดการ Tracking (หยุดเมื่อ LOS หรือกด Mute)
-const audioCtxRef = useRef(null);
-const pingIntervalRef = useRef(null);
-
+// Sonar is owned by the one controller, so child panels never create a second ping loop.
+const sonarControllerRef = useRef(null);
 useEffect(() => {
-  // ถ้าจับสัญญาณได้ (AOS) และไม่ได้กด Mute
-  if (linkActive && !isMuted) {
-    if (!audioCtxRef.current) {
-      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextCtor) return;
-      audioCtxRef.current = new AudioContextCtor();
-    }
-   // 📍 ฟันธง: ดักจับ Error จาก Browser Policy ป้องกันแอปพังหากผู้ใช้ยังไม่ได้คลิกหน้าจอ
-   if (audioCtxRef.current.state === 'suspended') {
-    audioCtxRef.current.resume().catch(err => console.warn("รอผู้บัญชาการคลิกหน้าจอก่อนเริ่มระบบเสียง (Browser Policy)"));
+  if (!sonarControllerRef.current) {
+    sonarControllerRef.current = createSonarAudioController(window.AudioContext || window.webkitAudioContext, window);
   }
-
-    const playSonarPing = () => {
-      if (!audioCtxRef.current) return;
-      const ctx = audioCtxRef.current;
-      
-      // 📍 ฟันธง: อัปเกรดเครื่องกำเนิดเสียงเป็น Dual-Layer จำลองเสียงเรือดำน้ำ (Submarine Sonar)
-      const osc1 = ctx.createOscillator(); // คลื่นหลัก (ความถี่ต่ำ-กลาง) ให้ความรู้สึกทุ้มลึก
-      const osc2 = ctx.createOscillator(); // คลื่นรอง (ความถี่สูง) สร้างความกังวาลใสแบบโลหะ
-      const gain = ctx.createGain();
-      
-      // ตั้งค่าคลื่นหลัก: ความถี่ 850Hz (ค่ามาตรฐานของคลื่นโซนาร์)
-      osc1.type = 'sine'; 
-      osc1.frequency.setValueAtTime(850, ctx.currentTime);
-      osc1.frequency.exponentialRampToValueAtTime(830, ctx.currentTime + 1.8); // ดรอปเสียงลงนิดๆ ตอนท้าย (Doppler effect)
-      
-      // ตั้งค่าคลื่นรอง: ใช้คลื่นสามเหลี่ยม (Triangle) ที่ความถี่ 1700Hz เพิ่มความแหลมบาดลึก
-      osc2.type = 'triangle'; 
-      osc2.frequency.setValueAtTime(1700, ctx.currentTime); 
-      osc2.frequency.exponentialRampToValueAtTime(1660, ctx.currentTime + 1.8);
-
-      // สร้างกราฟหางเสียง (Reverb/Echo Envelope)
-      gain.gain.setValueAtTime(0, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.02); // เสียงตีกระทบแรก (Attack) เร็วและคมชัด
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.8); // ปล่อยหางเสียงให้ดังกังวาลยาว 1.8 วินาที
-      
-      // ประกอบร่างระบบเสียงเข้าด้วยกัน
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(ctx.destination);
-      
-      // สั่งยิงคลื่นเสียง!
-      osc1.start(ctx.currentTime);
-      osc2.start(ctx.currentTime);
-      osc1.stop(ctx.currentTime + 1.8);
-      osc2.stop(ctx.currentTime + 1.8);
-    };
-
-    // เล่นทันทีตอนเพิ่ง AOS
-    playSonarPing();
-    // สั่งให้ดังเป็นจังหวะทุกๆ 2 วินาทีตลอดหน้าจอ
-    pingIntervalRef.current = setInterval(playSonarPing, 2000);
-
-  } else {
-    // ถ้าดาวเทียมลับขอบฟ้า (LOS) หรือกดปุ่ม Mute ให้สั่งหยุดเสียงทันที
-    if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-  }
-
-  // Cleanup function เมื่อ Component รีเฟรช
-  return () => {
-    if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-  };
-}, [linkActive, isMuted]); // ทำงานใหม่ทุกครั้งที่สถานะ Mute หรือ AOS เปลี่ยนแปลง
-
-useEffect(() => {
-  return () => {
-    if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-    const ctx = audioCtxRef.current;
-    if (ctx && ctx.state !== 'closed') ctx.close().catch(() => {});
-  };
+  const controller = sonarControllerRef.current;
+  if (rfState.locked && !isMuted) controller.start();
+  else controller.stop();
+  return () => controller.stop();
+}, [rfState.locked, isMuted]);
+useEffect(() => () => {
+  sonarControllerRef.current?.dispose();
+  sonarControllerRef.current = null;
 }, []);
+const toggleAudioMute = () => {
+  const nextMuted = !isMuted;
+  // Silence in the click event as well as in the effect, including clicks in a detached window.
+  if (nextMuted) sonarControllerRef.current?.stop();
+  setIsMuted(nextMuted);
+};
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
       setTleSource('Update Failed (File Too Large)');
-      setCustomAlert({ show: true, message: '⚠️ ไฟล์ TLE มีขนาดเกิน 5 MB', type: 'error' });
+      setCustomAlert({ show: true, message: '⚠️ TLE file exceeds the 5 MB limit.', type: 'error' });
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -6031,7 +8710,8 @@ useEffect(() => {
             safeStorageSet('localStorage', 'gistda_tles', JSON.stringify(merged));
             return merged;
           });
-          setTleSource(`Manual Upload (${formatBangkokTime(Date.now())} THA)`);
+          markTleUpdated(Date.now());
+          setTleSource('Manual Upload');
         } else {
           setTleSource('Update Failed (No Match)');
         }
@@ -6100,7 +8780,8 @@ useEffect(() => {
           safeStorageSet('localStorage', 'gistda_tles', JSON.stringify(merged));
           return merged;
         });
-        setTleSource(`TLE Update (${formatBangkokTime(Date.now())} THA)`);
+        markTleUpdated(Date.now());
+        setTleSource('Live Sync');
       } else {
         setTleSource('Update Failed (Bad Data)');
       }
@@ -6150,35 +8831,63 @@ useEffect(() => {
   }, [linkActive, targetData, activeStation.id]);
 
   const radarContainerRef = useRef(null);
-  const [radarDim, setRadarDim] = useState({ w: 360, h: 460 });
+  const [radarDim, setRadarDim] = useState({ w: 360, h: 360, textScale: 1, labelWidth: 76 });
 
   useEffect(() => {
-    if (!radarContainerRef.current) return;
-    const observer = new ResizeObserver(entries => {
-      if (entries[0]) setRadarDim({ w: entries[0].contentRect.width, h: entries[0].contentRect.height });
-    });
-    observer.observe(radarContainerRef.current);
-    return () => observer.disconnect();
-  }, [isRadarOpen]);
+    const node = radarContainerRef.current;
+    if (!node) return;
+    const owner = node.ownerDocument.defaultView || window;
+    let disposed = false;
+    const measure = () => {
+      if (disposed) return;
+      const box = node.getBoundingClientRect();
+      const computed = owner.getComputedStyle(node);
+      const textScale = parseFloat(computed.getPropertyValue('--sat-text-scale')) || 1;
+      const context = node.ownerDocument.createElement('canvas').getContext('2d');
+      if (context) context.font = `900 15px ${computed.fontFamily}`;
+      const labelWidth = context?.measureText('W (270°)').width || 76;
+      setRadarDim(previous => previous.w === box.width && previous.h === box.height && previous.textScale === textScale && previous.labelWidth === labelWidth
+        ? previous : { w: box.width, h: box.height, textScale, labelWidth });
+    };
+    measure();
+    const Observer = owner.ResizeObserver || window.ResizeObserver;
+    const observer = Observer ? new Observer(measure) : null;
+    observer?.observe(node);
+    const attributes = new MutationObserver(measure);
+    attributes.observe(node.ownerDocument.documentElement, { attributes:true, attributeFilter:['style'] });
+    owner.addEventListener('resize',measure);
+    node.ownerDocument.fonts?.ready?.then(measure);
+    node.ownerDocument.fonts?.addEventListener?.('loadingdone',measure);
+    return () => { disposed = true; observer?.disconnect(); attributes.disconnect(); owner.removeEventListener('resize',measure); node.ownerDocument.fonts?.removeEventListener?.('loadingdone',measure); };
+  }, [isRadarOpen, toolHostRevision]);
 
   const radarLayout = useMemo(() => {
-    // 📍 ฟันธง 1: ยกวงกลมเรดาร์ขึ้น! โดยลดขอบบน (top) และเพิ่มขอบล่าง (bottom) 
-    // ทำให้ N(0°) ขยับขึ้นไปเติมพื้นที่ว่าง และ S(180°) ลอยพ้นขอบล่างได้อย่างสวยงาม
-    const topMargin = 50;    
-    const bottomMargin = 70;  
-    const sideMargin = 90;    
-    
-    const R = Math.max(50, Math.min(radarDim.w - sideMargin * 2, radarDim.h - topMargin - bottomMargin) / 2);
-    const cx = radarDim.w / 2;
-    const cy = ((radarDim.h - topMargin - bottomMargin) / 2) + topMargin; 
-    
-    const fontScale = Math.max(1, Math.min(1.3, radarDim.w / 650));
-    
-    return { R, cx, cy, fontScale };
+    const fontScale = (radarDim.textScale || 1) * Math.max(1, Math.min(1.3, radarDim.w / 650, radarDim.h / 500));
+    // Use the available plot more aggressively on large displays while preserving
+    // a safe label ring around N/E/S/W. The metrics/legend overlay on large hosts
+    // returns their former flex height to the radar circle.
+    const sideMargin = (16 + radarDim.labelWidth + 2) * fontScale;
+    const verticalMargin = 18 * fontScale;
+    const R = Math.max(1, Math.min(radarDim.w - sideMargin * 2, radarDim.h - verticalMargin * 2) / 2);
+    // Radar visual-only lock: keep the exact plot size/logic, but lift the whole
+    // skyplot slightly so top/bottom breathing room is visually balanced.
+    return { R, cx:radarDim.w / 2, cy:(radarDim.h / 2) - (32 * fontScale), fontScale };
   }, [radarDim]);
 
+  const radarSampleEpoch = Math.floor(simulatedTimeMs / 30000) * 30000;
+  const radarTrajectory = useMemo(() => {
+    if (!isRadarOpen || !targetSatrec) return [];
+    const samples = [];
+    for (let offset = -900000; offset <= 900000; offset += 30000) {
+      const time = radarSampleEpoch + offset;
+      const position = calculateSatData(new Date(time), targetSatrec, activeStation);
+      if (position && Number.isFinite(position.elevationDeg) && Number.isFinite(position.azimuthDeg)) samples.push({ time, elevationDeg: position.elevationDeg, azimuthDeg: position.azimuthDeg });
+    }
+    return samples;
+  }, [isRadarOpen, targetSatrec, radarSampleEpoch, activeStation.id]);
+
   const radarData = useMemo(() => {
-    if (!targetSatrec || !targetData) return { segments: [], maxEl: 0, aosAz: null, losAz: null, sectorEdgePoints: [] };
+    if (!isRadarOpen || !targetSatrec || !targetData) return { segments: [], maxEl: 0, aosAz: null, losAz: null, sectorEdgePoints: [] };
 
     const nextPos = calculateSatData(new Date(currentDate.getTime() + 60000), targetSatrec, activeStation);
     const isDescending = nextPos && nextPos.elevationDeg < targetData.elevationDeg;
@@ -6198,9 +8907,7 @@ useEffect(() => {
     let losAz = null;
     const sectorEdgePoints = [];
 
-    for (let m = -15; m <= 15; m += 0.5) { 
-      const d = new Date(currentDate.getTime() + m * 60000);
-      const pos = calculateSatData(d, targetSatrec, activeStation);
+    for (const pos of radarTrajectory) {
       
       if (pos && !isNaN(pos.elevationDeg) && !isNaN(pos.azimuthDeg)) {
         if (pos.elevationDeg > maxEl) maxEl = pos.elevationDeg; 
@@ -6223,7 +8930,7 @@ useEffect(() => {
         const r = R * ((90 - pos.elevationDeg) / 90);
         const x = cx + r * Math.sin((pos.azimuthDeg * Math.PI) / 180);
         const y = cy - r * Math.cos((pos.azimuthDeg * Math.PI) / 180);
-        const isPast = m <= 0; 
+        const isPast = pos.time <= simulatedTimeMs; 
 
         if (prevPoint) {
           let lineColor, strokeWidth, strokeDash;
@@ -6246,7 +8953,7 @@ useEffect(() => {
       return { segments: [], maxEl: 'N/A', aosAz: null, losAz: null, sectorEdgePoints: [] };
     }
     return { segments, maxEl: maxEl > 0 ? maxEl.toFixed(1) : 'N/A', aosAz, losAz, sectorEdgePoints };
-  }, [targetSatrec, targetData, Math.floor(simulatedTimeMs / 60000), radarLayout, stationMask, activeStation.id]); // observer-dependent
+  }, [isRadarOpen, targetSatrec, radarTrajectory, Math.floor(simulatedTimeMs / 1000), radarLayout, stationMask, activeStation.id]); // observer-dependent
 
   const radarCurrentPos = useMemo(() => {
     if (!targetData || isNaN(targetData.elevationDeg) || isNaN(targetData.azimuthDeg)) return null;
@@ -6536,274 +9243,92 @@ const dayNightOverlay2D = useMemo(() => {
 }, [realtimeSun, currentSunPos, speedMult, mapThemeIdx]);
 
 // 📍 ฟันธง: สร้าง State ควบคุม SPAN และปุ่ม เปิด-ปิด กราฟ
-const [xBandSpan, setXBandSpan] = useState(1000); 
+const [xBandSpan, setXBandSpan] = useState(500); 
 const [sBandSpan, setSBandSpan] = useState(20);
 const [showXBand, setShowXBand] = useState(true);
 const [showSBand, setShowSBand] = useState(true);
 
-// 📍 ฟันธง: สมองกล SIGNAL ANALYZER (IQ & Dual Spectrum) 
-// - แก้ 1: ลดขนาดตัวหนังสือลงอีกนิด
-// - แก้ 2: ล็อกขนาดตัวหนังสือให้สมมาตร (ไม่บวมยักษ์เวลากดดูกราฟเดี่ยว)
-// - แก้ 3: ปรับฐานกราฟ (baseY) ลงมาให้อยู่เหนือคำว่า CENTER นิดหน่อย เปิดพื้นที่ด้านบนให้กว้างขึ้น
-// - ห้ามแก้ส่วนอื่น!
+// Canvas drawing is owned by this effect only. JSX below never draws.
 const iqCanvasRef = useRef(null);
 const xBandCanvasRef = useRef(null);
 const sBandCanvasRef = useRef(null);
-const analyzerRuntimeRef = useRef({ simulatedTimeMs, targetData });
-analyzerRuntimeRef.current = { simulatedTimeMs, targetData };
+const analyzerRuntimeRef = useRef(null);
+analyzerRuntimeRef.current = { simulatedTimeMs, rfState, rfProfile, xBandSpan, sBandSpan, showXBand, showSBand, iqDisplayChannel };
+const analyzerModulationLabel = [showXBand && `CH1: ${rfProfile.xBand.mod}`, showSBand && `CH2: ${rfProfile.sBand.mod}`].filter(Boolean).join(' | ');
 
 useEffect(() => {
-  if (!isAnalyzerOpen) return;
-  let animationFrameId;
-
-  const SAT_SPECS = {
-    '33396': { name: 'THEOS', xBand: { bw: 120, mod: 'QPSK' }, sBand: { bw: 2, mod: 'BPSK/QPSK' } },
-    '58016': { name: 'THEOS-2', xBand: { bw: 310, mod: 'O-QPSK' }, sBand: { bw: 1, mod: 'QPSK' } }
-  };
-
-  const draw = () => {
-    // ----------------------------------------------------
-    // 1. วาดหน้าจอ IQ Constellation (อัปเกรด Viasat Style & Lock Phase)
-    // ----------------------------------------------------
-    const iqCanvas = iqCanvasRef.current;
-    if (iqCanvas) {
-      const iqParent = iqCanvas.parentElement;
-      const iW = iqCanvas.width = iqParent.clientWidth;
-      const iH = iqCanvas.height = iqParent.clientHeight;
-      const iqCtx = iqCanvas.getContext('2d');
-      const spec = SAT_SPECS[selectedCatnr] || { name: 'UNKNOWN', xBand: { bw: 120, mod: 'QPSK' }, sBand: { bw: 2, mod: 'PSK' } };
-
-      iqCtx.fillStyle = '#0b1121'; 
-      iqCtx.fillRect(0, 0, iW, iH);
-      const centerX = iW / 2; const centerY = iH / 2; const radius = Math.min(iW, iH) * 0.35;
-
-      iqCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; iqCtx.lineWidth = 1;
-      iqCtx.beginPath(); iqCtx.moveTo(centerX, 0); iqCtx.lineTo(centerX, iH); iqCtx.stroke();
-      iqCtx.beginPath(); iqCtx.moveTo(0, centerY); iqCtx.lineTo(iW, centerY); iqCtx.stroke();
-      
-      iqCtx.strokeStyle = 'rgba(255, 204, 0, 0.4)'; 
-      iqCtx.setLineDash([4, 4]); 
-      iqCtx.beginPath(); iqCtx.arc(centerX, centerY, radius, 0, 2*Math.PI); iqCtx.stroke();
-      iqCtx.setLineDash([]); 
-
-      const angles = [Math.PI/4, 3*Math.PI/4, 5*Math.PI/4, 7*Math.PI/4];
-      iqCtx.fillStyle = '#ff3333';
-      angles.forEach(a => {
-         iqCtx.beginPath(); iqCtx.arc(centerX + radius * Math.cos(a), centerY - radius * Math.sin(a), 4, 0, 2*Math.PI); iqCtx.fill();
-      });
-
-      // 📍 ฟันธง: คำนวณคุณภาพการ Lock ของ Demodulator อ้างอิงจากมุม Elevation
-      const runtimeTargetData = analyzerRuntimeRef.current.targetData;
-      const el = runtimeTargetData ? runtimeTargetData.elevationDeg : -10;
-      const isAutoTrack = el >= 5.0;
-      const isProgramTrack = el >= 0.0 && el < 5.0;
-      
-      // Lock Quality: 0.0 = ไม่ล็อคเลย, 1.0 = ล็อคสมบูรณ์
-      // ในช่วง Program Track (0-5 องศา) เปอร์เซ็นต์การล็อคจะค่อยๆ เพิ่มขึ้น (อาการพยายาม Lock)
-      const lockQuality = isAutoTrack ? 1.0 : (isProgramTrack ? (el / 5.0) : 0.0);
-
-      iqCtx.fillStyle = '#ffffff';
-
-      // 📍 ฟันธง: จำลองเม็ดเวกเตอร์ 256 จุด (Nb Vector 256 แบบเป๊ะๆ ตามหน้าจอ Viasat)
-      for(let i=0; i<256; i++) {
-         // สุ่มว่าเม็ดนี้จะอยู่ในตำแหน่ง Lock หรือ Unlocked ตามคุณภาพสัญญาณ
-         const isPointLocked = Math.random() < lockQuality;
-
-         if (isPointLocked) {
-             // 🟢 อาการ Lock (QPSK): เม็ดสี่เหลี่ยมเกาะกลุ่มกันที่ 4 มุม
-             const angle = angles[i % 4];
-             const tx = centerX + radius * Math.cos(angle);
-             const ty = centerY - radius * Math.sin(angle);
-             const jitter = spec.xBand.mod === 'O-QPSK' ? 0.12 : 0.08;
-             
-             const u1 = Math.max(Math.random(), 0.0001); const u2 = Math.random();
-             const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-             const z1 = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
-             
-             const nx = z0 * (radius * jitter * 0.4); 
-             const ny = z1 * (radius * jitter * 0.4);
-             
-             iqCtx.globalAlpha = Math.random() * 0.4 + 0.6; // ให้ความสว่างวูบวาบนิดๆ
-             // 📍 ฟันธง: วาดเป็นจุด "สี่เหลี่ยมทึบ" ขนาด 3x3 พิกเซล เหมือนเครื่อง Viasat
-             iqCtx.fillRect(tx + nx - 1.5, ty + ny - 1.5, 3, 3);
-         } else {
-             // 🔴 อาการ Unlocked: เม็ดสี่เหลี่ยมกระจายแบบ Uniform ในกรอบสี่เหลี่ยมจัตุรัส
-             const spread = radius * 1.35; // ความกว้างของการกระจาย (อยู่ในกรอบกราฟ)
-             const px = centerX + (Math.random() - 0.5) * 2 * spread;
-             const py = centerY + (Math.random() - 0.5) * 2 * spread;
-             
-             iqCtx.globalAlpha = 1.0; // เม็ดกระจายจะสว่างชัดเจน ไม่โปร่งแสง
-             iqCtx.fillRect(px - 1.5, py - 1.5, 3, 3);
-         }
-      }
-      iqCtx.globalAlpha = 1.0;
-    }
-// ----------------------------------------------------
-    // 2. ฟังก์ชันวาดกราฟ Spectrum (อัปเกรด Dynamic Amplitude & Tracking LED)
-    // ----------------------------------------------------
-    const drawSpectrum = (canvas, w, h, isXBand) => {
+  if (!isAnalyzerOpen && !isIqOpen) return;
+  let disposed = false, animationFrameId = null, frameWindow = window, lastPaintMs = -Infinity;
+  const surfaces = new Map();
+  const surfaceFor = canvas => {
+    if (!canvas || !canvas.parentElement) return null;
+    const owner = canvas.ownerDocument.defaultView || window;
+    let surface = surfaces.get(canvas);
+    if (!surface || surface.parent !== canvas.parentElement || surface.owner !== owner) {
+      if (surface?.observer) surface.observer.disconnect();
       const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#0b1121'; 
-      ctx.fillRect(0, 0, w, h);
-      
-      const spec = SAT_SPECS[selectedCatnr] || { name: 'UNKNOWN', xBand: { bw: 120, mod: 'QPSK' }, sBand: { bw: 2, mod: 'PSK' } };
-      
-      // 📍 ฟันธง: ล้าง textScale ทิ้ง บังคับให้ฟอนต์มีขนาดคงที่ (Fixed Size) ป้องกันตัวหนังสือบวม!
-      const graphW = w - 15; 
-      
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 1;
-      ctx.setLineDash([2, 4]); 
-      ctx.beginPath();
-      for(let i=1; i<=10; i++) { ctx.moveTo(i*(graphW/10), 0); ctx.lineTo(i*(graphW/10), h); }
-      for(let i=1; i<10; i++) { ctx.moveTo(0, i*(h/10)); ctx.lineTo(graphW, i*(h/10)); }
-      ctx.stroke();
-      ctx.setLineDash([]); 
-
-      const bw = isXBand ? spec.xBand.bw : spec.sBand.bw;
-      const span = isXBand ? xBandSpan : sBandSpan; 
-      const cf_base = isXBand ? 720.0 : 70.0; 
-
-      let signalStrength = 0;
-      let trackMode = 'STANDBY';
-      let trackColor = 'var(--red)';
-
-      const runtimeTargetData = analyzerRuntimeRef.current.targetData;
-      if (linkActive && runtimeTargetData) {
-          const el = runtimeTargetData.elevationDeg;
-          let baseStrength = runtimeTargetData.altKm / runtimeTargetData.rangeKm; 
-          
-          if (el >= 5) {
-              trackMode = 'AUTOTRACK';
-              trackColor = '#00ff66'; 
-              signalStrength = Math.min(1.0, Math.pow(baseStrength, 0.5) * 1.2); 
-          } else if (el >= 0) {
-              trackMode = 'PROGRAM TRACK';
-              trackColor = '#ffcc00'; 
-              signalStrength = (baseStrength * 0.8) * (Math.random() * 0.5 + 0.5); 
-          }
+      if (!ctx) return null;
+      surface = { ctx, parent: canvas.parentElement, owner, width: 0, height: 0, dirty: true, dpr: 0, observer: null, externalLabels: true };
+      const Observer = owner.ResizeObserver || window.ResizeObserver;
+      if (Observer) {
+        surface.observer = new Observer(() => { surface.dirty = true; });
+        surface.observer.observe(surface.parent);
       }
-
-      const peakX = graphW / 2; 
-      
-      const visualCompression = 0.65; 
-      const halfBwPixels = (bw / span) * (graphW / 2) * visualCompression;
-
-      const dbPerDiv = 5; 
-      const totalDb = 10 * dbPerDiv; 
-      const refLevel = isXBand ? -35 : -20; 
-
-      // 📍 ฟันธง: ล็อกฐานกราฟและเพดานกราฟด้วย px คงที่
-      const baseY = h - 30; 
-      const peakH = baseY - 25; 
-
-      ctx.strokeStyle = isXBand ? '#ffcc00' : '#00eaff'; 
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-
-      for(let x=0; x<=graphW; x++) {
-        const dist = Math.abs(x - peakX); 
-        const x_norm = dist / halfBwPixels;
-        let amp = 0;
-        
-        if (linkActive) {
-            if (x_norm <= 1.0) {
-                amp = Math.pow(Math.cos((x_norm * Math.PI) / 2), 0.6) * signalStrength;
-            } else if (x_norm < 1.8) {
-                amp = Math.abs(Math.sin((x_norm - 1.0) * Math.PI)) * 0.3 / x_norm * signalStrength;
-            } else if (x_norm < 2.6) {
-                amp = Math.abs(Math.sin((x_norm - 1.8) * Math.PI)) * 0.15 / x_norm * signalStrength;
-            }
-        }
-        
-        const noise = (Math.random() * 0.06) + 0.02; 
-        const totalPwr = linkActive ? Math.max(noise, amp) : noise; 
-        
-        const y = baseY - (totalPwr * peakH) + (Math.random() - 0.5) * (h * 0.015); 
-        
-        if (x===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-
-      // ----------------------------------------------------
-      // วาด Overlay Text
-      // ----------------------------------------------------
-      // 📍 ฟันธง: ล็อกขนาดฟอนต์ให้เล็กและคมชัดเป๊ะๆ (11px สำหรับข้อความทั่วไป, 13px สำหรับ Marker)
-      ctx.fillStyle = '#e2e8f0'; ctx.font = `bold 11px Rajdhani, monospace`; 
-      ctx.textAlign = 'left';
-      
-      const textX = 15;
-      ctx.fillText(`${formatTime(new Date(analyzerRuntimeRef.current.simulatedTimeMs))} UTC, SIM`, textX, 20);
-      ctx.fillText(`REF ${refLevel.toFixed(1)} dBm   AT 10 dB`, textX, 35);
-      ctx.fillText(`LOG 5 dB/`, textX, 50); 
-      
-      if (linkActive && targetData) {
-          ctx.beginPath();
-          ctx.arc(textX + 4, 65 - 3, 4, 0, Math.PI * 2);
-          ctx.fillStyle = trackColor;
-          ctx.fill();
-          ctx.shadowBlur = 8;
-          ctx.shadowColor = trackColor;
-          ctx.font = `bold 12px Rajdhani, monospace`; // ให้ LED Tracking เด่นขึ้นมานิดนึง
-          ctx.fillText(` ${trackMode}`, textX + 10, 65);
-          ctx.shadowBlur = 0; 
-      }
-      
-      ctx.font = `bold 11px Rajdhani, monospace`; // คืนค่าฟอนต์
-      
-      if (linkActive) {
-          const mkX = peakX; 
-          const mkY = baseY - (1.0 * peakH); 
-          ctx.beginPath(); 
-          ctx.moveTo(mkX, mkY - 6); 
-          ctx.lineTo(mkX + 5, mkY - 11); 
-          ctx.lineTo(mkX - 5, mkY - 11); 
-          ctx.closePath(); 
-          ctx.fillStyle = isXBand ? '#ffcc00' : '#00eaff'; ctx.fill();
-          
-          ctx.textAlign = 'right';
-          ctx.font = `bold 13px Rajdhani, monospace`; // ขยายฟอนต์ Marker ให้เด่น
-          ctx.fillText(`MKR ${cf_base.toFixed(1)} MHz`, graphW - 15, 20);
-          ctx.fillStyle = '#ffffff'; 
-          ctx.fillText(`${(refLevel - 5).toFixed(2)} dBm`, graphW - 15, 35);
-      }
-
-      ctx.fillStyle = '#e2e8f0'; ctx.textAlign = 'left'; ctx.font = `bold 11px Rajdhani, monospace`;
-      ctx.fillText(`CENTER ${cf_base.toFixed(1)} MHz`, textX, h - 15);
-      ctx.fillText(`#RES BW 3.0 MHz`, textX, h - 4);
-      
-      ctx.textAlign = 'right';
-      ctx.fillText(`SPAN ${span >= 1000 ? (span/1000).toFixed(3) + ' GHz' : span.toFixed(1) + ' MHz'}`, graphW - 15, h - 15);
-      ctx.fillText(`SWP 50.0 msec`, graphW - 15, h - 4);
-      ctx.textAlign = 'center';
-      ctx.fillText(`#VBW 10 kHz`, graphW/2, h - 4);
-    };
-
-    const xCanvas = xBandCanvasRef.current;
-    if (xCanvas && showXBand) {
-      const xParent = xCanvas.parentElement;
-      const xW = xCanvas.width = xParent.clientWidth;
-      const xH = xCanvas.height = xParent.clientHeight;
-      drawSpectrum(xCanvas, xW, xH, true);
+      surfaces.set(canvas, surface);
     }
-
-    const sCanvas = sBandCanvasRef.current;
-    if (sCanvas && showSBand) {
-      const sParent = sCanvas.parentElement;
-      const sW = sCanvas.width = sParent.clientWidth;
-      const sH = sCanvas.height = sParent.clientHeight;
-      drawSpectrum(sCanvas, sW, sH, false);
+    const dpr = Math.min(3, Math.max(1, owner.devicePixelRatio || 1));
+    if (surface.dirty || surface.dpr !== dpr || !surface.observer) {
+      const bounds = surface.parent.getBoundingClientRect();
+      surface.width = Math.max(0, bounds.width);
+      surface.height = Math.max(0, bounds.height);
+      surface.dpr = dpr;
+      const width = Math.max(1, Math.round(surface.width * dpr));
+      const height = Math.max(1, Math.round(surface.height * dpr));
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
+      surface.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      surface.dirty = false;
     }
-
-    animationFrameId = requestAnimationFrame(draw);
+    return surface;
   };
-
-  draw();
-  return () => cancelAnimationFrame(animationFrameId);
-}, [isAnalyzerOpen, linkActive, selectedCatnr, xBandSpan, sBandSpan, showXBand, showSBand]);
+  const draw = now => {
+    if (disposed) return;
+    const liveCanvases = [iqCanvasRef.current, xBandCanvasRef.current, sBandCanvasRef.current].filter(Boolean);
+    // Rebind automatically after a host/document change; never retain a closed window's canvas.
+    for (const [canvas, surface] of surfaces) {
+      if (!liveCanvases.includes(canvas)) { surface.observer?.disconnect(); surfaces.delete(canvas); }
+    }
+    if (now - lastPaintMs >= 48 || now < lastPaintMs) {
+      lastPaintMs = now;
+      const runtime = analyzerRuntimeRef.current;
+      const iqSurface = surfaceFor(iqCanvasRef.current);
+      if (iqSurface) drawRfIqFrame(iqSurface, runtime.rfProfile, runtime.rfState, runtime.simulatedTimeMs, runtime.iqDisplayChannel !== 's', runtime.iqDisplayChannel !== 'x');
+      if (runtime.showXBand) {
+        const xSurface = surfaceFor(xBandCanvasRef.current);
+        if (xSurface) drawRfSpectrumFrame(xSurface, runtime.rfProfile.xBand, runtime.xBandSpan, runtime.rfState, runtime.simulatedTimeMs, true);
+      }
+      if (runtime.showSBand) {
+        const sSurface = surfaceFor(sBandCanvasRef.current);
+        if (sSurface) drawRfSpectrumFrame(sSurface, runtime.rfProfile.sBand, runtime.sBandSpan, runtime.rfState, runtime.simulatedTimeMs, false);
+      }
+    }
+    frameWindow = liveCanvases[0]?.ownerDocument.defaultView || window;
+    if (frameWindow.closed) frameWindow = window;
+    animationFrameId = frameWindow.requestAnimationFrame(draw);
+  };
+  draw(0);
+  return () => {
+    disposed = true;
+    if (animationFrameId !== null) frameWindow.cancelAnimationFrame(animationFrameId);
+    for (const surface of surfaces.values()) surface.observer?.disconnect();
+    surfaces.clear();
+  };
+// The host revision rebinds even if closing a child window cancelled its last RAF.
+}, [isAnalyzerOpen, isIqOpen, toolHostRevision]);
 
 // 📍 WOW Feature 1: DIAGRAM STATE
 const [isDiagramOpen, setIsDiagramOpen] = useState(false);
-const [diagramPos, setDiagramPos] = useState({ x: 200, y: 150 });
+const [diagramPos, setDiagramPos] = useState(() => ({ x: Math.max(0, window.innerWidth / 2 - 550), y: Math.max(0, window.innerHeight / 2 - 325) }));
 const [isDraggingDiagram, setIsDraggingDiagram] = useState(false);
 const dragDiagramRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
@@ -6813,7 +9338,7 @@ const matrixRef = useRef(null);
 const autoPilotTimer = useRef(null);
 
 // Logic ระบบลากหน้าต่าง Diagram
-const handleDiagramMouseDown = (e) => { setIsDraggingDiagram(true); bringToFront('diagram'); dragDiagramRef.current = { startX: e.clientX, startY: e.clientY, initX: diagramPos.x, initY: diagramPos.y }; };
+const handleDiagramMouseDown = (e) => { if (workspaceMode !== 'classic' || toolWindowsRef.current.diagram || e.target.closest('button,input,select')) return; setIsDraggingDiagram(true); bringToFront('diagram'); dragDiagramRef.current = { startX: e.clientX, startY: e.clientY, initX: diagramPos.x, initY: diagramPos.y }; };
 useEffect(() => {
   const handleMouseMove = (e) => { if (isDraggingDiagram) setDiagramPos({ x: dragDiagramRef.current.initX + (e.clientX - dragDiagramRef.current.startX), y: dragDiagramRef.current.initY + (e.clientY - dragDiagramRef.current.startY) }); };
   const handleMouseUp = () => setIsDraggingDiagram(false);
@@ -6822,8 +9347,8 @@ useEffect(() => {
 }, [isDraggingDiagram]);
 
 // Logic Auto-Pilot 🤖
-const autoPilotRuntimeRef = useRef({ simulatedTimeMs, nextPassTimestamp });
-autoPilotRuntimeRef.current = { simulatedTimeMs, nextPassTimestamp };
+const autoPilotRuntimeRef = useRef({});
+autoPilotRuntimeRef.current = { simulatedTimeMs, nextPassTimestamp, workspaceMode, clockMode, isPlaying };
 
 useEffect(() => {
   if (autoPilotTimer.current) {
@@ -6835,17 +9360,21 @@ useEffect(() => {
     if (globeRef.current) globeRef.current.controls().autoRotate = true;
     let windowCycle = 0;
     autoPilotTimer.current = setInterval(() => {
-      windowCycle++;
-      if (windowCycle % 3 === 0) { setIsRadarOpen(true); setIsAnalyzerOpen(false); setIsDiagramOpen(false); }
-      else if (windowCycle % 3 === 1) { setIsRadarOpen(false); setIsAnalyzerOpen(true); setIsDiagramOpen(false); }
-      else { setIsRadarOpen(false); setIsAnalyzerOpen(false); setIsDiagramOpen(true); }
-
       const runtime = autoPilotRuntimeRef.current;
+      if (!runtime.isPlaying || runtime.clockMode !== 'DEMO') return;
+      // Preserve the user's simultaneous views in Quad or on external monitors.
+      if (runtime.workspaceMode === 'classic' && Object.keys(toolWindowsRef.current).length === 0) {
+        windowCycle++;
+        if (windowCycle % 3 === 0) { setIsRadarOpen(true); setIsAnalyzerOpen(false); setIsDiagramOpen(false); }
+        else if (windowCycle % 3 === 1) { setIsRadarOpen(false); setIsAnalyzerOpen(true); setIsDiagramOpen(false); }
+        else { setIsRadarOpen(false); setIsAnalyzerOpen(false); setIsDiagramOpen(true); }
+      }
       const nextPass = runtime.nextPassTimestamp;
       if (nextPass && nextPass.time) {
         const timeToAos = nextPass.time - runtime.simulatedTimeMs;
         if (timeToAos > 120000) {
-          setSimulatedTimeMs(nextPass.time - 30000);
+          manualSeekRevisionRef.current += 1;
+          setSimulatedTimeValue(nextPass.time - 30000);
           setCustomAlert({ show: true, message: 'AUTO-PILOT: TIME TRAVEL INITIATED 🚀', type: 'success' });
         }
       }
@@ -6865,8 +9394,8 @@ useEffect(() => {
 // 📍 ฟันธง: สมองกล "MISSION AUTO-SEQUENCER" (ระบบวนลูปตารางรับสัญญาณอัตโนมัติ)
 const autoSnapRef = useRef({});
 const missionJumpTimerRef = useRef(null);
-const missionSequencerStateRef = useRef({ validationMode, isPlaying, speedMult, selectedCatnr, stationId: activeStation.id });
-missionSequencerStateRef.current = { validationMode, isPlaying, speedMult, selectedCatnr, stationId: activeStation.id };
+const missionSequencerStateRef = useRef({});
+missionSequencerStateRef.current = { validationMode, isPlaying, speedMult, selectedCatnr, stationId: activeStation.id, clockMode, isAutoPilot };
 
 useEffect(() => {
   return () => {
@@ -6880,20 +9409,10 @@ useEffect(() => {
   const now = Date.now();
   const activeRealPass = passSchedule.find(p => now >= p.aosTime && now <= p.losTime);
 
-  // 🚀 1. Real-Time AOS Interceptor (ระบบความปลอดภัย กรณีมีดาวเทียมเข้าจริงในปัจจุบัน)
-  if (activeRealPass && !validationMode) {
-    const passId = `SNAP-REAL-${activeRealPass.aosTime}`;
-    if (!autoSnapRef.current[passId]) {
-      autoSnapRef.current[passId] = true;
-      setSimulatedTimeMs(now);
-      setSpeedMult(1);
-      setIsPlaying(true);
-    }
-  } 
-  
-  // 🚀 2. SIMULATION SEQUENCER (ระบบโดดข้าม Pass อัตโนมัติเมื่ออยู่ในโหมด SIM ที่ความเร็ว 1X)
-  const isSimulating = Math.abs(simulatedTimeMs - now) > 60000 && speedMult === 1 && isPlaying;
-  
+  // LIVE follows the clock in one place. Manual SIM is never intercepted at AOS.
+  // Automatic pass jumps belong only to the user-enabled AUTO-EARTH/DEMO mode.
+  const isSimulating = clockMode === 'DEMO' && isAutoPilot && speedMult === 1 && isPlaying;
+
   if (!validationMode && isSimulating) {
     // 📍 ค้นหาว่าเพิ่งผ่าน LOS ของ Pass ปัจจุบันมา 10 ถึง 12 วินาทีหรือไม่ (หน่วง 10 วิเพื่อให้ผู้ชมเห็นจังหวะสัญญาณหลุด)
     const justFinishedPass = passSchedule.find(p => 
@@ -6912,7 +9431,7 @@ useEffect(() => {
           // 📍 เด้ง Popup Sci-Fi แจ้งเตือนผู้ชมบนจอใหญ่
           setCustomAlert({ 
             show: true, 
-            message: `🛰️ MISSION SEQUENCER: จบการรับสัญญาณ... ระบบกำลังคำนวณวงโคจรและวาร์ปไปยัง PASS ถัดไปอัตโนมัติ!`, 
+            message: `🛰️ MISSION SEQUENCER: Pass complete. Computing the next pass and advancing the simulation automatically.`, 
             type: 'success' 
           });
           
@@ -6920,36 +9439,109 @@ useEffect(() => {
          if (missionJumpTimerRef.current) clearTimeout(missionJumpTimerRef.current);
          const scheduledCatnr = selectedCatnr;
          const scheduledStationId = activeStation.id;
+         const scheduledSeekRevision = manualSeekRevisionRef.current;
          missionJumpTimerRef.current = setTimeout(() => {
           const runtime = missionSequencerStateRef.current;
           missionJumpTimerRef.current = null;
-          if (runtime.validationMode || !runtime.isPlaying || runtime.speedMult !== 1 || runtime.selectedCatnr !== scheduledCatnr || runtime.stationId !== scheduledStationId) {
+          if (runtime.validationMode || !runtime.isPlaying || runtime.speedMult !== 1 || runtime.clockMode !== 'DEMO' || !runtime.isAutoPilot || manualSeekRevisionRef.current !== scheduledSeekRevision || runtime.selectedCatnr !== scheduledCatnr || runtime.stationId !== scheduledStationId) {
             delete autoSnapRef.current[jumpId];
             return;
           }
-          setSimulatedTimeMs(nextPass.aosTime - 10000);
+          manualSeekRevisionRef.current += 1;
+          setSimulatedTimeValue(nextPass.aosTime - 10000);
         }, 4000);
       }
     }
     }
   }
-}, [simulatedTimeMs, passSchedule, speedMult, isPlaying, validationMode, selectedCatnr, activeStation.id]);
+}, [simulatedTimeMs, passSchedule, speedMult, isPlaying, validationMode, selectedCatnr, activeStation.id, clockMode, isAutoPilot]);
 
-// 📍 ฟันธง: สมองกล Auto-Scale ปรับขนาด UI ให้พอดีกับทุกหน้าจออัตโนมัติ
-const uiScale = Math.min(1, size.width / 1920, size.height / 1080);
+// MASTER RESPONSIVE REQUIREMENT: adapt by real viewport, not physical screen inches.
+// Four tiers preserve the Classic HUD whenever there is enough room, reserve a central Globe Safe Zone,
+// and only page the side HUD on genuinely narrow/portrait viewports.
+const viewportAspect = size.height > 0 ? size.width / size.height : 16 / 9;
+const isPortraitViewport = size.height > size.width;
+// A 65-inch/large presentation screen can report a shorter CSS viewport because of
+// browser chrome or OS scaling. Treat wide >=1600px canvases as full Classic HUD
+// displays down to 700px height so the side menus never fall back to scroll mode.
+const wideTvHud = size.width >= 1600 && size.height >= 700;
+const hudTier = (size.width < 900 || (isPortraitViewport && size.width < 1200))
+  ? 'narrow'
+  : (wideTvHud
+    ? ((size.width >= 2500 && size.height >= 1200) ? 'presentation' : 'desktop')
+    : ((size.width < 1500 || size.height < 820) ? 'compact' : 'desktop'));
+const compactHud = hudTier === 'compact' || hudTier === 'narrow';
+const pagedHud = hudTier === 'narrow';
+const hudOuterPadding = hudTier === 'presentation' ? 24 : (hudTier === 'desktop' ? 16 : (hudTier === 'compact' ? 10 : 8));
+const globeSafeMin = hudTier === 'presentation'
+  ? Math.max(1500, Math.round(size.width * 0.56))
+  : (hudTier === 'desktop'
+    ? Math.max(760, Math.round(size.width * 0.46))
+    : (hudTier === 'compact' ? Math.max(460, Math.round(size.width * 0.42)) : size.width));
+const preferredHudWidth = hudTier === 'presentation' ? 540 : (hudTier === 'desktop' ? 410 : 350);
+const safeHudWidth = hudTier === 'narrow'
+  ? Math.max(1, size.width - (hudOuterPadding * 2))
+  : Math.max(260, Math.floor((size.width - globeSafeMin - (hudOuterPadding * 2)) / 2));
+const hudPanelWidth = Math.max(260, Math.min(preferredHudWidth, safeHudWidth));
+const hudFill = false;
+// Use MASTER compact fitting only below desktop-class widths. Desktop/TV must match
+// the deployed Classic HUD exactly rather than being compressed by the newer tier rules.
+const hudFit = hudTier === 'compact' || hudTier === 'narrow';
+const useAdaptiveHud = hudTier === 'compact' || hudTier === 'narrow';
+
+// DEPLOYED CLASSIC AUTOSCALE — exact proven behavior from the working reference build.
+// Scale BOTH axes against the 1920x1080 design canvas. Do not measure content and do not
+// shrink the HUD a second time: that double-scaling was the reason the MASTER looked tiny.
+const uiScale = hudTier === 'narrow' ? 1 : Math.min(1, size.width / 1920, size.height / 900);
+
+// Native requestFullscreen sets document.fullscreenElement, but browser/F11 fullscreen
+// may only expose itself through a viewport that nearly equals screen.avail*. Detect both
+// without changing the normal maximized-browser layout.
+const screenAvailWidth = typeof window !== 'undefined' ? (window.screen?.availWidth || size.width) : size.width;
+const screenAvailHeight = typeof window !== 'undefined' ? (window.screen?.availHeight || size.height) : size.height;
+const isMainFullscreenLayout = isMainFullscreen || (
+  size.width >= Math.max(1, screenAvailWidth - 12) &&
+  size.height >= Math.max(1, screenAvailHeight - 12)
+);
+
+const workspaceRects = getWorkspaceRects(size.width, size.height, workspaceToolbarHeight);
+const workspaceFullRect = { left: 8, top: workspaceToolbarHeight + 8, width: Math.max(1, size.width - 16), height: Math.max(1, size.height - workspaceToolbarHeight - 16) };
+workspaceRuntimeRef.current = { time: simulatedTimeMs, station: activeStation.id, clockMode, isPlaying, muted: isMuted };
 // 📍 ฟันธง 2: สมองกลป้องกันหน้าต่างทะลุขอบจอ (Anti-OutOfBounds System)
 // หากผู้ใช้ลากหัวหน้าต่างหลุดขึ้นไปขอบบน (y < 0) ระบบจะดีดกลับมาที่ขอบบนสุดอัตโนมัติ!
 useEffect(() => {
-  // 📍 ฟันธง: ใช้เงื่อนไข < 0 แบบเป๊ะๆ และแยกคำสั่งออกจากกัน ป้องกัน React สร้าง Loop นรก (Micro-Loop)
-  if (radarPos?.y < 0) setRadarPos(p => ({ ...p, y: 0 }));
-  if (gsPos?.y < 0) setGsPos(p => ({ ...p, y: 0 }));
-  if (anglesPos?.y < 0) setAnglesPos(p => ({ ...p, y: 0 }));
-  if (dbPos?.y < 0) setDbPos(p => ({ ...p, y: 0 }));
-  if (passPos?.y < 0) setPassPos(p => ({ ...p, y: 0 }));
-  if (diagramPos?.y < 0) setDiagramPos(p => ({ ...p, y: 0 }));
-  if (analyzerPos?.y < 0) setAnalyzerPos(p => ({ ...p, y: 0 }));
-  if (imgPos?.y < 0) setImgPos(p => ({ ...p, y: 0 })); // <-- 📍 ฟันธง: เติมหน้าต่าง imgPos ที่หายไปด้วย!
-}, [radarPos.y, gsPos.y, anglesPos.y, dbPos.y, passPos.y, diagramPos.y, analyzerPos.y, imgPos.y]);
+  // Keep the complete Classic panel in the current viewport, including a resized
+  // panel. Quad, maximized and detached hosts retain their saved Classic position.
+  if (workspaceMode !== 'classic') return;
+  const specs = [
+    ['radar', setRadarPos, 550, 550], ['analyzer', setAnalyzerPos, 880, 550],
+    ['diagram', setDiagramPos, 1050, 600], ['gs', setGsPos, 520, 530],
+    ['angles', setAnglesPos, 780, 520], ['db', setDbPos, 750, 480],
+    ['pass', setPassPos, 800, 520], ['img', setImgPos, 780, 500]
+  ];
+  const panels = specs.filter(([id]) => !toolWindowsRef.current[id] && !maximizedWins[id]).map(([id, setter, width, height]) => ({
+    setter, width: Math.min(width, size.width * .95), height: Math.min(height, size.height * .85),
+    node: document.querySelector(`.sat-tool-surface[data-tool="${id}"][data-host="classic"]`)?.firstElementChild
+  }));
+  const keepVisible = () => panels.forEach(({setter, width, height, node}) => {
+    const rect = node?.getBoundingClientRect();
+    const panelWidth = rect?.width > 0 ? rect.width : width;
+    const panelHeight = rect?.height > 0 ? rect.height : height;
+    setter(previous => {
+      const x = Math.max(0, Math.min(previous.x, Math.max(0, size.width - Math.min(panelWidth, size.width))));
+      const y = Math.max(0, Math.min(previous.y, Math.max(0, size.height - Math.min(panelHeight, size.height))));
+      return x === previous.x && y === previous.y ? previous : { ...previous, x, y };
+    });
+  });
+  keepVisible();
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(keepVisible) : null;
+  panels.forEach(({node}) => { if (node) observer?.observe(node); });
+  return () => observer?.disconnect();
+}, [size.width, size.height, workspaceMode, toolHostRevision, maximizedWins,
+  isRadarOpen, isAnalyzerOpen, isDiagramOpen, isGsModalOpen, isAnglesOpen, isModalOpen, isPassModalOpen, isImgOpen,
+  radarPos.x, radarPos.y, gsPos.x, gsPos.y, anglesPos.x, anglesPos.y, dbPos.x, dbPos.y, passPos.x, passPos.y,
+  diagramPos.x, diagramPos.y, analyzerPos.x, analyzerPos.y, imgPos.x, imgPos.y]);
+
 return (
   <>
 
@@ -7010,6 +9602,58 @@ return (
         </div>
       </div>
 
+  <style>{SAT_WORKSPACE_CSS}</style>
+  <SatFeedback alert={customAlert} onDismiss={() => setCustomAlert(value => ({ ...value, show: false }))} />
+  {customAlert.show && Object.entries(toolWindows).map(([id, viewer]) => viewer.mount?.isConnected ? createPortal(<SatFeedback alert={customAlert} onDismiss={() => setCustomAlert(value => ({ ...value, show: false }))} />, viewer.mount, `feedback-${id}`) : null)}
+  {workspaceMode === 'quad' && <>
+    <div style={{ position: 'fixed', inset: 0, background: '#010408', zIndex: 19999 }} />
+    <nav className="sat-workspace-toolbar" ref={workspaceToolbarRef} aria-label="Workspace controls">
+      <button onClick={returnClassicWorkspace}>← BACK TO CLASSIC</button>
+      <strong>MULTI-VIEW</strong>
+      {focusedWorkspacePanel && <button onClick={() => setFocusedWorkspacePanel(null)}>RETURN TO 4-UP</button>}
+      <span className="sat-workspace-time">{clockMode} · {formatTime(currentDate)} UTC</span>
+      <button onClick={() => { setClockMode('SIM'); setIsPlaying(value => !value); }}>{isPlaying ? 'Ⅱ PAUSE' : '▶ PLAY'}</button>
+      <button onClick={toggleAudioMute} aria-pressed={isMuted}>{isMuted ? '🔇 MUTE' : '🔊 AUDIO'}</button>
+      <select aria-label="Workspace satellite" value={selectedCatnr} onChange={event => { setSelectedCatnr(event.target.value); setSelectedCatnrs(values => Array.from(new Set([...values, event.target.value]))); }}>
+        {SATELLITE_OPTIONS.map(sat => <option key={sat.catnr} value={sat.catnr}>{sat.displayName}</option>)}
+      </select>
+      <select aria-label="Workspace station" value={activeStation.id} onChange={event => setActiveStation(GS_NETWORK.find(station => station.id === event.target.value))}>
+        {GS_NETWORK.map(station => <option key={station.id} value={station.id}>{station.name}</option>)}
+      </select>
+      <button onClick={() => setStationMask(value => value === 0 ? 3 : value === 3 ? 5 : 0)}>MASK {stationMask}°</button>
+      <button onClick={() => setIsFlatMap(value => !value)}>{isFlatMap ? '3D GLOBE' : '2D MAP'}</button>
+      <select aria-label="Open workspace tool" value="" onChange={event => {
+        const id = event.target.value;
+        if (!id) return;
+        const viewer = toolWindowsRef.current[id];
+        if (viewer && !viewer.win.closed) { viewer.win.focus(); return; }
+        if (SAT_QUAD_TOOL_IDS.includes(id)) {
+          // Core 4-UP tools stay inside MULTI-VIEW and use the existing full-panel focus mode.
+          setToolOpen(id, true);
+          bringToFront(id);
+          setFocusedWorkspacePanel(id);
+        } else {
+          // Auxiliary tools (including IQ) must remain visible while MULTI-VIEW stays on screen.
+          // Open them in the hardened detached viewer instead of underneath the 4-UP backdrop.
+          openToolWindow(id);
+        }
+      }}>
+        <option value="">TOOLS…</option>{Object.entries(SAT_WORKSPACE_TOOLS).map(([id, label]) => <option value={id} key={id}>{label}</option>)}
+      </select>
+    </nav>
+    {SAT_QUAD_TOOL_IDS.map(id => {
+      const opened = id === 'radar' ? isRadarOpen : id === 'diagram' ? isDiagramOpen : isAnalyzerOpen;
+      if ((!toolWindows[id] && opened) || focusedWorkspacePanel) return null;
+      return <div key={id} className="sat-empty-tool" style={workspaceRects[id]}>
+        <strong>{SAT_WORKSPACE_TOOLS[id]}</strong>
+        <span>{toolWindows[id] ? 'OPEN IN DETACHED WINDOW' : 'TOOL IS CLOSED'}</span>
+        <button onClick={() => toolWindows[id] ? toolWindows[id].win.focus() : setToolOpen(id, true)}>{toolWindows[id] ? 'SHOW DETACHED WINDOW' : 'OPEN TOOL'}</button>
+        {toolWindows[id] && <button onClick={() => returnToolToMain(id)}>RETURN HERE</button>}
+      </div>;
+    })}
+  </>}
+  <div className="sat-globe-host" ref={globeHostRef} data-quad={workspaceMode === 'quad'} style={workspaceMode === 'quad' ? { ...(focusedWorkspacePanel === 'globe' ? workspaceFullRect : workspaceRects.globe), right: 'auto', bottom: 'auto', visibility: focusedWorkspacePanel && focusedWorkspacePanel !== 'globe' ? 'hidden' : 'visible' } : undefined}>
+    {workspaceMode === 'quad' && <div className="sat-globe-caption" style={{ display: 'flex', alignItems: 'center', gap: 8, pointerEvents: 'auto' }}><span>LIVE GLOBE · {targetConfig.displayName} · {activeStation.id} · {cameraMode}</span><button className="sat-popout-btn" aria-label="Expand Globe" onClick={() => toggleMaximize('globe')}><SatWindowIcon kind={focusedWorkspacePanel === 'globe' ? 'restore' : 'maximize'} /></button></div>}
   {/* 📍 ฟันธง: ชุดโค้ด Globe ฉบับสมบูรณ์ แก้ปัญหาจอขาว + ป้าย 3D สมมาตร 100% */}
   {(() => {
       // 📍 ฟันธง: ลบดาวเทียมออกจาก HTML ทิ้งไปเลย เพราะเราย้ายป้ายชื่อเข้าโลก 3D แล้ว!
@@ -7020,7 +9664,7 @@ return (
 
       return (
         <Globe
-            ref={globeRef} width={size.width} height={size.height}
+            ref={globeRef} width={globeSize.width} height={globeSize.height}
             backgroundColor="#000000"
             globeImageUrl={runtimeAsset(mapThemes[mapThemeIdx].url)}
 
@@ -7246,31 +9890,9 @@ return (
              <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="map-svg">
 
                   {/* 📍 ฟันธง 1: เส้นนำทาง 2D (สีฟ้า) โชว์เฉพาะตอน "ปิด" Ground Track สีเหลืองเท่านั้น! */}
-                  {!showGroundTrack && orbitVisualPath.map((pathObj, i) => {
-                    if (pathObj.stroke < 1.0) return null; 
-
-                    const segments = [];
-                    let currentPoints = [];
-                    pathObj.points.forEach((p, idx) => {
-                      if (idx > 0 && Math.abs(p.lng - pathObj.points[idx-1].lng) > 90) {
-                        segments.push(currentPoints);
-                        currentPoints = [];
-                      }
-                      currentPoints.push(`${(p.lng + 180) / 360 * 100},${(90 - p.lat) / 180 * 100}`);
-                    });
-                    if (currentPoints.length > 0) segments.push(currentPoints);
-                    
-                    return segments.map((seg, j) => (
-                      <polyline 
-                        key={`main-guide-${i}-${j}`} 
-                        points={seg.join(' ')} 
-                        fill="none" 
-                        stroke="rgba(0, 234, 255, 0.7)" // 🔵 สีฟ้า Cyan
-                        strokeWidth="0.2"               
-                        strokeDasharray="0.5 1.5" 
-                      />
-                    ));
-                  })}
+                  {!showGroundTrack && splitMapPath(guideTrack2DPath).map((segment, index) => (
+                    <polyline key={`main-guide-${index}`} points={mapSegmentPoints(segment)} fill="none" stroke="rgba(0,234,255,0.7)" strokeWidth="0.2" strokeDasharray="0.5 1.5" />
+                  ))}
 
                   {/* 📍 ฟันธง 2: Ground Track 24 ชม. (สีเหลืองทอง) โชว์เมื่อ "เปิด" ปุ่มเท่านั้น */}
                   {showGroundTrack && groundTrackPath.map((pathObj, i) => {
@@ -7307,33 +9929,10 @@ return (
                   )}
 
                   {/* วาดรัศมีการมองเห็น (Footprint) ของดาวเทียมทุกดวงที่เลือก */}
-                  {allSatObjects.filter(sat => selectedCatnrs.includes(sat.catnr)).map(sat => {
-                    const isPrimary = sat.catnr === selectedCatnr;
-                    const radiusDeg = getFootprintRadiusDeg(sat.altKm, stationMask);
-                    if (isNaN(radiusDeg)) return null;
-                    
-                    const latRad = (sat.lat * Math.PI) / 180;
-                    const cosLat = Math.max(Math.abs(Math.cos(latRad)), 0.05); 
-                    const rxDeg = Math.min(radiusDeg / cosLat, 180); 
-                    
-                    const cx = (sat.lng + 180) / 360 * 100;
-                    const cy = (90 - sat.lat) / 180 * 100;
-                    const rx = rxDeg / 360 * 100;
-                    const ry = radiusDeg / 180 * 100;
-                    
-                    return [-100, 0, 100].map(offset => (
-                      <ellipse 
-                        key={`fp-${sat.catnr}-${offset}`}
-                        cx={`${cx + offset}`} 
-                        cy={`${cy}`} 
-                        rx={`${rx}`}
-                        ry={`${ry}`}
-                        fill={isPrimary ? "rgba(255, 51, 51, 0.15)" : "rgba(0, 234, 255, 0.1)"}
-                        stroke={isPrimary ? "rgba(255, 51, 51, 1)" : "rgba(0, 234, 255, 0.8)"}
-                        strokeWidth="0.2"
-                      />
-                    ));
-                  })}
+                  {footprintBoundaryPath.flatMap((path, pathIndex) => splitMapPath(path.points).map((segment, segmentIndex) => (
+                    <polyline key={`fp-${pathIndex}-${segmentIndex}`} points={mapSegmentPoints(segment)}
+                      fill="none" stroke={path.color} strokeWidth="0.2" />
+                  )))}
                 </svg>
               <div className="map-marker" style={{ left: `${(activeStation.lng + 180) / 360 * 100}%`, top: `${(90 - activeStation.lat) / 180 * 100}%`, color: '#00eaff', zIndex: 5 }}>
                 {/* 🌟 ฟันธงที่ 1: ลดขนาดอิโมจิจานรับสัญญาณจาก 24px เหลือ 16px */}
@@ -7494,7 +10093,24 @@ return (
         </div>
       )}
 
-      <div className="ui-layer">
+  </div>
+
+      <div className="ui-layer"
+        data-master-responsive={useAdaptiveHud ? "true" : undefined}
+        data-main-fullscreen={isMainFullscreenLayout ? "true" : undefined}
+        data-hud-tier={useAdaptiveHud ? hudTier : undefined}
+        data-hud-fit={useAdaptiveHud ? hudFit : undefined}
+        data-hud-fill={undefined}
+        data-wide-tv={undefined}
+        data-compact={useAdaptiveHud ? compactHud : undefined}
+        data-narrow={pagedHud}
+        data-active-hud={narrowHudPanel || "none"}
+        style={useAdaptiveHud ? {
+          '--sat-hud-panel-width': `${hudPanelWidth}px`,
+          '--sat-hud-outer': `${hudOuterPadding}px`,
+          '--sat-globe-safe-min': `${globeSafeMin}px`,
+          '--sat-viewport-aspect': String(viewportAspect)
+        } : undefined}>
 
      {/* 📍 ฟันธง: ล็อกจุดหมุนการหดตัวมุมซ้ายบน พร้อมชดเชยความสูงที่หดไป (Height Compensation) แก้ปัญหาหลุมดำด้านล่าง */}
      <div className="left-container" style={{ transform: `scale(${uiScale})`, transformOrigin: 'top left', maxHeight: `calc(100% / ${uiScale})`, height: `calc(100% / ${uiScale})` }}>
@@ -7506,7 +10122,7 @@ return (
              onClick={toggleLeftPanel}
              style={{ pointerEvents: 'auto', marginBottom: 0 }}
            >
-             {isLeftPanelOpen ? '✕' : '☰'}
+             {pagedHud ? (narrowHudPanel === 'left' ? '✕' : '☰') : (isLeftPanelOpen ? '✕' : '☰')}
            </button>
 
            <div className="global-clock-hud" style={{ margin: 0, flex: 1, padding: '10px 15px' }}>
@@ -7538,7 +10154,7 @@ return (
           
           {/* 📍 ปลดล็อก Scrollbar ให้แผงซ้าย */}
           {isLeftPanelOpen && (
-          <div className="left-panel" style={{ width: '817px', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, overflowY: 'auto', paddingBottom: '8px', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+          <div className="left-panel" style={{ width: '100%', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}><SatHudPages active={pagedHud} labels={["SATELLITE", "ANTENNA", "WEATHER"]}>
 
             <div className="panel-box mission-status">
               {/* 📍 ฟันธง: ขยายธงชาติให้กว้างขึ้น และขยายฟอนต์ชื่อดาวเทียมให้ใหญ่อลังการ */}
@@ -7557,11 +10173,11 @@ return (
               `}</style>
 
              {/* 📍 ฟันธง: กรอบเวลานับถอยหลัง - ปิดแสงแฟลร์, แยกกล่องตัวเลขแบบ Fixed Width ป้องกันการดิ้นซ้ายขวา 100% */}
-             <div className={`status-banner ${linkActive ? 'active' : 'standby'}`} style={{ display: 'flex', flexDirection: 'column', gap: '5px', padding: '12px 10px', textAlign: 'center', borderRadius: '8px', marginBottom: '12px', border: linkActive ? '1px solid var(--green)' : '1px solid #ff4400', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+             <div className={`status-banner ${rfState.locked ? 'active' : 'standby'}`} style={{ display: 'flex', flexDirection: 'column', gap: '5px', padding: '12px 10px', textAlign: 'center', borderRadius: '8px', marginBottom: '12px', border: `1px solid ${rfState.color}`, backgroundColor: 'rgba(0,0,0,0.2)' }}>
               {linkActive ? (
               <>
-                <span style={{ fontSize: 'clamp(11px, 1.1vw, 14px)', fontWeight: '900', color: 'rgba(255,255,255,0.9)', letterSpacing: '1.5px' }}>SIGNAL ACQUIRED</span>
-                <span style={{ display: 'flex', justifyContent: 'center', fontSize: 'clamp(22px, 2.5vw, 32px)', fontFamily: 'Orbitron', fontWeight: '900', color: 'var(--green)', textShadow: 'none', margin: '4px 0', lineHeight: 1 }}>
+                <span style={{ fontSize: 'clamp(11px, 1.1vw, 14px)', fontWeight: '900', color: 'rgba(255,255,255,0.9)', letterSpacing: '1.5px' }}>{rfState.locked ? 'RF LOCKED (SIM)' : 'ACQUIRING (SIM)'}</span>
+                <span style={{ display: 'flex', justifyContent: 'center', fontSize: 'clamp(22px, 2.5vw, 32px)', fontFamily: 'Orbitron', fontWeight: '900', color: rfState.locked ? 'var(--green)' : 'var(--gold)', textShadow: 'none', margin: '4px 0', lineHeight: 1 }}>
                   {(() => {
                     const activePass = passSchedule.find(p => simulatedTimeMs >= p.aosTime && simulatedTimeMs <= p.losTime);
                     if (activePass) {
@@ -7627,16 +10243,19 @@ return (
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Telemetry (TT&C):</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.telemetry || 'N/A'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Payload Downlink:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.payload || 'N/A'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
-                <li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Last TLE Sync:</span><strong title={tleUpdatedLabel} style={{ color: tleUpdatedAtMs ? 'var(--green)' : 'var(--gold)', fontWeight: '900', textAlign: 'right', fontSize: 'clamp(10px,0.82vw,12px)', fontVariantNumeric: 'tabular-nums' }}>{tleLastSyncTimeLabel}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Sync Age:</span><strong style={{ color: tleUpdatedAtMs ? 'var(--cyan)' : 'var(--gold)', fontWeight: '900', textAlign: 'right' }}>{tleUpdateAgeLabel}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Sync Status:</span><strong style={{ color: tleSyncStatusColor, fontWeight: '900', textAlign: 'right', letterSpacing: '.7px' }}>{tleSyncStatusLabel}</strong></li>
+                <li className="sat-hud-tle-row">
                   <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', flex: '1 1 auto', minWidth: 0 }}>
-                    <strong style={{ 
-                      /* TV 65-inch: keep the TLE source on one line and reserve fixed space for SYNC TLE */
-                      color: tleSource.includes('Failed') ? 'var(--red)' : (tleSource.includes('Fallback') || tleSource.includes('DEGRADED') || selectedTleIsStale ? 'var(--gold)' : 'var(--green)'), 
+                    <strong className="sat-tle-source" title={`Selected TLE epoch: ${selectedTleEpochMs === null ? 'N/A' : new Date(selectedTleEpochMs).toISOString()} | Offset from ${clockMode} time: ${selectedTleAgeDays === null ? 'N/A' : selectedTleAgeDays.toFixed(2) + ' days'} | Last batch operation: ${tleSource}`} style={{ 
+                      /* Wrap the full source/status text and reserve fixed space for SYNC TLE. */
+                      color: !selectedTlePair || tleSource.includes('Failed') ? 'var(--red)' : (selectedTleMatchesBuiltin || selectedTleIsStale ? 'var(--gold)' : 'var(--green)'), 
                       fontWeight: '900', textAlign: 'right', textShadow: 'none', flex: '1 1 auto', minWidth: 0,
-                      fontSize: 'clamp(9px, 0.72vw, 11px)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.1
+                      fontSize: 'clamp(11px, 0.9vw, 13px)', whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip', lineHeight: 1.25
                     }}>
-                      {tleSource}{selectedTleIsStale ? ` • STALE ${Math.floor(selectedTleAgeDays)}d` : ''}
+                      {selectedTleSourceLabel}{tleSource.includes('Failed') ? ' • SYNC FAILED' : ''}{selectedTleIsStale ? ` • ${clockMode === 'LIVE' ? 'STALE' : 'EPOCH OFFSET'} ${Math.floor(selectedTleAgeDays)}d` : ''}
                     </strong>
                     {/* 📍 ฟันธง: กู้คืนปุ่ม SYNC TLE กลับมาแล้ว! */}
                     <button 
@@ -7661,11 +10280,11 @@ return (
             
         {/* 📍 ANTENNA TELEMETRY - ย้ายมาไว้ฝั่งซ้ายเหนือ LOCAL WEATHER ตาม Mission/Tracking Status */}
         {/* 📍 คง Logic, สี, ขนาด, AZ/EL, TRACKING/STANDBY และ 3D SIMULATOR เดิมทั้งหมด */}
-              <div className="panel-box" style={{ padding: '8px 12px', background: 'linear-gradient(145deg, rgba(0, 25, 15, 0.85), rgba(0, 10, 5, 0.95))', border: '1px solid var(--green)', marginBottom: 0 }}>
+              <div className="panel-box sat-hud-antenna" style={{ padding: '8px 12px', background: 'linear-gradient(145deg, rgba(0, 25, 15, 0.85), rgba(0, 10, 5, 0.95))', border: '1px solid var(--green)', marginBottom: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', borderBottom: '1px dashed rgba(0,255,102,0.3)', paddingBottom: '4px', gap: '4px' }}>
                 <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(12px, 1.2vw, 14px)', color: 'var(--green)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap' }}>ANTENNA TELEMETRY</span>
                 <span className={`status-badge ${linkActive ? 'live' : 'sim'}`} style={{ fontSize: 'clamp(9px, 0.9vw, 11px)', color: linkActive ? 'var(--green)' : 'var(--gold)', fontFamily: 'Orbitron', fontWeight: '900', padding: '2px 6px', background: linkActive ? 'rgba(0,255,102,0.1)' : 'rgba(255,204,0,0.1)', borderRadius: '4px', border: `1px solid ${linkActive ? 'var(--green)' : 'var(--gold)'}`, margin: 0 }}>
-                  {linkActive ? 'TRACKING' : 'STANDBY'}
+                  {antennaState.mode}
                 </span>
               </div>
               
@@ -7676,22 +10295,22 @@ return (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 'clamp(10px, 1vw, 11px)', color: 'rgba(255,255,255,0.6)', fontFamily: 'Orbitron', letterSpacing: '1px' }}>AZIMUTH</span>
                     <strong style={{ fontSize: 'clamp(14px, 1.4vw, 18px)', color: linkActive ? 'var(--cyan)' : 'rgba(255,255,255,0.3)', fontFamily: 'Orbitron', textShadow: 'none', fontVariantNumeric: 'tabular-nums' }}>
-                      {/* 📍 ฟันธง: ถ้า linkActive (TRACKING) ให้โชว์เลขวิ่ง ถ้า STANDBY ให้โชว์มุมจอด 000.00° */}
-                      {linkActive && targetData && !isNaN(targetData.azimuthDeg) ? targetData.azimuthDeg.toFixed(2).padStart(6, '0') : '000.00'}°
+                      {/* Shared simulated joint angle; STOW AZ = 0°. */}
+                      {antennaState.az.toFixed(2).padStart(6, '0')}°
                     </strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 'clamp(10px, 1vw, 11px)', color: 'rgba(255,255,255,0.6)', fontFamily: 'Orbitron', letterSpacing: '1px' }}>ELEVATION</span>
                     <strong style={{ fontSize: 'clamp(14px, 1.4vw, 18px)', color: linkActive ? 'var(--green)' : 'rgba(255,255,255,0.3)', fontFamily: 'Orbitron', textShadow: 'none', fontVariantNumeric: 'tabular-nums' }}>
-                      {/* 📍 ฟันธง: เหมือนกันกับด้านบน */}
-                      {linkActive && targetData && !isNaN(targetData.elevationDeg) ? Math.max(0, targetData.elevationDeg).toFixed(2).padStart(5, '0') : '00.00'}°
+                      {/* Shared simulated joint angle; STOW EL = 90°. */}
+                      {antennaState.el.toFixed(2).padStart(5, '0')}°
                     </strong>
                   </div>
                 </div>
                 
                {/* 📡 INTERNAL VECTOR ANTENNA 3D SIMULATOR */}
 <button
-  onClick={() => { setIsAntenna3DOpen(true); bringToFront('antenna3d'); }}
+  onClick={() => { toggleToolVisibility('antenna3d', false); }}
   style={{
     flex: '0 0 auto',
     background: 'linear-gradient(135deg, rgba(0,255,102,0.15) 0%, rgba(0,0,0,0.8) 100%)',
@@ -7722,7 +10341,7 @@ return (
               </div>
             </div>
         {/* ☁️ CLOUD COVER FORECAST HUD */}
-        <div className="panel-box" role="button" tabIndex={0} title="Open Weather Center" onClick={() => { setIsWeatherOpen(true); bringToFront('weather'); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { setIsWeatherOpen(true); bringToFront('weather'); } }} style={{ padding: '12px 15px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)', cursor: 'pointer' }}>
+        <div className="panel-box sat-hud-weather" role="button" tabIndex={0} title="Open Weather Center" onClick={() => { toggleToolVisibility('weather', false); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { toggleToolVisibility('weather', false); } }} style={{ padding: '12px 15px', background: 'linear-gradient(145deg, rgba(0, 20, 35, 0.85), rgba(0, 5, 15, 0.95))', border: '1px solid var(--cyan)', cursor: 'pointer' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px dashed rgba(0,234,255,0.3)', paddingBottom: '6px', gap: '4px' }}>
                 <span style={{ fontFamily: 'Orbitron', fontSize: 'clamp(12px, 1.2vw, 14px)', color: 'var(--cyan)', fontWeight: 'bold', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>LOCAL WEATHER (METEO)</span>
                 <span style={{ fontSize: 'clamp(10px, 1vw, 12px)', color: 'var(--gold)', fontFamily: 'Orbitron', fontWeight: '900', whiteSpace: 'nowrap', flexShrink: 0, padding: '2px 6px', background: 'rgba(255,204,0,0.1)', borderRadius: '4px', border: '1px solid rgba(255,204,0,0.4)', boxShadow: '0 0 8px rgba(255,204,0,0.2)' }}>{activeStation.id} STATION ›</span>
@@ -7759,7 +10378,7 @@ return (
               </div>
             </div>
 
-          </div>
+          </SatHudPages></div>
           )}
         </div>
 
@@ -7773,7 +10392,7 @@ return (
               onClick={toggleRightPanel}
               style={{ pointerEvents: 'auto', marginBottom: 0 }}
             >
-              {isRightPanelOpen ? '✕' : '☰'}
+              {pagedHud ? (narrowHudPanel === 'right' ? '✕' : '☰') : (isRightPanelOpen ? '✕' : '☰')}
             </button>
 
             <div className="global-clock-hud" style={{ margin: 0, flex: 1, padding: '10px 15px' }}>
@@ -7799,16 +10418,16 @@ return (
           </div>
           
           {isRightPanelOpen && (
-           <div className="right-panel">
+           <div className="right-panel"><SatHudPages active={pagedHud} labels={["TIME", "VIEW", "TOOLS", "STATUS", "ABOUT"]}>
               
      {/* กลุ่มที่ 1: การควบคุมเวลาและความเร็ว */}
-     <div className="control-group">
+     <div className="control-group sat-hud-time">
         {/* 📍 ฟันธง: ลบ <p>TIME & PLAYBACK</p> ทิ้งไปเลย พื้นที่จะโปร่งขึ้นทันที */}
         
         {(() => {
           // 📍 ฟันธง: สมองกลล็อกการจำลองเวลา (SIM Lock)
                 // จะล็อกก็ต่อเมื่อ "เวลาคือ LIVE + มีสัญญาณดาวเทียมเข้าจริงๆ" (ห้ามกด SIM ข้ามเวลา!)
-                const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
+                const isRealtimePassLock = clockMode === 'LIVE' && speedMult === 1 && isPlaying && linkActive;
 
                 // Seasonal validation: jump only the simulation clock.
                 // Freeze playback so screenshots are repeatable and keep the existing orbit/day-night engines untouched.
@@ -7828,6 +10447,8 @@ return (
                   setSliderMode('DAILY');
                   setRealtimeSun(true);
                   setSimulatedTimeMs(Date.now());
+                  setClockMode('LIVE');
+                  setIsAutoPilot(false);
                   setIsPlaying(true);
                 };
 
@@ -7838,6 +10459,8 @@ return (
                      onClick={() => {
                       const nextState = !isAutoPilot;
                       setIsAutoPilot(nextState);
+                      setClockMode(nextState ? 'DEMO' : 'SIM');
+                      if (nextState) setIsPlaying(true);
                       if (nextState) {
                         setCameraMode('FREE LOOK');
                         isTrackingRef.current = false;
@@ -7864,23 +10487,23 @@ return (
 
                     <div className="speed-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginTop: '16px' }}>
                       {[1, 10, 60, 120, 600, 1200].map(s => (
-                        <button key={s} disabled={isRealtimePassLock} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer'}} onClick={() => { setSpeedMult(s); setIsPlaying(true); }}>{s}X</button>
+                        <button key={s} disabled={isRealtimePassLock} className={`btn ${speedMult === s ? 'active' : ''}`} style={{marginBottom: 0, opacity: isRealtimePassLock ? 0.3 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'pointer'}} onClick={() => { setClockMode('SIM'); setIsAutoPilot(false); setSpeedMult(s); setIsPlaying(true); }}>{s}X</button>
                       ))}
                     </div>
 
                    {/* 📍 ฟันธง: ยุบรวม LIVE, RESET และ MODE เป็น Grid 3 คอลัมน์ ลดความอ้วนของปุ่มและประหยัดพื้นที่แนวตั้ง! */}
-                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: 'clamp(10px, 1.5vh, 15px)', height: 'clamp(35px, 4.5vh, 45px)' }}>
+                   <div className="sat-hud-transport" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: 'clamp(10px, 1.5vh, 15px)', height: 'clamp(35px, 4.5vh, 45px)' }}>
                       {(() => {
-                        const isLive = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying;
+                        const isLive = clockMode === 'LIVE' && speedMult === 1 && isPlaying;
                         return (
                           <div className={`status-badge ${isLive ? 'live' : 'sim'}`} style={{ margin: 0, padding: '0', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '4px', fontSize: 'clamp(11px, 1.1vw, 14px)', letterSpacing: '1px', background: isRealtimePassLock ? 'rgba(0, 255, 102, 0.2)' : '', borderColor: isRealtimePassLock ? 'var(--green)' : '', color: isRealtimePassLock ? 'var(--green)' : '', boxShadow: isRealtimePassLock ? 'inset 0 0 10px rgba(0, 255, 102, 0.3)' : '' }}>
-                            {isRealtimePassLock ? '🟢 REAL-TIME' : (isLive ? '🟢 LIVE' : '🟠 SIM')}
+                            {isRealtimePassLock ? '🟢 REAL-TIME' : (isLive ? '🟢 LIVE' : clockMode === 'DEMO' ? '🟠 DEMO' : '🟠 SIM')}
                           </div>
                         );
                       })()}
                       
                       <button className="btn" style={{ margin: 0, padding: '0', fontSize: 'clamp(11px, 1.1vw, 14px)', letterSpacing: '1.5px', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => {
-                        setValidationMode(null); setSimulatedTimeMs(Date.now()); setSpeedMult(1); setIsPlaying(true); isTrackingRef.current = false; setCameraMode('FREE LOOK');
+                        setValidationMode(null); setSimulatedTimeMs(Date.now()); setClockMode('LIVE'); setSpeedMult(1); setIsPlaying(true); isTrackingRef.current = false; setCameraMode('FREE LOOK');
                         setSelectedPlanId(null); setMapZoom(1); setImgMapOrigin('center center'); setTacticalZoom(1); setZoomOrigin('center center');
                         setIsAutoPilot(false);
                         
@@ -7923,7 +10546,7 @@ return (
                         const progressPct = ((simulatedTimeMs - minTime) / (maxTime - minTime)) * 100;
 
                         return (
-                          <div style={{ position: 'relative' }}>
+                          <div className="sat-hud-time-track" style={{ position: 'relative' }}>
                             <div style={{ position: 'absolute', top: '10px', left: 0, height: '8px', width: `${Math.max(0, Math.min(100, progressPct))}%`, background: isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), borderRadius: '4px', pointerEvents: 'none', boxShadow: `0 0 10px ${isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)')}` }}></div>
                             <input type="range" min={minTime} max={maxTime} value={simulatedTimeMs} disabled={isRealtimePassLock} className="sci-fi-slider"
                               style={{ '--thumb-color': isRealtimePassLock ? 'var(--green)' : (sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)'), '--thumb-glow': isRealtimePassLock ? 'rgba(0, 255, 102, 0.8)' : (sliderMode === 'DAILY' ? 'rgba(0, 234, 255, 0.8)' : 'rgba(255, 204, 0, 0.8)'), opacity: isRealtimePassLock ? 0.5 : 1, cursor: isRealtimePassLock ? 'not-allowed' : 'grab' }}
@@ -7933,7 +10556,7 @@ return (
                       })()}
                       
                      {/* 📍 ฟันธง: แก้ไข Current SIM - ขยายความกว้างตัวเลขให้ห่างขึ้นเป็น 0.9em, ล็อกความกว้างแก้กระตุก และปิด text-shadow 100% */}
-                     <div style={{ textAlign: 'center', fontSize: 'clamp(12px, 1.2vw, 16px)', color: 'rgba(255,255,255,0.7)', marginTop: '12px', fontVariantNumeric: 'tabular-nums', fontWeight: 'bold', letterSpacing: '1px' }}>
+                     <div className="sat-hud-current-time" style={{ textAlign: 'center', fontSize: 'clamp(12px, 1.2vw, 16px)', color: 'rgba(255,255,255,0.7)', marginTop: '12px', fontVariantNumeric: 'tabular-nums', fontWeight: 'bold', letterSpacing: '1px' }}>
                         CURRENT SIM: 
                         <strong style={{ display: 'inline-flex', color: sliderMode === 'DAILY' ? 'var(--cyan)' : 'var(--gold)', fontSize: 'clamp(16px, 1.8vw, 24px)', textShadow: 'none', marginLeft: '12px', fontFamily: 'Orbitron', alignItems: 'center', justifyContent: 'center' }}>
                           {formatTime(new Date(simulatedTimeMs)).split('').map((char, i) => (
@@ -7944,7 +10567,7 @@ return (
                       </div>
 
                       {/* 2D DAY/NIGHT SEASON VALIDATION - test dates only; no orbit logic is modified */}
-                      <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed rgba(0,234,255,0.35)' }}>
+                      <div className="sat-hud-season" style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed rgba(0,234,255,0.35)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px', fontFamily: 'Orbitron' }}>
                           <span style={{ color: 'var(--cyan)', fontSize: 'clamp(10px, 1vw, 12px)', fontWeight: 900, letterSpacing: '1px' }}>SEASON VALIDATION</span>
                           <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: 'clamp(9px, 0.9vw, 11px)', fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -8001,7 +10624,7 @@ return (
             </div>
 
            {/* กลุ่มที่ 2: การแสดงผลมุมมอง */}
-           <div className="control-group">
+           <div className="control-group sat-hud-display">
               {/* 📍 ฟันธง: ลบ <p>DISPLAY CONTROLS</p> ทิ้ง และปรับ marginTop ของกล่องด้านในเป็น 0px เพื่อให้ชิดขอบสวยงาม */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '0px' }}>
                 
@@ -8121,15 +10744,14 @@ return (
             </div>
 
         {/* 🛠️ กลุ่มที่ 3: DATA & TOOLS (Redesigned & Regrouped) */}
-            <div className="control-group" style={{ paddingBottom: '15px' }}>
-
+            <div className="control-group sat-hud-tools" style={{ paddingBottom: '15px' }}>
               {/* 📍 ฟันธง: จับ 6 ปุ่มมัดรวมใน Grid เดียวกันทั้งหมด (3 แถว x 2 คอลัมน์) เพื่อความสมมาตร 100% */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '12px' }}>
                 
                 {/* 1. SATELLITE DATABASE */}
                 <button 
                   className={`btn btn-cyan ${isModalOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsModalOpen(!isModalOpen); if (!isModalOpen) bringToFront('db'); }}
+                  onClick={() => toggleToolVisibility('db', isModalOpen)}
                   style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
                 >
                  SATELLITE DATABASE
@@ -8138,7 +10760,7 @@ return (
                 {/* 2. SIGNAL ANALYZER (IQ) */}
                 <button 
                   className={`btn ${linkActive ? 'btn-green' : 'btn-red'} ${isAnalyzerOpen ? 'active' : ''}`}
-                  onClick={() => { setIsAnalyzerOpen(!isAnalyzerOpen); if (!isAnalyzerOpen) bringToFront('analyzer'); }}
+                  onClick={() => { toggleToolVisibility('analyzer', isAnalyzerOpen); }}
                   style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', boxShadow: linkActive ? '0 0 20px rgba(0,255,102,0.4)' : '0 0 20px rgba(255,51,51,0.2)', transition: 'all 0.3s' }}
                 >
                   SIGNAL ANALYZER
@@ -8147,28 +10769,28 @@ return (
                 {/* 3. GROUND STATION */}
                 <button 
                   className={`btn btn-cyan ${isGsModalOpen ? 'active' : ''}`}
-                  onClick={() => { setIsGsModalOpen(!isGsModalOpen); if (!isGsModalOpen) bringToFront('gs'); }}
+                  onClick={() => toggleToolVisibility('gs', isGsModalOpen)}
                   style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
                 >GROUND STATION</button>
 
                 {/* 4. RADAR SKYPLOT */}
                 <button 
                   className={`btn btn-green ${isRadarOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsRadarOpen(!isRadarOpen); if (!isRadarOpen) bringToFront('radar'); }}
+                  onClick={() => { toggleToolVisibility('radar', isRadarOpen); }}
                   style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
                 >RADAR SKYPLOT</button>
 
                 {/* 5. POINTING ANGLES */}
                 <button 
                   className={`btn btn-gold ${isAnglesOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsAnglesOpen(!isAnglesOpen); if (!isAnglesOpen) bringToFront('angles'); }}
+                  onClick={() => toggleToolVisibility('angles', isAnglesOpen)}
                   style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', transition: 'all 0.3s' }}
                 >POINTING ANGLES</button>
 
                 {/* 6. SIGNAL FLOW */}
                 <button 
                   className={`btn ${isDiagramOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsDiagramOpen(!isDiagramOpen); if (!isDiagramOpen) bringToFront('diagram'); }}
+                  onClick={() => { toggleToolVisibility('diagram', isDiagramOpen); }}
                   style={{ 
                     margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900',
                     background: isDiagramOpen ? '#ff00ff' : 'rgba(255, 0, 255, 0.05)', color: isDiagramOpen ? '#fff' : '#ff00ff', border: '1px solid #ff00ff', boxShadow: isDiagramOpen ? '0 0 25px #ff00ff' : 'inset 0 0 10px rgba(255, 0, 255, 0.15)', transition: 'all 0.3s'
@@ -8180,20 +10802,20 @@ return (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                 <button 
                   className={`btn btn-red ${isImgOpen ? 'active' : ''}`}
-                  onClick={() => { setIsImgOpen(!isImgOpen); if (!isImgOpen) bringToFront('img'); }}
+                  onClick={() => toggleToolVisibility('img', isImgOpen)}
                   style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', transition: 'all 0.3s' }}
                 >MISSION PLAN</button>
 
                 <button 
                   className={`btn btn-gold ${isPassModalOpen ? 'active' : ''}`} 
-                  onClick={() => { setIsPassModalOpen(!isPassModalOpen); if (!isPassModalOpen) { bringToFront('pass'); if (selectedCatnr) calculateFuturePasses(selectedCatnr); } }}
+                  onClick={() => { toggleToolVisibility('pass', isPassModalOpen); if (!isPassModalOpen && selectedCatnr) calculateFuturePasses(selectedCatnr); }}
                   style={{ margin: 0, padding: 'clamp(15px, 1.5vh, 22px) 5px', fontSize: 'clamp(14px, 1.5vw, 18px)', letterSpacing: '1px', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', transition: 'all 0.3s' }}
                 >PASS SCHEDULE</button>
               </div>
           </div>
 
           {/* 📍 SIMULATION STATUS - Summary panel for current SAT-ORBIT operating state */}
-          <div className="panel-box" style={{
+          <div className="panel-box sat-hud-status" style={{
             marginTop: '10px',
             padding: '10px 14px',
             background: 'linear-gradient(145deg, rgba(0, 18, 30, 0.88), rgba(0, 7, 15, 0.96))',
@@ -8207,9 +10829,11 @@ return (
               letterSpacing: '1.4px',
               marginBottom: '8px',
               paddingBottom: '6px',
-              borderBottom: '1px dashed rgba(0,234,255,0.35)'
+              borderBottom: '1px dashed rgba(0,234,255,0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px'
             }}>
-              SIMULATION STATUS
+              <span>SIMULATION STATUS</span>
+              <button className="sat-workspace-toggle sat-hud-multiview" onClick={startQuadWorkspace} title="Open Globe, Radar, Signal Flow and Analyzer together">▦ MULTI-VIEW</button>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '14px', rowGap: '6px' }}>
@@ -8246,138 +10870,31 @@ return (
           </div>
 
          {/* 📍 เครดิตลิขสิทธิ์และผู้พัฒนา (อัปเดตปีอัตโนมัติ และบีบพื้นที่แนวตั้งขั้นสุด) */}
-         <div style={{ textAlign: 'center', marginTop: '4px', fontSize: '16px', color: 'rgba(255, 255, 255, 0.6)', fontFamily: 'Rajdhani', letterSpacing: '1px', lineHeight: '1.2', paddingBottom: '2px' }}>
-             © {new Date().getFullYear()} Ground System Engineering Division:GSE <br />
-             Developed by Nawattakorn Kaikaew
+         <div className="sat-hud-credits" style={{ textAlign: 'center', marginTop: '4px', fontSize: '16px', color: 'rgba(255, 255, 255, 0.6)', fontFamily: 'Rajdhani', letterSpacing: '1px', lineHeight: '1.2', paddingBottom: '2px' }}>
+             © {new Date().getFullYear()} GISTDA — Ground System Engineering Division <br />
+             SAT-ORBIT · Developed by Nawattakorn Kaikaew
          </div>
-         </div>
+         </SatHudPages></div>
           )}
         </div>
       </div>
       
-     {/* --- SKP GISTDA GROUND STATION (ป๊อปอัปขยายได้อิสระ + Auto-Scale) --- */}
-     {isGsModalOpen && (
-        <div className="modal-box gs-modal" onMouseDownCapture={() => bringToFront('gs')} style={{ 
-          position: 'fixed', 
-          top: maximizedWins.gs ? '0px' : `${gsPos.y}px`, 
-          left: maximizedWins.gs ? '0px' : `${gsPos.x}px`, 
-          
-          /* 📍 ฟันธง: รีดความสูงเริ่มต้นเหลือ 530px และ minHeight เหลือ 420px ลอยพ้นขอบ Taskbar แน่นอน */
-          width: maximizedWins.gs ? '100vw' : 'min(520px, 95vw)', 
-          height: maximizedWins.gs ? '100vh' : 'min(530px, 85vh)', 
-          minWidth: 'min(420px, 90vw)', minHeight: 'min(420px, 80vh)',
-          
-          maxWidth: '100vw', maxHeight: 'none', 
-          resize: maximizedWins.gs ? 'none' : 'both', overflow: 'hidden', padding: '0',
-          background: 'linear-gradient(145deg, rgba(20, 5, 0, 0.92) 0%, rgba(10, 2, 0, 0.98) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-          border: maximizedWins.gs ? 'none' : '2px solid #FF6600', 
-          borderRadius: maximizedWins.gs ? '0px' : '12px',
-          boxShadow: '0 0 50px rgba(255, 102, 0, 0.4), inset 0 0 20px rgba(255, 102, 0, 0.2)', 
-          display: 'flex', flexDirection: 'column',
-          zIndex: windowZ?.gs || 9999,
-          transition: isDraggingGs ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)' 
-        }}>
-          
-          <style>{`
-            .gs-modal .gs-icon { font-size: 26px !important; filter: drop-shadow(0 0 5px #FF6600); }
-            /* 📍 ฟันธง: รีด padding แถวลงจาก 11px เหลือ 6px เพื่อคืนพื้นที่แนวตั้ง */
-            .gs-modal .gs-row { padding: 6px 0 !important; display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(255, 102, 0, 0.3) !important; align-items: center; }
-            .gs-modal .gs-row:last-child { border-bottom: none !important; }
-            .gs-modal .gs-label { font-size: 13px !important; color: rgba(255,255,255,0.7) !important; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; }
-            .gs-modal .gs-value { font-size: 15px !important; color: #fff !important; font-weight: 900 !important; text-shadow: none !important; text-align: right; }
-            .gs-modal .gs-value.highlight { color: #FF6600 !important; }
-            .gs-no-scroll::-webkit-scrollbar { display: none; }
-            .gs-no-scroll { -ms-overflow-style: none; scrollbar-width: none; }
-          `}</style>
-          
-          <div className="modal-header" style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', cursor: maximizedWins.gs ? 'default' : (isDraggingGs ? 'grabbing' : 'grab'), flexWrap: 'nowrap', borderBottom: '2px solid rgba(255, 102, 0, 0.5)', background: 'linear-gradient(180deg, rgba(255, 102, 0, 0.15) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(255, 102, 0, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.gs) handleGsMouseDown(e); }}>
-            <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center' }}>
-               <span className="gs-icon">📡</span>
-            </div>
-            
-            <div style={{ flex: '0 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', background: 'rgba(255, 102, 0, 0.1)', border: '1px solid #FF6600', padding: '6px 20px', borderRadius: '6px', margin: '0 8px', whiteSpace: 'nowrap', boxShadow: 'inset 0 0 10px rgba(255, 102, 0, 0.2)' }}>
-               <span style={{ color: '#fff', fontSize: '17px', fontWeight: '900', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: 'none', pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-               GISTDA GROUND STATION
-               </span>
-             </div>
+     {/* --- GISTDA GROUND STATION --- */}
+     {isGsModalOpen && (<SatToolSurface id="gs" viewer={toolWindows.gs}>
+       <SatDataWindow id="gs" hostRevision={toolHostRevision} scale={presentationScale} position={gsPos} maximized={maximizedWins.gs} width={520} height={530} zIndex={windowZ.gs} accent="#ff6600" onFocus={() => bringToFront('gs')} dragging={isDraggingGs}>
+         <SatDataHeader title="📡 GISTDA GROUND STATION" windowControl={toolWindowButton('gs')} maximized={maximizedWins.gs}
+           onMaximize={() => toggleWorkspacePanel('gs')} onClose={() => closeTool('gs')}
+           onDrag={event => { if (!toolWindows.gs && !maximizedWins.gs) handleGsMouseDown(event); }} />
+         <SatGroundStationData station={activeStation} onStation={setActiveStation} mask={stationMask} antennaMode={antennaState.mode} linkActive={linkActive} />
+       </SatDataWindow>
+     </SatToolSurface>)}
 
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
-               <button className="modal-close-btn" style={{ width: '30px', height: '30px', fontSize: '14px', flexShrink: 0, border: '1px solid #FF6600', color: '#FF6600', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('gs'); }}>{maximizedWins.gs ? '🗗' : '🗖'}</button>
-               <button className="modal-close-btn" style={{ width: '30px', height: '30px', fontSize: '15px', flexShrink: 0, border: '1px solid #FF6600', color: '#FF6600', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsGsModalOpen(false); }}>✕</button>
-             </div>
-          </div>
-          
-          <div className="gs-no-scroll" style={{ padding: '12px 25px', display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', fontFamily: 'Rajdhani', letterSpacing: '0.5px' }}>
-
-            <div style={{ background: 'rgba(0, 234, 255, 0.05)', padding: '10px 12px', borderRadius: '6px', border: '1px solid rgba(0, 234, 255, 0.2)', marginBottom: '8px' }}>
-                <h3 style={{ margin: '0 0 8px 0', color: 'var(--cyan)', fontSize: '14px', letterSpacing: '1px', textAlign: 'center', fontWeight: '900' }}>🌐 ACTIVE GROUND STATION NETWORK</h3>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                  {GS_NETWORK.map(station => (
-                    <button 
-                      key={station.id}
-                      className={`btn ${activeStation.id === station.id ? 'btn-cyan active' : 'btn-cyan'}`}
-                      style={{ padding: '8px 2px', fontSize: '14px', letterSpacing: '1px', margin: 0, fontWeight: activeStation.id === station.id ? '900' : 'bold' }}
-                      onClick={() => {
-                        setActiveStation(station);
-                      }}
-                    >
-                      {station.id}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="gs-row">
-                <span className="gs-label">LOCATION:</span>
-                <span className="gs-value">{activeStation.name}</span>
-              </div>
-              <div className="gs-row">
-                <span className="gs-label">LATITUDE:</span>
-                <span className="gs-value highlight">{Math.abs(activeStation.lat).toFixed(4)}° {activeStation.lat >= 0 ? 'N' : 'S'}</span>
-              </div>
-              <div className="gs-row">
-                <span className="gs-label">LONGITUDE:</span>
-                <span className="gs-value highlight">{Math.abs(activeStation.lng).toFixed(4)}° {activeStation.lng >= 0 ? 'E' : 'W'}</span>
-              </div>
-              <div className="gs-row">
-                <span className="gs-label">ALTITUDE (ASL):</span>
-                <span className="gs-value highlight">{activeStation.alt} m</span>
-              </div>
-              <div className="gs-row">
-                <span className="gs-label">S-BAND (TT&C):</span>
-                <span className="gs-value">2.0 - 2.3 GHz</span>
-              </div>
-              <div className="gs-row">
-                <span className="gs-label">X-BAND (DOWNLINK):</span>
-                <span className="gs-value">8.0 - 8.4 GHz</span>
-              </div>
-              <div className="gs-row">
-                <span className="gs-label">SYSTEM HARDWARE:</span>
-                <span className="gs-value">VIASAT / KRATOS</span>
-              </div>
-              <div className="gs-row">
-                <span className="gs-label">HORIZON MASK:</span>
-                <span className="gs-value">5.0°</span>
-              </div>
-            
-              <div style={{ paddingBottom: '10px' }}>
-                <div className="gs-status-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: linkActive ? 'rgba(0, 255, 102, 0.1)' : 'rgba(255, 102, 0, 0.1)', borderRadius: '6px', border: `1px solid ${linkActive ? 'var(--green)' : '#FF6600'}`, boxShadow: `inset 0 0 15px ${linkActive ? 'rgba(0, 255, 102, 0.2)' : 'rgba(255, 102, 0, 0.2)'}`, padding: '10px 15px', marginTop: '10px' }}>
-                  <span className="gs-label" style={{ color: 'rgba(255,255,255,0.8)' }}>ANTENNA STATUS:</span>
-                  <span className="gs-value highlight" style={{ color: linkActive ? 'var(--green)' : '#FF6600', fontWeight: 'bold', textShadow: 'none', animation: linkActive ? 'pulse-glow 2s infinite' : 'none' }}>
-                    {linkActive ? 'TRACKING (LOCKED)' : 'STANDBY'}
-                  </span>
-                </div>
-              </div>
-
-          </div>
-        </div>
-      )}
-
-
+    <SatToolSurface id="antenna3d" viewer={toolWindows.antenna3d}>
     <Antenna3DSimulatorModal
       open={isAntenna3DOpen}
-      onClose={() => setIsAntenna3DOpen(false)}
+      onClose={() => closeTool('antenna3d')}
+      hostWindow={toolWindows.antenna3d?.win || window} hosted={!!toolWindows.antenna3d}
+      hostRevision={toolHostRevision} windowControl={toolWindowButton('antenna3d')} presentationScale={presentationScale}
       targetData={targetData}
       targetConfig={targetConfig}
       linkActive={linkActive}
@@ -8390,317 +10907,86 @@ return (
       onFocus={() => bringToFront('antenna3d')}
       simulatedTimeMs={simulatedTimeMs}
       nextPassTimeMs={nextPassTimestamp?.time || null}
-    />
+      antennaState={antennaState}
+    /></SatToolSurface>
 
 
+    <SatToolSurface id="weather" viewer={toolWindows.weather}>
     <WeatherCenterModal
       open={isWeatherOpen}
-      onClose={() => setIsWeatherOpen(false)}
+      onClose={() => closeTool('weather')}
+      hostWindow={toolWindows.weather?.win || window} hosted={!!toolWindows.weather}
+      hostRevision={toolHostRevision} windowControl={toolWindowButton('weather')} presentationScale={presentationScale}
       station={activeStation}
       zIndex={windowZ.weather}
       onFocus={() => bringToFront('weather')}
       summaryCloudCover={cloudCover}
       summaryMode={cloudDataMode}
-    />
+    /></SatToolSurface>
 
 
     {/* --- SATELLITE DATABASE --- */}
-    {isModalOpen && (
-        <div className="modal-box db-modal" onMouseDownCapture={() => bringToFront('db')} style={{ 
-          position: 'fixed', 
-          top: maximizedWins.db ? '0px' : `${dbPos.y}px`, 
-          left: maximizedWins.db ? '0px' : `${dbPos.x}px`, 
-          
-          /* 📍 ฟันธง: ลดขนาดเริ่มต้นลงเป็น 750x480 px และขนาดต่ำสุดเป็น 550x350 px */
-          width: maximizedWins.db ? '100vw' : 'min(750px, 95vw)', 
-          height: maximizedWins.db ? '100vh' : 'min(480px, 85vh)', 
-          minWidth: 'min(550px, 90vw)', minHeight: 'min(350px, 80vh)',
-          
-          maxWidth: 'none', maxHeight: 'none', resize: maximizedWins.db ? 'none' : 'both', overflow: 'hidden', 
-          background: 'linear-gradient(145deg, rgba(0, 10, 25, 0.9) 0%, rgba(0, 5, 10, 0.95) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-          border: maximizedWins.db ? 'none' : '2px solid var(--cyan)', 
-          borderRadius: maximizedWins.db ? '0px' : '12px', 
-          boxShadow: '0 0 40px rgba(0, 234, 255, 0.4), inset 0 0 20px rgba(0, 234, 255, 0.2)', display: 'flex', flexDirection: 'column',
-          zIndex: windowZ.db,
-          transition: isDraggingDb ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
-        }}>
-
-          {/* 📍 ฟันธง: ล้างระบบ clamp() และ cqw ออกทั้งหมด กลับมาใช้ขนาด Pixel มาตรฐาน 100% UI/UX */}
-          <style>{`
-            .db-modal .modal-header h2 { font-size: 20px !important; }
-            .db-modal .modal-clear-btn { font-size: 13px !important; padding: 6px 16px !important; }
-            .db-modal .modal-sat-btn { font-size: 14px !important; padding: 14px 20px !important; }
-            
-            /* 📍 Grid มาตรฐาน จัดเรียงอัตโนมัติตามความกว้างหน้าต่าง (ปุ่มกว้าง 300px) */
-            .db-modal .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
-
-            .db-modal .group-header-row { 
-              display: flex; justify-content: space-between; align-items: center; 
-              background: linear-gradient(90deg, rgba(0, 234, 255, 0.15) 0%, transparent 100%);
-              border-left: 4px solid var(--cyan);
-              border-bottom: 1px solid rgba(0, 234, 255, 0.3);
-              padding: 10px 20px;
-              margin-top: 15px;
-              margin-bottom: 15px;
-              border-radius: 4px;
-              box-shadow: 0 5px 15px -5px rgba(0, 234, 255, 0.2);
+    {isModalOpen && (<SatToolSurface id="db" viewer={toolWindows.db}>
+      <SatDataWindow id="db" hostRevision={toolHostRevision} scale={presentationScale} position={dbPos} maximized={maximizedWins.db} width={750} height={480} zIndex={windowZ.db} onFocus={() => bringToFront('db')} dragging={isDraggingDb}>
+        <SatDataHeader title="🛰️ SATELLITES DATABASE" windowControl={toolWindowButton('db')} maximized={maximizedWins.db}
+          onMaximize={() => toggleWorkspacePanel('db')} onClose={() => closeTool('db')}
+          onDrag={event => { if (!toolWindows.db && !maximizedWins.db) handleDbMouseDown(event); }} />
+        <SatDatabaseData options={SATELLITE_OPTIONS} satrecs={satrecs} selectedCatnr={selectedCatnr} selectedCatnrs={selectedCatnrs} hostRevision={toolHostRevision} scale={presentationScale}
+          onClear={() => setSelectedCatnrs([selectedCatnr])}
+          onGroupToggle={(groupCatnrs, isAllSelected) => {
+            if (!groupCatnrs.length) return;
+            let newSelected = [...selectedCatnrs];
+            if (isAllSelected) newSelected = newSelected.filter(cat => !groupCatnrs.includes(cat) || cat === selectedCatnr);
+            else groupCatnrs.forEach(cat => { if (!newSelected.includes(cat)) newSelected.push(cat); });
+            setSelectedCatnrs(newSelected);
+          }}
+          onToggle={sat => {
+            if (!satrecs[sat.catnr]) return;
+            let newSelected = [...selectedCatnrs];
+            if (newSelected.includes(sat.catnr)) {
+              if (newSelected.length === 1) return;
+              newSelected = newSelected.filter(cat => cat !== sat.catnr);
+            } else newSelected.push(sat.catnr);
+            setSelectedCatnrs(newSelected);
+            const nextTarget = newSelected[newSelected.length - 1];
+            setSelectedCatnr(nextTarget);
+            isTrackingRef.current = true;
+            setCameraMode('TRACKING');
+            if (globeRef.current && nextTarget) {
+              try {
+                const rec = satrecs[nextTarget];
+                if (rec) {
+                  const pos = calculateSatData(currentDate, rec, activeStation);
+                  if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng }, 0);
+                }
+              } catch (_) {}
             }
-            .db-modal .modal-group-title { 
-              color: #fff !important; font-size: 16px !important; font-weight: 900 !important; 
-              letter-spacing: 2px !important; text-transform: uppercase !important; 
-              font-family: 'Orbitron', sans-serif !important; 
-              text-shadow: 0 0 10px var(--cyan) !important; 
-              border: none !important; margin: 0 !important; padding: 0 !important;
-            }
-            .db-modal .group-toggle-btn {
-              font-size: 12px !important;
-              padding: 6px 12px !important;
-            }
-          `}</style>
-
-          {/* Header */}
-          <div className="modal-header" style={{ position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', cursor: maximizedWins.db ? 'default' : (isDraggingDb ? 'grabbing' : 'grab'), flexWrap: 'nowrap', borderBottom: '2px solid rgba(0, 234, 255, 0.5)', background: 'linear-gradient(180deg, rgba(0, 234, 255, 0.15) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(0, 234, 255, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.db) handleDbMouseDown(e); }}>
-            
-            <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center' }}>
-               <span style={{fontSize: '26px', pointerEvents: 'none', filter: 'drop-shadow(0 0 5px var(--cyan))'}}>🛰️</span>
-            </div>
-            
-            <div style={{ flex: '0 1 auto', display: 'flex', alignItems: 'center', background: 'rgba(0, 234, 255, 0.1)', border: '1px solid var(--cyan)', padding: '8px 30px', borderRadius: '6px', margin: '0 10px', whiteSpace: 'nowrap', boxShadow: 'inset 0 0 10px rgba(0,234,255,0.2)' }}>
-              <span style={{ color: '#fff', fontSize: '20px', fontWeight: 'bold', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none' }}>
-                SATELLITES DATABASE
-              </span>
-            </div>
-            
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: '10px', alignItems: 'center' }}>
-              <button className="modal-clear-btn" style={{ margin: 0, whiteSpace: 'nowrap', background: 'rgba(255, 204, 0, 0.1)', color: 'var(--gold)', border: '1px solid var(--gold)' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setSelectedCatnrs([selectedCatnr]); }} title="Remove all secondary satellites">
-                🧹 CLEAR
-              </button>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', flexShrink: 0, border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('db'); }}>{maximizedWins.db ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', flexShrink: 0, border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsModalOpen(false); }}>✕</button>
-            </div>
-          </div>
-          
-          <div className="modal-content" style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-            {Array.from(new Set(SATELLITE_OPTIONS.map(s => s.group))).map(groupName => {
-              const satsInGroup = SATELLITE_OPTIONS.filter(sat => sat.group === groupName);
-              const groupCatnrs = satsInGroup.filter(s => satrecs[s.catnr]).map(s => s.catnr);
-              const isAllSelected = groupCatnrs.length > 0 && groupCatnrs.every(cat => selectedCatnrs.includes(cat));
-
-              return (
-              <div key={groupName}>
-                <div className="group-header-row">
-                  <div className="modal-group-title">{groupName}</div>
-                  <button className="group-toggle-btn" disabled={groupCatnrs.length === 0} title={groupCatnrs.length === 0 ? 'No validated TLE is available for this group' : undefined} style={groupCatnrs.length === 0 ? { opacity: 0.35, cursor: 'not-allowed' } : undefined} onClick={() => {
-                      if (groupCatnrs.length === 0) return;
-                      let newSelected = [...selectedCatnrs];
-                      if (isAllSelected) { newSelected = newSelected.filter(c => !groupCatnrs.includes(c) || c === selectedCatnr); } 
-                      else { groupCatnrs.forEach(c => { if (!newSelected.includes(c)) newSelected.push(c); }); }
-                      setSelectedCatnrs(newSelected);
-                    }}>
-                    {groupCatnrs.length === 0 ? 'NO VALID TLE' : (isAllSelected ? '- DESELECT ALL' : '+ SELECT ALL')}
-                  </button>
-                </div>
-                <div className="modal-grid">
-                  {satsInGroup.map(sat => {
-                    const hasTle = Boolean(satrecs[sat.catnr]);
-                    return (
-                    <button key={sat.catnr} disabled={!hasTle} title={hasTle ? sat.displayName : `${sat.displayName}: NO VALID TLE`} className={`modal-sat-btn ${sat.catnr === selectedCatnr ? 'primary' : selectedCatnrs.includes(sat.catnr) ? 'secondary' : ''}`} 
-                      style={!hasTle ? { opacity: 0.38, cursor: 'not-allowed', filter: 'grayscale(80%)' } : undefined}
-                      onClick={() => {
-                        if (!hasTle) return;
-                        let newSelected = [...selectedCatnrs];
-                        if (newSelected.includes(sat.catnr)) {
-                          // The application always needs one primary target. Never allow an empty selection.
-                          if (newSelected.length === 1) return;
-                          newSelected = newSelected.filter(c => c !== sat.catnr);
-                        } else {
-                          newSelected.push(sat.catnr);
-                        }
-                        setSelectedCatnrs(newSelected);
-                        const nextTarget = newSelected[newSelected.length - 1];
-                        setSelectedCatnr(nextTarget);
-                        isTrackingRef.current = true; 
-                        setCameraMode('TRACKING');
-                        if (globeRef.current && nextTarget) {
-                          try {
-                            const rec = satrecs[nextTarget];
-                            if (rec) {
-                                const pos = calculateSatData(currentDate, rec, activeStation);
-                                if (pos && !isNaN(pos.lat) && !isNaN(pos.lng)) {
-                                  globeRef.current.pointOfView({ lat: pos.lat, lng: pos.lng }, 0);
-                                }
-                            }
-                          } catch (err) {}
-                        }
-                      }}>
-                      <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', flex: 1, paddingRight: '10px' }}>
-                        {sat.flag && <img src={`https://flagcdn.com/w40/${sat.flag.toLowerCase()}.png`} style={{ width: '28px', flexShrink: 0, marginRight: '12px', borderRadius: '3px', boxShadow: '0 0 5px rgba(255,255,255,0.4)' }} alt="flag" />}
-                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', width: '100%', textAlign: 'left' }}>{sat.displayName}</span>
-                      </div>
-                      <div style={{ flexShrink: 0 }}>
-                        {!hasTle ? ( <span style={{ color: 'var(--red)', fontSize: '10px', fontWeight: 900, letterSpacing: '0.5px' }}>NO TLE</span> ) : sat.catnr === selectedCatnr ? ( <span style={{ color: '#fff', textShadow: '0 0 10px #fff', fontSize: '12px', letterSpacing: '1px' }}>🎯 MAIN</span> ) : selectedCatnrs.includes(sat.catnr) ? ( <span style={{ color: '#000', fontSize: '12px' }}>●</span> ) : null}
-                      </div>
-                    </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )})}
-          </div>
-        </div>
-      )}
+          }} />
+      </SatDataWindow>
+    </SatToolSurface>)}
 
    {/* --- PASS SCHEDULE --- */}
-   {isPassModalOpen && (
-        <div className="modal-box pass-modal" onMouseDownCapture={() => bringToFront('pass')} style={{ 
-          position: 'fixed', 
-          top: maximizedWins.pass ? '0px' : `${passPos.y}px`, 
-          left: maximizedWins.pass ? '0px' : `${passPos.x}px`, 
-          
-          /* 📍 ฟันธง: ล็อกขนาดเริ่มต้นให้เล็กลงเป็น 800x520 px และขนาดต่ำสุดเป็น 600x400 px ไม่ล้นจอแน่นอน */
-          width: maximizedWins.pass ? '100vw' : 'min(800px, 95vw)', 
-          height: maximizedWins.pass ? '100vh' : 'min(520px, 85vh)', 
-          minWidth: 'min(600px, 90vw)', minHeight: 'min(400px, 80vh)',
-                
-          maxWidth: 'none', maxHeight: 'none', resize: maximizedWins.pass ? 'none' : 'both', overflow: 'hidden', 
-          background: 'linear-gradient(145deg, rgba(20, 10, 0, 0.9) 0%, rgba(10, 5, 0, 0.95) 100%)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-          border: maximizedWins.pass ? 'none' : '2px solid var(--gold)', 
-          borderRadius: maximizedWins.pass ? '0px' : '12px', 
-          boxShadow: '0 0 40px rgba(255, 204, 0, 0.4), inset 0 0 20px rgba(255, 204, 0, 0.2)', display: 'flex', flexDirection: 'column',
-          zIndex: windowZ.pass,
-          transition: isDraggingPass ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
-        }}>
-         <style>{`
-            .pass-modal th { font-size: 12px !important; padding: 10px 8px !important; white-space: nowrap !important; }
-            .pass-modal td { font-size: 14px !important; padding: 10px 8px !important; white-space: nowrap !important; }
-            .pass-modal::-webkit-scrollbar { display: none; }
-            .pass-modal { -ms-overflow-style: none; scrollbar-width: none; }
-         `}</style>
-
-         {/* Header */}
-         <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '15px 25px', borderBottom: '2px solid rgba(255, 204, 0, 0.5)', cursor: maximizedWins.pass ? 'default' : (isDraggingPass ? 'grabbing' : 'grab'), flexWrap: 'nowrap', flexShrink: 0, background: 'linear-gradient(180deg, rgba(255, 204, 0, 0.15) 0%, transparent 100%)' }} onMouseDown={(e) => { if(!maximizedWins.pass) handlePassMouseDown(e); }}>
-            
-            <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center', color: 'var(--gold)', fontFamily: 'Orbitron', fontWeight: 'bold', textShadow: '0 0 10px var(--gold)', whiteSpace: 'nowrap', overflow: 'hidden', pointerEvents: 'none' }}>
-              <span style={{fontSize:'20px', marginRight:'10px'}}>⏱️</span> 
-              <span style={{ fontSize: '18px', overflow: 'hidden', textOverflow: 'ellipsis' }}>PASS SCHEDULE</span>
-            </div>
-            
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'center', gap: '10px' }}>
-              {[1, 3, 7].map(d => (
-                <button key={d} onMouseDown={(e) => e.stopPropagation()} onClick={() => setPassPredictionDays(d)}
-                  style={{
-                    background: passPredictionDays === d ? 'var(--gold)' : 'rgba(255, 204, 0, 0.1)',
-                    color: passPredictionDays === d ? '#000' : 'var(--gold)',
-                    border: '1px solid var(--gold)',
-                    padding: '6px 16px', borderRadius: '4px', 
-                    fontSize: '13px', fontWeight: '900', fontFamily: 'Orbitron',
-                    cursor: 'pointer', transition: 'all 0.2s',
-                    boxShadow: passPredictionDays === d ? '0 0 15px rgba(255,204,0,0.6)' : 'none'
-                  }}>
-                  ±{d} DAYS
-                </button>
-              ))}
-            </div>
-
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: '10px', alignItems: 'center' }}>
-              <button className="modal-close-btn" style={{ width: '36px', height: '36px', fontSize: '18px', flexShrink: 0, borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('pass'); }}>{maximizedWins.pass ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '36px', height: '36px', fontSize: '20px', flexShrink: 0, borderColor: 'var(--gold)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsPassModalOpen(false); }}>✕</button>
-            </div>
-         </div>
-         
-         <div className="modal-content" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '15px' }}>
-            {isCalculatingPass ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--cyan)', fontSize: '18px', fontFamily: 'Orbitron', margin: 'auto' }}>
-                CALCULATING ORBITAL TRAJECTORY...
-              </div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Rajdhani', fontSize: '14px', color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
-                <thead style={{ position: 'sticky', top: 0, background: 'rgba(10, 5, 0, 0.95)', zIndex: 5 }}>
-                  <tr style={{ borderBottom: '2px solid rgba(255, 204, 0, 0.6)', color: 'rgba(255, 255, 255, 0.7)', textAlign: 'center', letterSpacing: '1px', fontSize: '12px', textTransform: 'uppercase', fontFamily: 'Orbitron' }}>
-                    <th style={{ padding: '10px 8px' }}>STATUS</th>
-                    <th style={{ padding: '10px 8px' }}>DATE (UTC)</th> 
-                    <th style={{ padding: '10px 8px' }}>AOS</th> 
-                    <th style={{ padding: '10px 8px' }}>MAX EL TIME</th> 
-                    <th style={{ padding: '10px 8px' }}>LOS</th> 
-                    <th style={{ padding: '10px 8px' }}>DURATION</th> 
-                    <th style={{ padding: '10px 8px' }}>MAX EL</th> 
-                    <th style={{ padding: '10px 8px' }}>AOS / LOS AZ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {passSchedule.length === 0 ? (
-                    <tr><td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: passScheduleNote ? 'var(--gold)' : 'var(--red)', fontWeight: 'bold', letterSpacing: '2px' }}>{passScheduleNote || 'NO PASSES DETECTED IN THIS TIMEFRAME'}</td></tr>
-                  ) : (
-                    passSchedule.map((pass, idx) => {
-                      const aosD = new Date(pass.aosTime); const losD = new Date(pass.losTime); const peakD = new Date(pass.peakTime); 
-                      const durMins = Math.floor(pass.durationMs / 60000); const durSecs = Math.floor((pass.durationMs % 60000) / 1000);
-                      
-                      const isPast = simulatedTimeMs > pass.losTime;
-                      const isActive = simulatedTimeMs >= pass.aosTime && simulatedTimeMs <= pass.losTime;
-                      
-                      const simDateStr = new Date(simulatedTimeMs).toISOString().split('T')[0];
-                      const passDateStr = aosD.toISOString().split('T')[0];
-                      const isToday = !isPast && !isActive && (simDateStr === passDateStr);
-
-                      let rowStyle = {
-                        borderBottom: '1px dashed rgba(255,255,255,0.1)', 
-                        cursor: 'pointer', transition: 'all 0.2s', textAlign: 'center',
-                        background: 'transparent', opacity: 1, filter: 'none', borderLeft: 'none', boxShadow: 'none'
-                      };
-
-                      let statusBadge;
-
-                      if (isActive) {
-                        rowStyle.background = 'linear-gradient(90deg, rgba(0, 255, 102, 0.2) 0%, rgba(0, 255, 102, 0.05) 100%)';
-                        rowStyle.borderLeft = '4px solid var(--green)';
-                        rowStyle.boxShadow = 'inset 0 0 20px rgba(0, 255, 102, 0.2)';
-                        statusBadge = <span style={{ color: '#000', background: 'var(--green)', padding: '2px 6px', borderRadius: '4px', fontWeight: '900', fontSize: '11px', animation: 'pulse 1.5s infinite' }}>● ACTIVE</span>;
-                      } else if (isPast) {
-                        rowStyle.opacity = 0.4; 
-                        rowStyle.filter = 'grayscale(80%)';
-                        statusBadge = <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>PAST</span>;
-                      } else if (isToday) {
-                        statusBadge = <span style={{ color: 'var(--gold)', fontWeight: '900', fontSize: '12px', textShadow: '0 0 8px rgba(255, 204, 0, 0.8)' }}>TODAY</span>;
-                      } else {
-                        statusBadge = <span style={{ color: 'rgba(0, 234, 255, 0.65)', fontSize: '12px' }}>FUTURE</span>;
-                      }
-
-                      return (
-                        <tr key={idx} 
-                        onClick={() => { 
-                          const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
-                          if (isRealtimePassLock) {
-                            setCustomAlert({ show: true, message: "🔒 REAL-TIME LOCK: ปฏิเสธคำสั่ง! ระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE)", type: 'error' });
-                            return;
-                          }
-                          setSimulatedTimeMs(pass.aosTime - 10000); setSpeedMult(1); setIsPlaying(true); bringToFront('radar'); 
-                        }}
-                          style={rowStyle}
-                          onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255, 204, 0, 0.15)'; e.currentTarget.style.transform = 'scale(1.01)'; }}
-                          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.transform = 'scale(1)'; }}
-                        >
-                          <td style={{ padding: '10px 8px', fontWeight: 'bold', fontFamily: 'Orbitron' }}>{statusBadge}</td>
-                          <td style={{ color: 'rgba(255,255,255,0.9)', padding: '10px 8px' }}>{aosD.toISOString().split('T')[0]}</td>
-                          <td style={{ color: 'var(--green)', fontWeight: 'bold', padding: '10px 8px' }}>{pad2(aosD.getUTCHours())}:{pad2(aosD.getUTCMinutes())}:{pad2(aosD.getUTCSeconds())}</td>
-                          <td style={{ color: 'var(--gold)', fontWeight: 'bold', padding: '10px 8px' }}>{pad2(peakD.getUTCHours())}:{pad2(peakD.getUTCMinutes())}:{pad2(peakD.getUTCSeconds())}</td>
-                          <td style={{ color: 'var(--red)', fontWeight: 'bold', padding: '10px 8px' }}>{pad2(losD.getUTCHours())}:{pad2(losD.getUTCMinutes())}:{pad2(losD.getUTCSeconds())}</td>
-                          <td style={{ color: '#00eaff', fontWeight: 'bold', padding: '10px 8px' }}>{durMins}m {pad2(durSecs)}s</td>
-                          <td style={{ color: '#ffffff', fontWeight: '900', padding: '10px 8px', textShadow: '0 0 8px rgba(255,255,255,0.5)' }}>{pass.maxEl.toFixed(2)}°</td>
-                          <td style={{ color: 'rgba(255,255,255,0.6)', padding: '10px 8px' }}>{pass.aosAz.toFixed(1)}° → {pass.losAz.toFixed(1)}°</td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            )}
-         </div>
-        </div>
-      )}
+   {isPassModalOpen && (<SatToolSurface id="pass" viewer={toolWindows.pass}>
+     <SatDataWindow id="pass" hostRevision={toolHostRevision} scale={presentationScale} position={passPos} maximized={maximizedWins.pass} width={800} height={520} zIndex={windowZ.pass} accent="var(--gold)" onFocus={() => bringToFront('pass')} dragging={isDraggingPass}>
+       <SatDataHeader title="⏱ PASS SCHEDULE" windowControl={toolWindowButton('pass')} maximized={maximizedWins.pass}
+         onMaximize={() => toggleWorkspacePanel('pass')} onClose={() => closeTool('pass')}
+         onDrag={event => { if (!toolWindows.pass && !maximizedWins.pass) handlePassMouseDown(event); }} />
+       <SatPassData passes={passSchedule} simTime={simulatedTimeMs} days={passPredictionDays} onDays={setPassPredictionDays}
+         calculating={isCalculatingPass} note={passScheduleNote} hostRevision={toolHostRevision} scale={presentationScale}
+         onReplay={pass => {
+           const isRealtimePassLock = clockMode === 'LIVE' && speedMult === 1 && isPlaying && linkActive;
+           if (isRealtimePassLock) {
+             setCustomAlert({ show: true, message: "🔒 REAL-TIME LOCK: Command rejected while a LIVE pass is active.", type: 'error' });
+             return;
+           }
+           setSimulatedTimeMs(pass.aosTime - 10000); setSpeedMult(1); setIsPlaying(true); bringToFront('radar');
+         }} />
+     </SatDataWindow>
+   </SatToolSurface>)}
 
  {/* --- RADAR SKYPLOT --- */}
- {isRadarOpen && (
-        <div ref={radarContainerRef} className="radar-perfect-scale" onMouseDownCapture={() => startTransition(() => bringToFront('radar'))} style={{
+ {isRadarOpen && (<SatToolSurface id="radar" viewer={toolWindows.radar} quad={workspaceMode === 'quad'} rect={focusedWorkspacePanel === 'radar' ? workspaceFullRect : workspaceRects.radar} hidden={!!focusedWorkspacePanel && focusedWorkspacePanel !== 'radar'}>
+        <div className="radar-perfect-scale" onMouseDownCapture={() => startTransition(() => bringToFront('radar'))} style={{
           position: 'fixed', 
           top: maximizedWins.radar ? '0px' : `${radarPos.y}px`, 
           left: maximizedWins.radar ? '0px' : `${radarPos.x}px`, 
@@ -8708,7 +10994,8 @@ return (
           /* 📍 ฟันธง: ลดขนาดเริ่มต้น width และ height เป็น 550px เพื่อให้กรอบกะทัดรัดและยังเป็นสี่เหลี่ยมจัตุรัส */
           width: maximizedWins.radar ? '100vw' : 'min(550px, 95vw)',
           height: maximizedWins.radar ? '100vh' : 'min(550px, 85vh)', 
-          minWidth: 'min(450px, 90vw)', minHeight: 'min(450px, 80vh)',
+          minWidth: 'min(320px, 90vw)', minHeight: 'min(240px, 80vh)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden', containerType: 'size', boxSizing: 'border-box',
 
           resize: maximizedWins.radar ? 'none' : 'both',
           
@@ -8744,65 +11031,27 @@ return (
           `}</style>
           <div className="radar-stars"></div>
 
-          {/* 📍 ฟันธง 3: เอาเส้นสีเขียวออก (borderBottom: none) และย้ายชื่อดาวเทียมไปซ้ายมือสุด */}
-          <div className="modal-header" style={{ position: 'absolute', top: 0, left: 0, width: '100%', zIndex: 20, padding: '15px 25px', cursor: maximizedWins.radar ? 'default' : (isDraggingRadar ? 'grabbing' : 'grab'), display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onMouseDown={(e) => { if(!maximizedWins.radar) handleRadarMouseDown(e); }}>
-              
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', color: '#fff', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: '24px', textShadow: '0 0 10px var(--green)', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-                {(() => {
-                  const sat = SATELLITE_OPTIONS.find(s => s.catnr === selectedCatnr);
-                  if (!sat) return null;
-                  return (
-                    <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0, 255, 102, 0.1)', border: '1px solid rgba(0, 255, 102, 0.4)', padding: '6px 20px', borderRadius: '6px', boxShadow: '0 0 10px rgba(0, 255, 102, 0.2)' }}>
-                      {sat.flag && <img src={`https://flagcdn.com/w20/${sat.flag.toLowerCase()}.png`} style={{ width: '25px', marginRight: '12px', borderRadius: '3px', boxShadow: '0 0 5px var(--green)' }} alt="flag" />}
-                      {sat.displayName}
-                    </div>
-                  );
-                })()}
+          <style>{SAT_VISUAL_CSS}</style>
+          <div className="modal-header sat-visual-header sat-radar-header" onMouseDown={(e) => { if(!maximizedWins.radar) handleRadarMouseDown(e); }}>
+            <div className="sat-radar-title-stack">
+              <div className="sat-radar-title-badge">
+                {targetConfig.flag ? <img src={`https://flagcdn.com/w80/${targetConfig.flag.toLowerCase()}.png`} alt={`${targetConfig.displayName} flag`} /> : <span aria-hidden="true">🛰️</span>}
+                <strong>{targetConfig.displayName}</strong>
               </div>
-              
-              <div style={{ flex: 1 }}></div>
-              
-              <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: '10px', alignItems: 'center' }}>
-                <button onClick={() => setIsMuted(!isMuted)} style={{ background: isMuted ? 'rgba(255, 51, 51, 0.15)' : 'rgba(0, 255, 102, 0.15)', border: `1px solid ${isMuted ? 'var(--red)' : 'var(--green)'}`, color: isMuted ? 'var(--red)' : 'var(--green)', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Rajdhani', fontWeight: 'bold', fontSize: '15px', transition: 'all 0.2s' }}>
-                  {isMuted ? '🔇 MUTE' : '🔊 AUDIO'}
-                </button>
-                <button className="modal-close-btn" style={{ width: '36px', height: '36px', fontSize: '18px', padding: 0, borderColor: 'var(--green)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onClick={() => toggleMaximize('radar')}>{maximizedWins.radar ? '🗗' : '🗖'}</button>
-                <button className="modal-close-btn" style={{ width: '36px', height: '36px', fontSize: '20px', padding: 0, borderColor: 'var(--green)', color: 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onClick={() => setIsRadarOpen(false)}>✕</button>
-              </div>
-          </div>
-          
-        {/* 📍 ฟันธง: แยก HUD ออกเป็น 3 มุมตามหลัก Cockpit UI เพื่อไม่ให้บังจอเรดาร์ตรงกลาง */}
-          
-          {/* 1. มุมซ้ายบน: EL (Elevation) */}
-          <div style={{ position: 'absolute', top: '70px', left: '20px', zIndex: 15, pointerEvents: 'none' }}>
-            <div style={{ background: 'rgba(0, 10, 15, 0.75)', border: `1px solid ${linkActive ? 'var(--green)' : 'var(--gold)'}`, borderLeft: `5px solid ${linkActive ? 'var(--green)' : 'var(--gold)'}`, borderRadius: '6px', padding: '6px 14px', boxShadow: `0 4px 15px rgba(0,0,0,0.6), inset 0 0 15px ${linkActive ? 'rgba(0,255,102,0.1)' : 'rgba(255,204,0,0.1)'}`, display: 'flex', alignItems: 'baseline', gap: '10px', transition: 'all 0.3s' }}>
-              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: `${12 * radarLayout.fontScale}px`, fontWeight: '900', fontFamily: 'Orbitron', letterSpacing: '2px' }}>EL:</span>
-              <span style={{ color: linkActive ? 'var(--green)' : 'var(--gold)', fontSize: `${24 * radarLayout.fontScale}px`, fontWeight: '900', fontFamily: 'Orbitron', textShadow: `0 0 15px ${linkActive ? 'var(--green)' : 'var(--gold)'}`, transition: 'all 0.3s' }}>
-                {radarCurrentPos && radarCurrentPos.el ? Math.max(0, radarCurrentPos.el).toFixed(1) : '0.0'}°
-              </span>
+            </div>
+            <div className="sat-visual-actions">
+              <button className="sat-radar-audio" onClick={toggleAudioMute} aria-pressed={isMuted} aria-label={isMuted?'Enable radar audio':'Mute radar audio'} style={{color:isMuted?'var(--red)':'var(--green)'}}>{isMuted?'🔇 MUTE':'🔊 AUDIO'}</button>
+              {toolDetachButton('radar')}
+              <button className="modal-close-btn" aria-label="Maximize Radar" onMouseDown={e=>e.stopPropagation()} onClick={()=>toggleMaximize('radar')}><SatWindowIcon kind={maximizedWins.radar || focusedWorkspacePanel === 'radar' ? 'restore' : 'maximize'} /></button>
+              <button className="modal-close-btn" aria-label="Close Radar" onMouseDown={e=>e.stopPropagation()} onClick={()=>closeTool('radar')}>✕</button>
             </div>
           </div>
-
-          {/* 2. มุมขวาบน: MAX EL */}
-          <div style={{ position: 'absolute', top: '70px', right: '20px', zIndex: 15, pointerEvents: 'none' }}>
-            <div style={{ background: 'rgba(0, 10, 15, 0.75)', border: '1px solid var(--cyan)', borderRight: '5px solid var(--cyan)', borderRadius: '6px', padding: '6px 14px', boxShadow: '0 4px 15px rgba(0,0,0,0.6), inset 0 0 15px rgba(0,234,255,0.1)', display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: `${12 * radarLayout.fontScale}px`, fontWeight: '900', fontFamily: 'Orbitron', letterSpacing: '1px' }}>MAX EL:</span>
-              <span style={{ color: 'var(--cyan)', fontSize: `${20 * radarLayout.fontScale}px`, fontWeight: '900', fontFamily: 'Orbitron', textShadow: '0 0 12px var(--cyan)' }}>
-                {radarData.maxEl !== 'N/A' ? `${radarData.maxEl}°` : 'N/A'}
-              </span>
-            </div>
+          <div className="sat-radar-metrics">
+            <span className="sat-radar-metric-card" style={{color:rfState.locked?'var(--green)':'var(--gold)'}}><span className="sat-radar-metric-label">EL.</span><strong style={{color:rfState.locked?'var(--green)':'var(--gold)'}}>{Number.isFinite(targetData?.elevationDeg)?`${targetData.elevationDeg.toFixed(1)}°`:'N/A'}</strong></span>
+            <span className="sat-radar-metric-card" style={{color:'var(--cyan)'}}><span className="sat-radar-metric-label">MAX EL.</span><strong style={{color:'var(--cyan)'}}>{radarData.maxEl!=='N/A'?`${radarData.maxEl}°`:'N/A'}</strong></span>
           </div>
-
-          {/* 3. มุมซ้ายล่าง: LEGEND */}
-          <div style={{ position: 'absolute', bottom: '20px', left: '20px', zIndex: 15, pointerEvents: 'none' }}>
-            <div style={{ background: 'rgba(0, 10, 15, 0.75)', border: '1px solid rgba(255,255,255,0.2)', borderLeft: '5px solid rgba(255,255,255,0.5)', borderRadius: '6px', padding: '10px 14px', boxShadow: '0 4px 15px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ color: 'rgba(0, 234, 255, 0.7)', fontSize: `${11 * radarLayout.fontScale}px`, fontWeight: 'bold', fontFamily: 'Orbitron', textShadow: '0 0 5px #000' }}>- - DEPARTED</div>
-              <div style={{ color: 'var(--gold)', fontSize: `${11 * radarLayout.fontScale}px`, fontWeight: 'bold', fontFamily: 'Orbitron', textShadow: '0 0 5px #000' }}>- - APPROACH</div>
-              <div style={{ color: 'var(--cyan)', fontSize: `${11 * radarLayout.fontScale}px`, fontWeight: 'bold', fontFamily: 'Orbitron', textShadow: '0 0 5px #000' }}>━━ VISIBLE</div>
-            </div>
-          </div>
-
-          <svg width="100%" height="100%" style={{ display: 'block', position: 'relative', zIndex: 10 }}>
+          <div className="sat-radar-plot" ref={radarContainerRef}>
+          <svg width="100%" height="100%" style={{ display: 'block', position: 'absolute', inset: 0, zIndex: 10, overflow: 'visible' }}>
             {/* วงแหวนเรดาร์และเส้น Grid */}
             <g style={{ pointerEvents: 'none' }}>
               {(() => {
@@ -8838,16 +11087,38 @@ return (
                     {[0, 45, 90, 135, 180, 225, 270, 315].map(az => {
                       const isMain = az % 90 === 0;
                       const padding = isMain ? 28 * fontScale : 20 * fontScale; 
-                      const lx = cx + (R + padding) * Math.sin((az * Math.PI) / 180);
-                      const ly = cy - (R + padding) * Math.cos((az * Math.PI) / 180);
+                      let lx = cx + (R + padding) * Math.sin((az * Math.PI) / 180);
+                      let ly = cy - (R + padding) * Math.cos((az * Math.PI) / 180);
                       
                       let label = az + '°';
                       if (az === 0) label = "N (0°)"; if (az === 90) label = "E (90°)"; if (az === 180) label = "S (180°)"; if (az === 270) label = "W (270°)";
                       let anchor = "middle"; if (az > 0 && az < 180) anchor = "start"; if (az > 180 && az < 360) anchor = "end";
-                      let dy = "0.3em"; if (az === 0) dy = "0.8em"; if (az === 180) dy = "-0.3em";
+                      let dy = "0.3em";
+                      let dominantBaseline = undefined;
+                      let labelFontSize = isMain ? 15 * fontScale : 12 * fontScale;
+
+                      // N/S use their own mirrored safe slots outside the radar circle.
+                      // Do not apply the generic dy shift here: it pushes both labels back
+                      // into the ring and makes them overlap the outer circle.
+                      if (az === 0) {
+                        lx = cx;
+                        ly = cy - R - 22 * fontScale;
+                        dy = undefined;
+                        dominantBaseline = "middle";
+                        labelFontSize = 14 * fontScale;
+                        anchor = "middle";
+                      }
+                      if (az === 180) {
+                        lx = cx;
+                        ly = cy + R + 22 * fontScale;
+                        dy = undefined;
+                        dominantBaseline = "middle";
+                        labelFontSize = 14 * fontScale;
+                        anchor = "middle";
+                      }
 
                       return (
-                        <text key={`az-label-${az}`} x={lx} y={ly} dy={dy} fill={isMain ? "#00eaff" : "#ffcc00"} fontSize={isMain ? 15 * fontScale : 12 * fontScale} fontWeight="900" textAnchor={anchor} style={{ textShadow: '0 0 8px #000' }} >
+                        <text key={`az-label-${az}`} x={lx} y={ly} dy={dy} dominantBaseline={dominantBaseline} fill={isMain ? "#00eaff" : "#ffcc00"} fontSize={labelFontSize} fontWeight="900" textAnchor={anchor} style={{ textShadow: '0 0 8px #000' }} >
                           {label}
                         </text>
                       );
@@ -8888,8 +11159,7 @@ return (
                          <circle cx={aosX} cy={aosY} r={4 * s} fill="var(--gold)" style={{ filter: 'drop-shadow(0 0 8px var(--gold))' }} />
                          <circle cx={losX} cy={losY} r={4 * s} fill="var(--red)" style={{ filter: 'drop-shadow(0 0 8px var(--red))' }} />
 
-                         <text x={aosX + aosCfg.dx} y={aosY + aosCfg.dy} fill="var(--gold)" fontSize={13 * s} fontWeight="900" fontFamily="Orbitron" textAnchor={aosCfg.anchor} alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--gold)' }}>AOS {radarData.aosAz.toFixed(1)}°</text>
-                         <text x={losX + losCfg.dx} y={losY + losCfg.dy} fill="var(--red)" fontSize={13 * s} fontWeight="900" fontFamily="Orbitron" textAnchor={losCfg.anchor} alignmentBaseline="middle" style={{ textShadow: '0 0 5px #000, 0 0 10px var(--red)' }}>LOS {radarData.losAz.toFixed(1)}°</text>
+
                        </>
                      );
                   })()}
@@ -8911,191 +11181,55 @@ return (
             <div style={{
               position: 'absolute', left: `${radarLayout.cx - radarLayout.R}px`, top: `${radarLayout.cy - radarLayout.R}px`, width: `${radarLayout.R * 2}px`, height: `${radarLayout.R * 2}px`, 
               borderRadius: '50%', overflow: 'hidden', clipPath: 'circle(50% at 50% 50%)', WebkitClipPath: 'circle(50% at 50% 50%)', 
-              background: 'conic-gradient(from 0deg, rgba(0, 255, 102, 0) 30%, rgba(0, 255, 102, 0.15) 70%, rgba(0, 255, 102, 0.6) 98%, rgba(0, 255, 102, 1) 100%)',
-              animation: linkActive ? 'none' : 'radar-sweep 3s infinite linear',
-              transform: linkActive && targetData && !isNaN(targetData.azimuthDeg) ? `rotate(${targetData.azimuthDeg}deg)` : 'none',
               pointerEvents: 'none', zIndex: 5, opacity: linkActive ? 0.5 : 1,
-              transition: 'transform 0.1s linear, opacity 0.3s'
-            }} />
-        </div>
-     )}
-
-   {/* --- IMAGING PLAN VIEWER --- */}
-{isImgOpen && (
-    <div className="modal-box img-modal" onMouseDownCapture={() => bringToFront('img')} style={{ 
-      position: 'fixed', 
-      top: maximizedWins.img ? '0px' : `${imgPos.y}px`, 
-      left: maximizedWins.img ? '0px' : `${imgPos.x}px`, 
-      width: maximizedWins.img ? '100vw' : '780px', 
-      height: maximizedWins.img ? '100vh' : '500px', 
-      minWidth: '600px', minHeight: '400px',
-      maxWidth: 'none', maxHeight: 'none', resize: maximizedWins.img ? 'none' : 'both', overflow: 'hidden', 
-      background: 'rgba(2, 6, 23, 0.9)', backdropFilter: 'blur(15px)', WebkitBackdropFilter: 'blur(15px)',
-      
-      /* 📍 เปลี่ยนสีกรอบหน้าต่างและแสงเงาเป็นสีฟ้า (Cyan) */
-      border: '2px solid var(--cyan)',
-      boxSizing: 'border-box', 
-      borderRadius: maximizedWins.img ? '0px' : '12px',
-      boxShadow: '0 0 40px rgba(0, 234, 255, 0.3), inset 0 0 20px rgba(0, 234, 255, 0.2)',
-      
-      display: 'flex', flexDirection: 'column',
-      zIndex: windowZ.img || 10000,
-      transition: isDraggingImg ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)'
-    }}>
-
-      {/* 📍 เปลี่ยนแสงแฟลร์พื้นหลังเป็นสีฟ้า */}
-      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '120%', height: '120%', background: 'radial-gradient(circle, rgba(0, 234, 255, 0.15) 0%, transparent 60%)', filter: 'blur(80px)', pointerEvents: 'none', zIndex: 0, animation: 'pulse 4s infinite' }}></div>
-
-      {/* Header */}
-      <div className="modal-header" style={{ position: 'relative', zIndex: 10, borderBottom: '2px solid var(--cyan)', padding: '12px 20px', cursor: maximizedWins.img ? 'default' : (isDraggingImg ? 'grabbing' : 'grab'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(180deg, rgba(0, 234, 255, 0.2) 0%, transparent 100%)', boxShadow: '0 10px 30px -10px rgba(0, 234, 255, 0.3)' }} onMouseDown={(e) => { if(!maximizedWins.img) handleImgMouseDown(e); }}>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-          <button 
-            onClick={() => setIsImgListOpen(!isImgListOpen)}
-            style={{
-              /* 📍 สีปุ่มเปิด/ปิดลิสต์เป็นสีฟ้า */
-              background: isImgListOpen ? 'rgba(0, 234, 255, 0.15)' : 'var(--cyan)',
-              border: '1px solid var(--cyan)',
-              color: isImgListOpen ? 'var(--cyan)' : '#000',
-              padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Orbitron',
-              fontSize: '12px', fontWeight: 'bold', letterSpacing: '1px',
-              boxShadow: isImgListOpen ? 'none' : '0 0 15px rgba(0, 234, 255, 0.6)', transition: 'all 0.2s ease'
-            }}
-          >
-            {isImgListOpen ? '◀ HIDE LIST' : '▶ SHOW LIST'}
-          </button>
-        </div>
-        
-        {/* 📍 หัวข้อเปลี่ยนเป็นสีฟ้า คมกริบ ไร้แสงแฟลร์ */}
-        <div style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--cyan)', fontFamily: 'Orbitron', fontWeight: 'bold', fontSize: '20px', textShadow: 'none', pointerEvents: 'none', whiteSpace: 'nowrap', letterSpacing: '1px' }}>
-          📸 IMAGING PLAN VIEWER 
-          <span style={{ fontSize: '14px', color: 'var(--gold)', background: 'rgba(0,0,0,0.5)', border: '1px solid #ffffff', padding: '2px 10px', borderRadius: '4px', marginLeft: '12px', textShadow: 'none', boxShadow: 'none', letterSpacing: '2px' }}>
-            ORBIT 269
-          </span>
-        </div>
-        
-        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-          <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '15px', padding: 0, border: '1px solid var(--cyan)', color: 'var(--cyan)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onClick={() => toggleMaximize('img')}>{maximizedWins.img ? '🗗' : '🗖'}</button>
-          <button className="modal-close-btn" style={{ width: '32px', height: '32px', fontSize: '16px', padding: 0, border: '1px solid var(--red)', color: 'var(--red)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onClick={() => setIsImgOpen(false)}>✕</button>
-        </div>
-      </div>
-
-      {/* Body */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '20px', gap: isImgListOpen ? '20px' : '0px', position: 'relative', zIndex: 10 }}>
-        
-        {/* ซ้าย: ตารางคิวถ่ายภาพ */}
-        {isImgListOpen && (
-          <div style={{ flex: '0 0 380px', display: 'flex', flexDirection: 'column', borderRight: '1px dashed rgba(0, 234, 255, 0.4)', paddingRight: '15px' }}>
-            <style>{`.img-hide-scrollbar::-webkit-scrollbar { display: none; }`}</style>
-            <div style={{ flex: '1', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="img-hide-scrollbar">
-            <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontFamily: 'Rajdhani', color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
-                <thead>
-                  <tr style={{ color: 'rgba(255,255,255,0.7)', borderBottom: '2px solid rgba(0, 234, 255, 0.6)', fontSize: '13px' }}>
-                    <th style={{ padding: '10px 5px', width: '50%', textAlign: 'center', letterSpacing: '1.5px', fontFamily: 'Orbitron' }}>DATE & TIME (UTC)</th>
-                    <th style={{ padding: '10px 5px', width: '25%', textAlign: 'center', letterSpacing: '1.5px', fontFamily: 'Orbitron' }}>DURATION</th>
-                    <th style={{ padding: '10px 5px', width: '25%', textAlign: 'center', letterSpacing: '1.5px', fontFamily: 'Orbitron' }}>ACTION</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {imagingPlansData.map(plan => {
-                    const dStart = new Date(plan.start);
-                    const isSelected = selectedPlanId === plan.id;
-                    return (
-                      <tr key={plan.id}
-                          style={{ 
-                            borderBottom: '1px solid rgba(255,255,255,0.05)', 
-                            cursor: 'pointer', 
-                            /* 📍 เปลี่ยนแถบไฮไลต์ตารางเป็นสีฟ้า */
-                            background: isSelected ? 'linear-gradient(90deg, rgba(0, 234, 255, 0.2) 0%, transparent 100%)' : 'transparent',
-                            borderLeft: isSelected ? '4px solid var(--cyan)' : '4px solid transparent',
-                            transition: 'all 0.2s ease',
-                            textAlign: 'center'
-                          }}
-                          onMouseOver={(e) => { if(!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; }}
-                          onMouseOut={(e) => { if(!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                          onClick={() => setSelectedPlanId(isSelected ? null : plan.id)}>
-                        
-                        <td style={{ padding: '12px 5px', fontWeight: 'bold', fontSize: '15px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                            <span style={{ color: isSelected ? '#ffffff' : '#e0e0e0', textShadow: isSelected ? '0 0 10px rgba(0, 234, 255, 0.8)' : 'none', letterSpacing: '1px' }}>
-                              {pad2(dStart.getUTCHours())}:{pad2(dStart.getUTCMinutes())}:{pad2(dStart.getUTCSeconds())}
-                            </span>
-                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: '600', marginTop: '2px' }}>
-                              {dStart.getUTCFullYear()}-{pad2(dStart.getUTCMonth() + 1)}-{pad2(dStart.getUTCDate())}
-                            </span>
-                          </div>
-                        </td>
-                        
-                        <td style={{ padding: '12px 5px', color: isSelected ? '#ffffff' : 'var(--gold)', fontWeight: 'bold', fontSize: '16px' }}>
-                          {plan.duration.toFixed(0)} <span style={{ fontSize: '11px', color: isSelected ? 'rgba(255,255,255,0.6)' : 'rgba(255,204,0,0.6)' }}>s</span>
-                        </td>
-                        
-                        <td style={{ padding: '12px 5px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'center' }}>
-                            <button style={{ 
-                              /* 📍 ปุ่ม Play เปลี่ยนเป็นสีฟ้า */
-                              background: isSelected ? 'var(--cyan)' : 'rgba(0, 234, 255, 0.1)', 
-                              border: `1px solid ${isSelected ? '#fff' : 'rgba(0, 234, 255, 0.4)'}`, 
-                              color: isSelected ? '#000' : 'var(--cyan)', 
-                              width: '40px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', transition: 'all 0.2s', 
-                              boxShadow: isSelected ? '0 0 15px rgba(0, 234, 255, 0.6)' : 'none',
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const isRealtimePassLock = Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive;
-                              if (isRealtimePassLock) {
-                                setCustomAlert({ show: true, message: "🔒 REAL-TIME LOCK: ปฏิเสธคำสั่ง! ระบบกำลังรับสัญญาณดาวเทียมจริง (LIVE)", type: 'error' });
-                                return;
-                              }
-                              setSelectedPlanId(plan.id);
-                              setSimulatedTimeMs(new Date(plan.start).getTime() - 5000);
-                              setSpeedMult(1);
-                            }}>
-                              ▶
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-           {/* 📍 ปุ่ม Upload สีฟ้า */}
-           <div style={{ position: 'relative', zIndex: 10, marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed rgba(0, 234, 255, 0.3)', textAlign: 'center' }}>
-                 <label style={{ 
-                  display: 'inline-block', width: '90%', 
-                  background: 'linear-gradient(90deg, rgba(0, 234, 255, 0.1) 0%, rgba(0, 234, 255, 0.2) 50%, rgba(0, 234, 255, 0.1) 100%)', 
-                  border: '2px dashed var(--cyan)', color: 'var(--cyan)', 
-                  padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', 
-                  fontSize: '13px', fontFamily: 'Orbitron', fontWeight: 'bold', 
-                  letterSpacing: '1.5px', transition: 'all 0.3s ease',
-                  boxShadow: '0 0 15px rgba(0, 234, 255, 0.1)'
-                 }}
-                      onMouseOver={(e) => { 
-                        e.currentTarget.style.background = 'var(--cyan)'; 
-                        e.currentTarget.style.color = '#000';
-                        e.currentTarget.style.boxShadow = '0 0 25px rgba(0, 234, 255, 0.8)'; 
-                        e.currentTarget.style.transform = 'scale(1.02)';
-                      }}
-                      onMouseOut={(e) => { 
-                        e.currentTarget.style.background = 'linear-gradient(90deg, rgba(0, 234, 255, 0.1) 0%, rgba(0, 234, 255, 0.2) 50%, rgba(0, 234, 255, 0.1) 100%)'; 
-                        e.currentTarget.style.color = 'var(--cyan)'; 
-                        e.currentTarget.style.boxShadow = '0 0 15px rgba(0, 234, 255, 0.1)'; 
-                        e.currentTarget.style.transform = 'scale(1)';
-                      }}>
-                  📂 UPLOAD NEW MISSION PLAN (PDF & JSON)
-                  <input type="file" accept=".pdf, .json, .geojson" multiple style={{ display: 'none' }} onChange={handleMissionPlanUpload} />
-                 </label>
+              transition: 'opacity 0.3s'
+            }}>
+              <div style={{ position:'absolute', inset:0,
+                background:'conic-gradient(from 0deg, rgba(0, 255, 102, 0) 30%, rgba(0, 255, 102, 0.15) 70%, rgba(0, 255, 102, 0.6) 98%, rgba(0, 255, 102, 1) 100%)',
+                animation:linkActive ? 'none' : 'radar-sweep 3s infinite linear',
+                transform:linkActive && targetData && !isNaN(targetData.azimuthDeg) ? `rotate(${targetData.azimuthDeg}deg)` : 'none',
+                transition:'transform 0.1s linear'
+              }}/>
             </div>
           </div>
-        )}
+          <div className="sat-radar-legend">
+            <span style={{color:'#7bb1bd'}}>- - DEPARTED</span><span style={{color:'var(--gold)'}}>- - APPROACH</span><span style={{color:'var(--cyan)'}}>━━ VISIBLE</span>
+          </div>
+        </div>
+     </SatToolSurface>)}
 
-
-
-            {/* ขวา: แผนที่ 2D */}
-            <div 
-               style={{ flex: 1, position: 'relative', border: '1px solid var(--cyan)', borderRadius: '6px', background: '#000', overflow: 'hidden', boxShadow: 'inset 0 0 20px rgba(0, 234, 255, 0.2)', cursor: 'crosshair', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+   {/* --- IMAGING PLAN VIEWER --- */}
+{isImgOpen && (<SatToolSurface id="img" viewer={toolWindows.img}>
+  <SatDataWindow id="img" hostRevision={toolHostRevision} scale={presentationScale} position={imgPos} maximized={maximizedWins.img} width={780} height={500} zIndex={windowZ.img} onFocus={() => bringToFront('img')} dragging={isDraggingImg}>
+    <SatDataHeader title="📸 IMAGING PLAN VIEWER" subtitle={`ORBIT ${missionOrbitLabel}`} windowControl={toolWindowButton('img')} maximized={maximizedWins.img}
+      onMaximize={() => toggleWorkspacePanel('img')} onClose={() => closeTool('img')}
+      onDrag={event => { if (!toolWindows.img && !maximizedWins.img) handleImgMouseDown(event); }} />
+    <SatMissionWorkspace showList={isImgListOpen} hostRevision={toolHostRevision} scale={presentationScale}
+      upload={<>
+        <button type="button" className="sat-data-action" aria-pressed={isImgListOpen} onClick={() => setIsImgListOpen(value => !value)}>{isImgListOpen ? '◀ HIDE LIST' : '▶ SHOW LIST'}</button>
+        <label className="sat-mission-upload">📂 UPLOAD MISSION PLAN (PDF / JSON)<input type="file" accept=".pdf,.json,.geojson" multiple style={{ display: 'none' }} onChange={handleMissionPlanUpload} /></label>
+      </>}
+      list={<SatMissionListData plans={imagingPlansData} selectedId={selectedPlanId} onSelect={setSelectedPlanId} hostRevision={toolHostRevision} scale={presentationScale}
+        onReplay={plan => {
+          const isRealtimePassLock = clockMode === 'LIVE' && speedMult === 1 && isPlaying && linkActive;
+          if (isRealtimePassLock) {
+            setCustomAlert({ show: true, message: "🔒 REAL-TIME LOCK: Command rejected while a LIVE pass is active.", type: 'error' });
+            return;
+          }
+          setSelectedPlanId(plan.id);
+          setSimulatedTimeMs(new Date(plan.start).getTime() - 5000);
+          setSpeedMult(1); setIsPlaying(true);
+        }} />}
+      mapTools={<div className="sat-mission-map-tools">
+        <span>{selectedPlanId !== null ? `🎯 TARGET LOCKED · ${mapZoom}×` : `🌍 GLOBAL VIEW · ${mapZoom}×`}</span>
+        <button type="button" className="sat-data-action" aria-label="Zoom out mission map" disabled={mapZoom <= 1} onClick={() => setMapZoom(previous => { const next = Math.max(1, previous - 1); if (next === 1) setImgMapOrigin('center center'); return next; })}>−</button>
+        <button type="button" className="sat-data-action" aria-label="Zoom in mission map" disabled={mapZoom >= 30} onClick={() => setMapZoom(previous => Math.min(30, previous + 1))}>+</button>
+        <button type="button" className="sat-data-action" aria-label="Reset mission map zoom" onClick={() => { setMapZoom(1); setImgMapOrigin('center center'); }}>1×</button>
+        <button type="button" className="sat-data-action" aria-pressed={showGroundTrack} onClick={() => setShowGroundTrack(value => !value)}>{showGroundTrack ? 'HIDE ORBIT TRACK' : 'SHOW ORBIT TRACK'}</button>
+      </div>}
+    >
+            <div className="sat-mission-map-canvas"
+               style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', border: '1px solid var(--cyan)', borderRadius: '6px', background: '#000', overflow: 'hidden', boxShadow: 'inset 0 0 20px rgba(0, 234, 255, 0.2)', cursor: 'crosshair', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                onWheel={(e) => { 
                  const rect = e.currentTarget.getBoundingClientRect();
                  const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -9113,13 +11247,14 @@ return (
                    if (selectedPlanId !== null) {
                       const p = imagingPlansData.find(x => x.id === selectedPlanId);
                       if (p && !isNaN(p.startLng) && !isNaN(p.endLng)) {
-                         const cx_deg = (p.startLng + p.endLng) / 2; const cy_deg = (p.startLat + p.endLat) / 2;
+                         const deltaLng = ((p.endLng - p.startLng + 540) % 360) - 180;
+                         const cx_deg = ((p.startLng + deltaLng / 2 + 540) % 360) - 180; const cy_deg = (p.startLat + p.endLat) / 2;
                          const cx_pct = (cx_deg + 180) / 360 * 100; const cy_pct = (90 - cy_deg) / 180 * 100;
                          tOrigin = `${cx_pct}% ${cy_pct}%`; 
                       }
                    }
                   return (
-                     <div style={{
+                     <div className="sat-mission-map-image" style={{
                         width: '100%',
                         height: 'auto',
                         maxWidth: '100%',
@@ -9190,626 +11325,159 @@ return (
                             {/* ======================================================== */}
                             {/* 📍 LAYER 2 (บนสุด): วาดเป้าหมายแนวถ่าย (Mesh) ทับด้านบนเสมอ! */}
                             {/* ======================================================== */}
-                            {imagingPlansData.map(p => {
-                               if(isNaN(p.startLng) || isNaN(p.endLng)) return null;
-                               if (simulatedTimeMs > p.end) return null; 
-
-                               const x1 = (p.startLng + 180) / 360 * 100; const y1 = (90 - p.startLat) / 180 * 100;
-                               const x2 = (p.endLng + 180) / 360 * 100; const y2 = (90 - p.endLat) / 180 * 100;
-                               const isSel = selectedPlanId === p.id;
-                               
-                               const sw1 = (isSel ? 2.5 : 1.2) / mapZoom; 
-                               const sw2 = (isSel ? 0.3 : 0.15) / mapZoom; 
-                               const rDot = 1.0 / mapZoom; 
-
-                               return (
-                                  <g key={p.id}>
-                                     {/* เส้นแนวถ่ายภาพสีแดงเข้มทึบแสง */}
-                                     <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSel ? "rgba(255, 51, 51, 1)" : "rgba(204, 0, 0, 0.9)"} strokeWidth={sw1} strokeLinecap="round" />
-                                     <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSel ? "#fff" : "rgba(255,255,255,0.4)"} strokeWidth={sw2} strokeDasharray={`${0.5/mapZoom} ${0.5/mapZoom}`} />
-                                     {/* ซ่อนจุดแดง ถ้าไม่ได้คลิกเลือก */}
-                                     {isSel && <circle cx={x1} cy={y1} r={rDot} fill="#fff" stroke="#ff3333" strokeWidth={sw2} />}
-                                  </g>
-                               );
+                            {imagingPlansData.map(plan => {
+                              const display = missionPathById.get(plan.id);
+                              if (!display || simulatedTimeMs > display.end) return null;
+                              const selected = selectedPlanId === plan.id;
+                              const paths = display.paths.flatMap(points => splitMapPath(points));
+                              return <g key={plan.id}>
+                                {paths.map((segment, index) => <g key={index}>
+                                  <polyline points={mapSegmentPoints(segment)} fill="none" stroke={selected ? 'rgba(255,51,51,1)' : 'rgba(204,0,0,0.9)'}
+                                    strokeWidth={(display.importedGeometry ? (selected ? 0.7 : 0.35) : (selected ? 2.5 : 1.2)) / mapZoom} strokeLinejoin="round" strokeLinecap="round" />
+                                  {selected && <polyline points={mapSegmentPoints(segment)} fill="none" stroke="#fff" strokeWidth={0.15 / mapZoom} strokeDasharray={`${0.5 / mapZoom} ${0.5 / mapZoom}`} />}
+                                </g>)}
+                                {selected && validMissionPoint(plan.startLat, plan.startLng) && <circle cx={(plan.startLng + 180) / 360 * 100} cy={(90 - plan.startLat) / 180 * 100} r={1 / mapZoom} fill="#fff" stroke="#ff3333" strokeWidth={0.15 / mapZoom} />}
+                              </g>;
                             })}
                         </svg>
                      </div>
                    )
                 })()}
 
-                {/* สร้างกริดในแผนที่ Mission Plan <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundImage: 'linear-gradient(rgba(0, 234, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 234, 255, 0.1) 1px, transparent 1px)', backgroundSize: '20px 20px', pointerEvents: 'none' }}></div>*/}
-                
-                {/* 📍 ฟันธง 3: เปลี่ยนจากแค่ตัวอักษร เป็น "กลุ่มปุ่มกด" ที่มีปุ่ม เปิด/ปิด Ground Track */}
-                <div style={{ position:'absolute', bottom:'15px', left:'15px', display: 'flex', gap: '10px' }}>
-                <div style={{ 
-                    /* 📍 ฟันธง: เปลี่ยนสีตัวหนังสือเป็นสีขาวล้วน ไม่มีแสงแฟลร์ (textShadow: none) ให้คมชัด */
-                    color: '#ffffff', 
-                    fontFamily: 'Orbitron', 
-                    fontSize: '12px', 
-                    fontWeight: 'bold', 
-                    textShadow: 'none', 
-                    
-                    /* 📍 ฟันธง: เปลี่ยนพื้นหลังเป็นสีแดงกึ่งโปร่งใส และใส่ขอบสีแดงทึบให้กลมกลืนกับธีมหลัก */
-                    background: selectedPlanId !== null ? 'rgba(255, 69, 0, 0.2)' : 'rgba(0, 0, 0, 0.6)', 
-                    padding: '6px 12px', 
-                    borderRadius: '4px', 
-                    border: selectedPlanId !== null ? '1px solid #FF4500' : '1px solid rgba(255,255,255,0.3)',
-                    borderLeft: selectedPlanId !== null ? '4px solid #FF4500' : '4px solid var(--cyan)', 
-                    
-                    display: 'flex', 
-                    alignItems: 'center',
-                    letterSpacing: '1px'
-                  }}>
-                    {selectedPlanId !== null ? `🎯 TARGET LOCKED (ZOOM: ${mapZoom}X)` : '🌍 GLOBAL VIEW (STANDBY)'}
-                  </div>
-                  
-                  {/* ปุ่มกด Toggle */}
-                  <button 
-                    onClick={() => setShowGroundTrack(!showGroundTrack)}
-                    style={{ 
-                      background: showGroundTrack ? 'rgba(255, 204, 0, 0.2)' : 'rgba(0, 0, 0, 0.6)',
-                      border: `1px solid ${showGroundTrack ? '#ffcc00' : 'rgba(255,255,255,0.3)'}`,
-                      color: showGroundTrack ? '#ffcc00' : '#fff',
-                      fontFamily: 'Orbitron', fontSize: '11px', padding: '0 10px',
-                      borderRadius: '4px', cursor: 'pointer', transition: 'all 0.2s'
-                    }}
-                  >
-                    {showGroundTrack ? 'HIDE ORBIT TRACK' : 'SHOW ORBIT TRACK'}
-                  </button>
-                </div>
             </div>
+    </SatMissionWorkspace>
+  </SatDataWindow>
+</SatToolSurface>)}
 
-          </div>
-        </div>
-      )}
-
-{/* --- SIGNAL ANALYZER (IQ & DUAL SPECTRUM Analyzer - STRICT PHYSICS & LOGIC) --- */}
-{isAnalyzerOpen && (
+{/* --- SIGNAL ANALYZER: SPECTRUM-ONLY INSTRUMENT VIEW --- */}
+{isAnalyzerOpen && (<SatToolSurface id="analyzer" viewer={toolWindows.analyzer} quad={workspaceMode === 'quad'} rect={focusedWorkspacePanel === 'analyzer' ? workspaceFullRect : workspaceRects.analyzer} hidden={!!focusedWorkspacePanel && focusedWorkspacePanel !== 'analyzer'}>
         <div className="modal-box analyzer-modal" onMouseDownCapture={() => startTransition(() => bringToFront('analyzer'))} style={{
           position: 'fixed', top: maximizedWins.analyzer ? '0px' : `${analyzerPos.y}px`, left: maximizedWins.analyzer ? '0px' : `${analyzerPos.x}px`,
-          
-          /* 📍 ฟันธง: ลดขนาดเริ่มต้น width จาก 1050px เป็น 880px และ height จาก 650px เป็น 550px */
-          width: maximizedWins.analyzer ? '100vw' : 'min(880px, 95vw)', height: maximizedWins.analyzer ? '100vh' : 'min(550px, 85vh)',
-          minWidth: 'min(750px, 90vw)', minHeight: 'min(480px, 80vh)',
+          width: maximizedWins.analyzer ? '100vw' : 'min(980px, 95vw)', height: maximizedWins.analyzer ? '100vh' : 'min(620px, 88vh)',
+          minWidth: 'min(340px, 92vw)', minHeight: 'min(320px, 82vh)',
           resize: maximizedWins.analyzer ? 'none' : 'both', overflow: 'hidden',
-          
           background: 'linear-gradient(145deg, #050a15 0%, #02040a 100%)',
-          border: maximizedWins.analyzer ? 'none' : `2px solid ${linkActive ? 'var(--cyan)' : 'var(--red)'}`,
+          border: maximizedWins.analyzer ? 'none' : `2px solid ${rfState.locked ? 'var(--green)' : rfState.eligible ? 'var(--gold)' : 'var(--red)'}`,
           borderRadius: maximizedWins.analyzer ? '0px' : '10px',
           boxShadow: `0 0 30px rgba(0,0,0,0.8), inset 0 0 10px rgba(255,255,255,0.05)`,
           display: 'flex', flexDirection: 'column', zIndex: windowZ.analyzer || 10001,
           transition: isDraggingAnalyzer ? 'none' : 'all 0.2s ease-out'
         }}>
-          
-          {/* Header */}
-          <div className="modal-header" style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '10px 20px', cursor: maximizedWins.analyzer ? 'default' : (isDraggingAnalyzer ? 'grabbing' : 'grab'),
-            borderBottom: `1px solid rgba(255, 255, 255, 0.1)`, background: 'rgba(255,255,255,0.03)'
-          }} onMouseDown={(e) => { if(!maximizedWins.analyzer) handleAnalyzerMouseDown(e); }}>
-            
-            {/* ซ้าย: ชื่อหน้าจอ */}
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', color: '#ffffff', fontFamily: 'Orbitron', fontWeight: '900', fontSize: '16px', letterSpacing: '2px', pointerEvents: 'none', textShadow: '0 0 10px rgba(255,255,255,0.4)' }}>
-              <span style={{ marginRight: '10px', fontSize: '18px' }}>📻</span> RF SPECTRUM ANALYZER
-            </div>
-
-            {/* ขวา: แผงควบคุมทั้งหมด */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button 
-                  onMouseDown={(e) => e.stopPropagation()} 
-                  onClick={() => { if (showXBand && !showSBand) return; setShowXBand(!showXBand); }}
-                  style={{ background: showXBand ? 'rgba(255,204,0,0.15)' : 'transparent', border: `1px solid ${showXBand ? '#ffcc00' : 'rgba(255,204,0,0.3)'}`, color: showXBand ? '#ffcc00' : 'rgba(255,204,0,0.5)', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Orbitron', fontSize: '12px', fontWeight: 'bold', transition: 'all 0.2s', boxShadow: showXBand ? '0 0 10px rgba(255,204,0,0.2)' : 'none' }}>
-                  {showXBand ? '👁 CH1: X-BAND' : 'CH1: X-BAND (OFF)'}
-                </button>
-                <button 
-                  onMouseDown={(e) => e.stopPropagation()} 
-                  onClick={() => { if (showSBand && !showXBand) return; setShowSBand(!showSBand); }}
-                  style={{ background: showSBand ? 'rgba(0,234,255,0.15)' : 'transparent', border: `1px solid ${showSBand ? '#00eaff' : 'rgba(0,234,255,0.3)'}`, color: showSBand ? '#00eaff' : 'rgba(0,234,255,0.5)', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'Orbitron', fontSize: '12px', fontWeight: 'bold', transition: 'all 0.2s', boxShadow: showSBand ? '0 0 10px rgba(0,234,255,0.2)' : 'none' }}>
-                  {showSBand ? '👁 CH2: S-BAND' : 'CH2: S-BAND (OFF)'}
-                </button>
-              </div>
-              
-              <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)' }}></div>
-
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="modal-close-btn" style={{ width: '30px', height: '30px', fontSize: '14px', borderColor: 'rgba(255,255,255,0.3)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleMaximize('analyzer'); }}>{maximizedWins.analyzer ? '🗗' : '🗖'}</button>
-                <button className="modal-close-btn" style={{ width: '30px', height: '30px', fontSize: '15px', borderColor: 'var(--red)', color: 'var(--red)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setIsAnalyzerOpen(false); }}>✕</button>
-              </div>
+          <style>{SAT_VISUAL_CSS}</style>
+          <div className="modal-header sat-visual-header" onMouseDown={(e)=>{if(!maximizedWins.analyzer) handleAnalyzerMouseDown(e);}}>
+            <div className="sat-visual-heading"><strong>RF SPECTRUM ANALYZER</strong><div className="sat-visual-meta"><span style={{color:rfState.color}}>{rfState.label}</span><span>{new Date(simulatedTimeMs).toISOString().slice(11,19)} UTC · SIM</span></div></div>
+            <div className="sat-visual-actions">
+              {toolWindowButton('analyzer')}
+              <button className="modal-close-btn" aria-label="Maximize Signal Analyzer" onMouseDown={e=>e.stopPropagation()} onClick={()=>toggleMaximize('analyzer')}><SatWindowIcon kind={maximizedWins.analyzer || focusedWorkspacePanel === 'analyzer' ? 'restore' : 'maximize'} /></button>
+              <button className="modal-close-btn" aria-label="Close Signal Analyzer" onMouseDown={e=>e.stopPropagation()} onClick={()=>closeTool('analyzer')}>✕</button>
             </div>
           </div>
-
-          {/* Body */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'row', padding: '20px', gap: '20px', minHeight: 0 }}>
-            
-
-          {(() => {
-              // 📍 2. ฐานข้อมูลวิเคราะห์สัญญาณ Baseband (IQ & Spectrum) ครอบคลุม 100%
-              let spec = { name: targetConfig.name, xBand: { freq: 720.0, bw: 100, mod: 'QPSK' }, sBand: { freq: 70.0, bw: 1.0, mod: 'BPSK' } };
-              
-              // 🧠 จัดกลุ่ม Modulation & Bandwidth อัตโนมัติตามประเภทดาวเทียม
-              const grp = targetConfig.group;
-              if (grp === 'SYNTHETIC APERTURE RADAR (SAR)') {
-                spec.xBand = { freq: 720.0, bw: 300, mod: 'QPSK' }; // Radar ต้องใช้ Bandwidth กว้างมาก
-              } else if (grp === 'WEATHER & EARTH RESOURCES' || grp === 'GLOBAL EESS & SCIENCE') {
-                spec.xBand = { freq: 720.0, bw: 150, mod: 'O-QPSK' };
-              } else if (grp === 'MEGA CONSTELLATIONS') {
-                spec.xBand = { freq: 720.0, bw: 250, mod: 'QPSK' }; // Starlink/OneWeb Bandwidth มหาศาล
-              } else if (grp === 'GLOBAL NAVIGATION (GNSS)') {
-                spec.xBand = { freq: 720.0, bw: 20, mod: 'BPSK' }; // GPS ส่งข้อมูลต่ำแต่ทะลุทะลวง
-              } else if (grp === 'THAI CUBESAT & MICROSAT') {
-                spec.xBand = { freq: 720.0, bw: 5, mod: 'BPSK' }; 
-              }
-
-              // 🎯 Overrides เจาะจงเฉพาะดวง (พวกนี้เอกสารอ้างอิงชัดเจน)
-              const overrides = {
-                '33396': { name: 'THEOS', xBand: { freq: 720.0, bw: 120, mod: 'QPSK' }, sBand: { freq: 70.0, bw: 0.8, mod: 'BPSK' } },
-                '58016': { name: 'THEOS-2', xBand: { freq: 720.0, bw: 310, mod: 'O-QPSK' }, sBand: { freq: 70.0, bw: 0.235, mod: 'QPSK' } },
-                '27424': { name: 'AQUA', xBand: { freq: 720.0, bw: 15, mod: 'SQPSK' }, sBand: { freq: 70.0, bw: 2.0, mod: 'BPSK' } },
-                '25994': { name: 'TERRA', xBand: { freq: 720.0, bw: 15, mod: 'SQPSK' }, sBand: { freq: 70.0, bw: 2.0, mod: 'BPSK' } },
-                '49260': { name: 'LANDSAT-9', xBand: { freq: 720.0, bw: 384, mod: 'O-QPSK' }, sBand: { freq: 70.0, bw: 3.0, mod: 'BPSK' } },
-                '39084': { name: 'LANDSAT-8', xBand: { freq: 720.0, bw: 384, mod: 'O-QPSK' }, sBand: { freq: 70.0, bw: 3.0, mod: 'BPSK' } },
-                '54234': { name: 'NOAA-21', xBand: { freq: 720.0, bw: 30, mod: 'QPSK' }, sBand: { freq: 70.0, bw: 2.0, mod: 'BPSK' } },
-                '43013': { name: 'NOAA-20', xBand: { freq: 720.0, bw: 30, mod: 'QPSK' }, sBand: { freq: 70.0, bw: 2.0, mod: 'BPSK' } },
-                '37849': { name: 'SUOMI NPP', xBand: { freq: 720.0, bw: 30, mod: 'QPSK' }, sBand: { freq: 70.0, bw: 2.0, mod: 'BPSK' } },
-                '39634': { name: 'SENTINEL-1A', xBand: { freq: 720.0, bw: 300, mod: 'QPSK' }, sBand: { freq: 70.0, bw: 2.0, mod: 'BPSK' } },
-              };
-
-              if (overrides[selectedCatnr]) {
-                spec = overrides[selectedCatnr];
-              }
-
-
-              // 📍 2. ลอจิกการ Lock (ฟันธง: ล็อกสัญญาณที่ 3.0 องศาเป๊ะๆ)
-              const el = targetData && !isNaN(targetData.elevationDeg) ? targetData.elevationDeg : -10;
-              const isAutoTrack = el >= 3.0; // สัญญาณพุ่งปรี๊ด 100% ที่ 3 องศา
-              const isProgramTrack = el >= 0.0 && el < 3.0; // ช่วงเริ่มเห็นขอบฟ้า กราฟจะกระเพื่อมรอ
-              
-              const lockStatusText = isAutoTrack ? 'LOCKED' : (isProgramTrack ? 'ACQUIRING...' : 'NO CARRIER');
-              const lockStatusColor = isAutoTrack ? 'var(--green)' : (isProgramTrack ? 'var(--gold)' : 'var(--red)');
-
-              // ----------------------------------------------------
-              // ฟังก์ชันวาดกราฟ Spectrum ด้วยสมการ Root Raised Cosine (RRC)
-              // ----------------------------------------------------
-              const drawSpectrumCorrectly = (canvas, w, h, isXBand) => {
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = '#0b1121'; ctx.fillRect(0, 0, w, h);
-                const graphW = w - 15; 
-                
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]); 
-                ctx.beginPath();
-                for(let i=1; i<=10; i++) { ctx.moveTo(i*(graphW/10), 0); ctx.lineTo(i*(graphW/10), h); }
-                for(let i=1; i<10; i++) { ctx.moveTo(0, i*(h/10)); ctx.lineTo(graphW, i*(h/10)); }
-                ctx.stroke(); ctx.setLineDash([]); 
-
-                const bw = isXBand ? spec.xBand.bw : spec.sBand.bw;
-                const span = isXBand ? xBandSpan : sBandSpan; 
-                const cf_base = isXBand ? spec.xBand.freq : spec.sBand.freq; 
-
-                // คำนวณความแรงสัญญาณตามองศา
-                let signalStrength = 0; let trackMode = 'STANDBY'; let trackColor = 'var(--red)';
-                if (linkActive && targetData) {
-                    if (isAutoTrack) { 
-                        trackMode = 'AUTOTRACK'; trackColor = '#00ff66'; signalStrength = 1.0; 
-                    } else if (isProgramTrack) { 
-                        trackMode = 'PROGRAM TRACK'; trackColor = '#ffcc00'; signalStrength = 0.4 + (Math.random() * 0.2); 
-                    }
-                }
-
-                const peakX = graphW / 2; 
-                const baseY = h - 30; const peakY = 25; 
-                const dynRange = 45; 
-                const pxPerDb = (baseY - peakY) / dynRange; 
-                const refLevel = isXBand ? -35 : -20; 
-
-                ctx.strokeStyle = isXBand ? '#ffcc00' : '#00eaff'; 
-                ctx.lineWidth = 1.5; ctx.beginPath();
-
-                // 📍 ฟันธง: สมการความกว้างของกราฟ กางออกเท่ากับค่า BW ของจริงเป๊ะ 100%
-                const f1 = (bw * 0.65) / 2; // ยอดกราฟ (Flat Top) กว้าง 65% ของ BW
-                const f2 = bw / 2; // ฐานกราฟตกถึงพื้น Noise Floor ที่ขอบ 100% ของ BW พอดีเป๊ะ
-
-                for(let x=0; x<=graphW; x++) {
-                  const f = ((x / graphW) - 0.5) * span; // แปลงพิกเซลจอเป็นแกนความถี่ (MHz) ตาม SPAN ที่เลือก
-                  const f_abs = Math.abs(f);
-                  
-                  let signal_dB = -100;
-                  if (linkActive && (isAutoTrack || isProgramTrack)) {
-                      if (f_abs <= f1) {
-                          signal_dB = 0; // ยอดแบนสุด (0 dBc)
-                      } else if (f_abs > f1 && f_abs <= f2) {
-                          // ไหล่กราฟโค้งลงแบบ Cosine (Roll-off)
-                          const rollOffRatio = (f_abs - f1) / (f2 - f1);
-                          const val = 0.5 * (1 + Math.cos(rollOffRatio * Math.PI));
-                          signal_dB = 10 * Math.log10(Math.max(val, 1e-4)); 
-                      } else {
-                          // ตีนกราฟและ Side Lobes เล็กๆ
-                          const out_f = f_abs - f2;
-                          const sideLobeWidth = bw * 0.15;
-                          signal_dB = -30 - (out_f / sideLobeWidth) * 8 + (Math.sin((out_f / sideLobeWidth) * Math.PI) * 4);
-                      }
-                      signal_dB += (signalStrength - 1) * 20; 
-                  }
-                  
-                  const noise_dB = -40 + (Math.random() * 3); // Noise Floor ระดับ -40 dB
-                  const p_sig = Math.pow(10, signal_dB/10);
-                  const p_noise = Math.pow(10, noise_dB/10);
-                  const total_dB = 10 * Math.log10(p_sig + p_noise); 
-                  
-                  let y = peakY - (total_dB * pxPerDb); 
-                  if (y > baseY) y = baseY; // บล็อกไม่ให้กราฟทะลุขอบล่างจอ
-                  
-                  if (x===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-                }
-                ctx.stroke();
-
-                // Overlay Text
-                ctx.fillStyle = '#e2e8f0'; ctx.font = `bold 11px Rajdhani, monospace`; ctx.textAlign = 'left';
-                const textX = 15;
-                ctx.fillText(`${formatTime(new Date(simulatedTimeMs))} THA, SIM`, textX, 20);
-                ctx.fillText(`REF ${refLevel.toFixed(1)} dBm  AT 10 dB`, textX, 35);
-                ctx.fillText(`LOG 5 dB/`, textX, 50); 
-                
-                if (linkActive && targetData) {
-                    ctx.beginPath(); ctx.arc(textX + 4, 65 - 3, 4, 0, Math.PI * 2);
-                    ctx.fillStyle = trackColor; ctx.fill();
-                    ctx.shadowBlur = 8; ctx.shadowColor = trackColor;
-                    ctx.font = `bold 12px Rajdhani, monospace`;
-                    ctx.fillText(` ${trackMode}`, textX + 10, 65);
-                    ctx.shadowBlur = 0; 
-                }
-                
-                ctx.font = `bold 11px Rajdhani, monospace`; 
-                if (linkActive && isAutoTrack) {
-                    const mkX = peakX; const mkY = baseY - (1.0 * (baseY - peakY)); 
-                    ctx.beginPath(); ctx.moveTo(mkX, mkY - 6); ctx.lineTo(mkX + 5, mkY - 11); ctx.lineTo(mkX - 5, mkY - 11); ctx.closePath(); 
-                    ctx.fillStyle = isXBand ? '#ffcc00' : '#00eaff'; ctx.fill();
-                    
-                    ctx.textAlign = 'right'; ctx.font = `bold 13px Rajdhani, monospace`;
-                    ctx.fillText(`MKR ${cf_base.toFixed(1)} MHz`, graphW - 15, 20);
-                    ctx.fillStyle = '#ffffff'; 
-                    ctx.fillText(`${(refLevel - 5).toFixed(2)} dBm`, graphW - 15, 35);
-                }
-
-                ctx.fillStyle = '#e2e8f0'; ctx.textAlign = 'left'; ctx.font = `bold 11px Rajdhani, monospace`;
-                ctx.fillText(`CENTER ${cf_base.toFixed(1)} MHz`, textX, h - 15);
-                ctx.fillText(`#RES BW 3.0 MHz`, textX, h - 4);
-                ctx.textAlign = 'right';
-                ctx.fillText(`SPAN ${span >= 1000 ? (span/1000).toFixed(3) + ' GHz' : span.toFixed(1) + ' MHz'}`, graphW - 15, h - 15);
-                ctx.fillText(`SWP 50.0 msec`, graphW - 15, h - 4);
-                ctx.textAlign = 'center'; ctx.fillText(`#VBW 10 kHz`, graphW/2, h - 4);
-              };
-
-              // สั่งวาดแกน X และ S
-              const xCanvas = xBandCanvasRef.current;
-              if (xCanvas && showXBand) {
-                const xParent = xCanvas.parentElement;
-                xCanvas.width = xParent.clientWidth; xCanvas.height = xParent.clientHeight;
-                drawSpectrumCorrectly(xCanvas, xCanvas.width, xCanvas.height, true);
-              }
-              const sCanvas = sBandCanvasRef.current;
-              if (sCanvas && showSBand) {
-                const sParent = sCanvas.parentElement;
-                sCanvas.width = sParent.clientWidth; sCanvas.height = sParent.clientHeight;
-                drawSpectrumCorrectly(sCanvas, sCanvas.width, sCanvas.height, false);
-              }
-
-              // ----------------------------------------------------
-              // ฟังก์ชันวาด Baseband Constellation (ฟันธง: BPSK ออก 2 จุดเป๊ะๆ)
-              // ----------------------------------------------------
-              const iqCanvas = iqCanvasRef.current;
-              let activeMods = [];
-              if (iqCanvas) {
-                const iParent = iqCanvas.parentElement;
-                const iW = iqCanvas.width = iParent.clientWidth; const iH = iqCanvas.height = iParent.clientHeight;
-                const iqCtx = iqCanvas.getContext('2d');
-                
-                iqCtx.fillStyle = '#0b1121'; iqCtx.fillRect(0, 0, iW, iH);
-                const centerX = iW / 2; const centerY = iH / 2; const radius = Math.min(iW, iH) * 0.35;
-
-                iqCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; iqCtx.lineWidth = 1;
-                iqCtx.beginPath(); iqCtx.moveTo(centerX, 0); iqCtx.lineTo(centerX, iH); iqCtx.stroke();
-                iqCtx.beginPath(); iqCtx.moveTo(0, centerY); iqCtx.lineTo(iW, centerY); iqCtx.stroke();
-                
-                iqCtx.strokeStyle = 'rgba(255, 204, 0, 0.3)'; iqCtx.setLineDash([4, 4]); 
-                iqCtx.beginPath(); iqCtx.arc(centerX, centerY, radius, 0, 2*Math.PI); iqCtx.stroke(); iqCtx.setLineDash([]); 
-
-                let lockQ = 0;
-                if (isAutoTrack) lockQ = 1.0;
-                else if (isProgramTrack) lockQ = 0.1 + (Math.random() * 0.3); // ถ้ายัง Acquiring กลุ่มดาวจะกระจัดกระจาย
-
-                const drawPoints = (modType, color) => {
-                    let angles = [];
-                    // 📍 ฟันธง: บังคับ BPSK ให้อยู่แกน X แนวนอน (0 องศา และ 180 องศา) เท่านั้น!
-                    if (modType === 'BPSK') {
-                        angles = [0, Math.PI]; 
-                    } else {
-                        angles = [Math.PI/4, 3*Math.PI/4, 5*Math.PI/4, 7*Math.PI/4]; 
-                    }
-                    
-                    const numPts = modType === 'BPSK' ? 120 : 240; 
-                    iqCtx.fillStyle = color; // ล็อกสีให้ตรงกับแชนแนล
-                    
-                    for(let i=0; i<numPts; i++) {
-                        const isLockedPoint = Math.random() < lockQ;
-                        if (isLockedPoint) {
-                            const angle = angles[i % angles.length];
-                            const tx = centerX + radius * Math.cos(angle);
-                            const ty = centerY - radius * Math.sin(angle);
-                            const jitter = modType === 'O-QPSK' ? 0.12 : 0.08;
-                            
-                            const u1 = Math.max(Math.random(), 0.0001); const u2 = Math.random();
-                            const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-                            const z1 = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
-                            
-                            iqCtx.globalAlpha = Math.random() * 0.4 + 0.6;
-                            iqCtx.fillRect(tx + z0*(radius*jitter*0.4) - 1.5, ty + z1*(radius*jitter*0.4) - 1.5, 3, 3);
-                        } else {
-                            const spread = radius * 1.35; 
-                            iqCtx.globalAlpha = 1.0;
-                            iqCtx.fillRect(centerX + (Math.random()-0.5)*2*spread, centerY + (Math.random()-0.5)*2*spread, 3, 3);
-                        }
-                    }
-                    iqCtx.globalAlpha = 1.0;
-                };
-
-                // วาดกลุ่มดาวเฉพาะแชนแนลที่เปิดอยู่
-                if (showXBand && !showSBand) { 
-                    drawPoints(spec.xBand.mod, '#ffcc00'); // X-Band สีทอง
-                    activeMods.push(`CH1: ${spec.xBand.mod}`); 
-                } else if (showSBand && !showXBand) { 
-                    drawPoints(spec.sBand.mod, '#00eaff'); // S-Band สีฟ้า
-                    activeMods.push(`CH2: ${spec.sBand.mod}`); 
-                } else if (showXBand && showSBand) {
-                    drawPoints(spec.xBand.mod, '#ffcc00'); 
-                    drawPoints(spec.sBand.mod, '#00eaff');
-                    activeMods.push(`CH1: ${spec.xBand.mod} | CH2: ${spec.sBand.mod}`);
-                }
-              }
-
-              return (
-                <>
-                  {/* ซ้าย: IQ Constellation */}
-                  <div style={{ flex: '0 0 32%', display: 'flex', flexDirection: 'column', background: '#0b1121', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '15px' }}>
-                    <div style={{ textAlign: 'center', fontFamily: 'Orbitron', fontSize: '14px', color: '#a0aec0', marginBottom: '15px', letterSpacing: '2px', fontWeight: 'bold' }}>BASEBAND CONSTELLATION</div>
-                    <div style={{ flex: 1, position: 'relative', width: '100%', minHeight: 0 }}>
-                      <canvas ref={iqCanvasRef} style={{ display: 'block', width: '100%', height: '100%' }}></canvas>
-                    </div>
-                    <div style={{ textAlign: 'center', marginTop: '15px', fontSize: '15px', color: '#a0aec0', fontWeight: 'bold', fontFamily: 'Orbitron' }}>
-                      MODULATION: <strong style={{color:'#fff'}}>{activeMods.length > 0 ? activeMods.join(' | ') : 'NONE'}</strong>
-                    </div>
+          <div className="rf-analyzer-toolbar">
+            <button type="button" aria-pressed={showXBand} onClick={()=>{if(showXBand&&!showSBand)return;setShowXBand(!showXBand);}} style={{color:'#ffcc00',background:showXBand?'#302a0a':'transparent'}}>CH1: X-BAND{showXBand?'':' OFF'}</button>
+            <button type="button" aria-pressed={showSBand} onClick={()=>{if(showSBand&&!showXBand)return;setShowSBand(!showSBand);}} style={{color:'#00eaff',background:showSBand?'#032d37':'transparent'}}>CH2: S-BAND{showSBand?'':' OFF'}</button>
+            <span className="rf-sim-badge">LOCK EL ≥ {rfState.acquisitionEl.toFixed(1)}° · SIM MODEL</span>
+            <button type="button" className="rf-iq-open-btn" onClick={()=>{setIsIqOpen(true);bringToFront('iq');}}>IQ CONSTELLATION ↗</button>
+          </div>
+          <div className="rf-analyzer-body rf-spectrum-only">
+            <div className="rf-channel-stack">
+              {[{show:showXBand,isX:true,channel:rfProfile.xBand,span:xBandSpan,setSpan:setXBandSpan,canvasRef:xBandCanvasRef},{show:showSBand,isX:false,channel:rfProfile.sBand,span:sBandSpan,setSpan:setSBandSpan,canvasRef:sBandCanvasRef}].filter(item=>item.show).map(({isX,channel,span,setSpan,canvasRef})=>{
+                const instrument = getRfInstrumentSettings(channel, span, isX);
+                const rfCenter = Number(channel.rf);
+                const symbolRate = Number(channel.symbolRateMsps);
+                return <div key={isX?'x':'s'} className="rf-spectrum-channel" style={{background:'#0b1121',border:'1px solid #223445',borderRadius:6}}>
+                  <div className="rf-channel-header"><strong style={{color:isX?'#ffcc00':'#00eaff'}}>{isX?'CH1: X-BAND PAYLOAD':'CH2: S-BAND TELEMETRY'} · {channel.mod}</strong><span>{Number.isFinite(rfCenter)?`RF ${rfCenter.toFixed(rfCenter < 3000 ? 3 : 0)} MHz · `:''}IF {channel.freq.toFixed(1)} MHz</span></div>
+                  <div className="rf-span-controls" style={{color:isX?'#ffcc00':'#00eaff'}}>
+                    <button type="button" title="Fit the modeled bandwidth to this spectrum" onClick={()=>setSpan(isX?Math.min(1000,Math.max(10,Math.round((channel.bw*1.6)/10)*10)):Math.min(50,Math.max(.1,Math.ceil(channel.bw*80)/10)))}>AUTO SPAN</button>
+                    <input type="range" aria-label={isX?'X-band span':'S-band span'} min={isX?1:.1} max={isX?1000:50} step={isX?1:.1} value={span} onChange={e=>setSpan(Number(e.target.value))} className="sci-fi-slider" style={{'--thumb-color':isX?'#ffcc00':'#00eaff','--thumb-glow':isX?'#ffcc0077':'#00eaff77'}}/>
+                    <output>{span>=1000?`${(span/1000).toFixed(3)} GHz`:`${span.toFixed(1)} MHz`}</output>
                   </div>
-
-                  {/* ขวา: Dual Spectrum */}
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px', minHeight: 0 }}>
-                    {/* CH1: X-Band */}
-                    {showXBand && (
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0b1121', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '10px 15px', minHeight: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'Orbitron', fontSize: '13px', color: '#a0aec0', marginBottom: '8px', fontWeight: 'bold' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                            <span>CH1: X-BAND PAYLOAD (BW: {spec.xBand.bw} MHz)</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '2px 10px', borderRadius: '4px' }}>
-                              <span style={{ fontSize: '11px', color: '#ffcc00' }}>SPAN</span>
-                              <input type="range" min="50" max="1000" step="10" value={xBandSpan} onChange={(e) => setXBandSpan(Number(e.target.value))} className="sci-fi-slider" style={{ width: '120px', margin: 0, height: '6px', '--thumb-color': '#ffcc00', '--thumb-glow': 'rgba(255,204,0,0.8)' }} />
-                            </div>
-                          </div>
-                          <span style={{ color: lockStatusColor, letterSpacing: '1px' }}>{lockStatusText}</span>
-                        </div>
-                        <div style={{ flex: 1, position: 'relative', width: '100%', border: '1px solid rgba(255,255,255,0.05)', minHeight: 0 }}>
-                          <canvas ref={xBandCanvasRef} style={{ display: 'block', width: '100%', height: '100%' }}></canvas>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* CH2: S-Band */}
-                    {showSBand && (
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0b1121', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '10px 15px', minHeight: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'Orbitron', fontSize: '13px', color: '#a0aec0', marginBottom: '8px', fontWeight: 'bold' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                            <span>CH2: S-BAND TELEMETRY (BW: {spec.sBand.bw} MHz)</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '2px 10px', borderRadius: '4px' }}>
-                              <span style={{ fontSize: '11px', color: '#00eaff' }}>SPAN</span>
-                              <input type="range" min="0.5" max="50" step="0.5" value={sBandSpan} onChange={(e) => setSBandSpan(Number(e.target.value))} className="sci-fi-slider" style={{ width: '120px', margin: 0, height: '6px', '--thumb-color': '#00eaff', '--thumb-glow': 'rgba(0,234,255,0.8)' }} />
-                            </div>
-                          </div>
-                          <span style={{ color: lockStatusColor, letterSpacing: '1px' }}>{lockStatusText}</span>
-                        </div>
-                        <div style={{ flex: 1, position: 'relative', width: '100%', border: '1px solid rgba(255,255,255,0.05)', minHeight: 0 }}>
-                          <canvas ref={sBandCanvasRef} style={{ display: 'block', width: '100%', height: '100%' }}></canvas>
-                        </div>
-                      </div>
-                    )}
+                  <div className="rf-instrument-grid">
+                    <span>REF <b>{instrument.refDbm.toFixed(0)} dBm</b></span>
+                    <span>ATT <b>{instrument.attenuationDb} dB</b></span>
+                    <span>RBW <b>{formatRfMHz(instrument.rbwMHz)}</b></span>
+                    <span>VBW <b>{formatRfMHz(instrument.vbwMHz)}</b></span>
+                    <span>DET <b>{instrument.detector}</b></span>
+                    <span>{Number.isFinite(symbolRate)?<>Rs <b>{symbolRate>=1?`${symbolRate.toFixed(3)} MSym/s`:`${(symbolRate*1000).toFixed(3)} kSym/s`}</b></>:<>BW <b>{channel.bw} MHz</b></>}</span>
+                    <span>TRACE <b>CLR/WRITE</b></span>
+                    <span>SWP <b>AUTO · SIM</b></span>
                   </div>
-                </>
-              );
-            })()}
+                  <div className="rf-spectrum-plot"><canvas ref={canvasRef}/></div>
+                  <div className="rf-spectrum-readout">
+                    <span>CENTER <b>{channel.freq.toFixed(3)} MHz IF</b></span>
+                    <span>SPAN <b>{span>=1000?`${(span/1000).toFixed(3)} GHz`:`${span.toFixed(1)} MHz`}</b></span>
+                    <span>MKR <b>{rfState.eligible?`${rfSpectrumPowerDb(channel,0,rfState,simulatedTimeMs,isX).toFixed(2)} dBm`:'—'}</b> (SIM)</span>
+                  </div>
+                </div>;
+              })}
+            </div>
           </div>
         </div>
-      )}
+      </SatToolSurface>)}
+
+{/* --- IQ CONSTELLATION: SEPARATE FROM SPECTRUM ANALYZER --- */}
+{isIqOpen && (<SatToolSurface id="iq" viewer={toolWindows.iq}>
+<div className="modal-box iq-modal" onMouseDownCapture={()=>bringToFront('iq')} style={{
+  position:'fixed', top:maximizedWins.iq?'0px':`${iqPos.y}px`, left:maximizedWins.iq?'0px':`${iqPos.x}px`,
+  width:maximizedWins.iq?'100vw':'min(620px,92vw)', height:maximizedWins.iq?'100vh':'min(620px,82vh)',
+  minWidth:'min(320px,90vw)', minHeight:'min(320px,80vh)', resize:maximizedWins.iq?'none':'both', overflow:'hidden',
+  background:'linear-gradient(145deg,#050a15 0%,#02040a 100%)', border:`2px solid ${rfState.color}`, borderRadius:maximizedWins.iq?0:10,
+  boxShadow:'0 0 30px rgba(0,0,0,.82), inset 0 0 10px rgba(255,255,255,.05)', display:'flex', flexDirection:'column', zIndex:windowZ.iq||10002,
+  transition:isDraggingIq?'none':'all .18s ease-out'
+}}>
+  <style>{SAT_VISUAL_CSS}</style>
+  <div className="modal-header sat-visual-header" onMouseDown={(e)=>{if(!maximizedWins.iq)handleIqMouseDown(e);}}>
+    <div className="sat-visual-heading"><strong>IQ CONSTELLATION ANALYZER</strong><div className="sat-visual-meta"><span style={{color:rfState.color}}>{rfState.label}</span><span>{rfProfile.name} · BASEBAND SIM</span></div></div>
+    <div className="sat-visual-actions">
+      {toolWindowButton('iq')}
+      <button className="modal-close-btn" aria-label="Maximize IQ Analyzer" onMouseDown={e=>e.stopPropagation()} onClick={()=>toggleMaximize('iq')}><SatWindowIcon kind={maximizedWins.iq?'restore':'maximize'} /></button>
+      <button className="modal-close-btn" aria-label="Close IQ Analyzer" onMouseDown={e=>e.stopPropagation()} onClick={()=>closeTool('iq')}>✕</button>
+    </div>
+  </div>
+  <div className="rf-iq-popup-body">
+    <div className="rf-iq-popup-toolbar">
+      <button type="button" data-active={iqDisplayChannel==='x'} style={{color:'#ffcc00'}} onClick={()=>setIqDisplayChannel('x')}>CH1 X-BAND · {rfProfile.xBand.mod}</button>
+      <button type="button" data-active={iqDisplayChannel==='s'} style={{color:'#00eaff'}} onClick={()=>setIqDisplayChannel('s')}>CH2 S-BAND · {rfProfile.sBand.mod}</button>
+      <button type="button" data-active={iqDisplayChannel==='both'} onClick={()=>setIqDisplayChannel('both')}>BOTH</button>
+    </div>
+    <div className="rf-iq-popup-plot"><canvas ref={iqCanvasRef}/></div>
+    <div className="rf-iq-popup-footer">
+      <span>{rfState.locked?'LOCKED SYMBOL CLUSTERS':rfState.eligible?'ACQUISITION / PHASE RECOVERY':'NO CARRIER / NOISE CLOUD'}</span>
+      <span>SIM MODEL · NOT A RECORDED RF CAPTURE</span>
+    </div>
+  </div>
+</div>
+</SatToolSurface>)}
 
 {/* --- TRACKING ANGLES (MODERN TACTICAL DATRON) --- */}
-{isAnglesOpen && (
-        <div className="modal-box angles-modal" onMouseDownCapture={() => bringToFront('angles')} style={{
-          position: 'fixed', top: maximizedWins.angles ? '0px' : `${anglesPos.y}px`, left: maximizedWins.angles ? '0px' : `${anglesPos.x}px`,
-          
-          /* 📍 ฟันธง: ลดขนาดเริ่มต้นลงเป็น 780x520 px และลดขนาดต่ำสุดเป็น 600x450 px */
-          width: maximizedWins.angles ? '100vw' : '780px', height: maximizedWins.angles ? '100vh' : '520px',
-          minWidth: '600px', minHeight: '450px', resize: maximizedWins.angles ? 'none' : 'both', overflow: 'hidden',
-          
-          background: 'linear-gradient(145deg, rgba(10, 15, 25, 0.95) 0%, rgba(5, 10, 15, 0.98) 100%)', 
-          border: maximizedWins.angles ? 'none' : '2px solid var(--cyan)', 
-          borderRadius: maximizedWins.angles ? '0px' : '8px', 
-          boxShadow: '0 0 40px rgba(0, 234, 255, 0.3), inset 0 0 15px rgba(0, 234, 255, 0.1)',
-          display: 'flex', flexDirection: 'column', zIndex: windowZ.angles || 10002, 
-          transition: isDraggingAngles ? 'none' : 'all 0.1s ease-out'
-        }}>
-          
-          <style>{`
-            .hide-scroll-angles::-webkit-scrollbar { display: none; }
-            .hide-scroll-angles { -ms-overflow-style: none; scrollbar-width: none; }
-          `}</style>
-
-          {/* Header */}
-          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '15px 25px', cursor: maximizedWins.angles ? 'default' : (isDraggingAngles ? 'grabbing' : 'grab'), background: 'linear-gradient(90deg, rgba(0, 234, 255, 0.15), rgba(0, 234, 255, 0.05))', borderBottom: '1px solid rgba(0, 234, 255, 0.4)', zIndex: 10 }} onMouseDown={(e) => { if(!maximizedWins.angles) handleAnglesMouseDown(e); }}>
-            
-            {/* 📍 หัวข้อฝั่งซ้าย */}
-            <div style={{ flex: '1 1 0%', minWidth: 0, display: 'flex', alignItems: 'center', color: '#fff', fontFamily: 'Orbitron, sans-serif', fontWeight: 'bold', fontSize: '20px', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              <span style={{ marginRight: '10px' }}>📐</span> POINTING ANGLES
-            </div>
-            
-            {/* 📍 ป้าย THEOS-2 กึ่งกลาง */}
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0, 234, 255, 0.1)', border: '1px solid var(--cyan)', padding: '8px 25px', borderRadius: '6px', boxShadow: 'inset 0 0 15px rgba(0,234,255,0.2), 0 0 15px rgba(0,234,255,0.2)' }}>
-                {targetConfig.flag && <img src={`https://flagcdn.com/w40/${targetConfig.flag}.png`} style={{ width: '30px', borderRadius: '4px', marginRight: '15px', boxShadow: '0 0 10px rgba(255,255,255,0.4)' }} alt="flag" />}
-                <span style={{ color: '#fff', fontSize: '22px', fontWeight: '900', fontFamily: 'Orbitron', letterSpacing: '2px', textShadow: '0 0 15px var(--cyan)' }}>{targetConfig.displayName}</span>
-              </div>
-            </div>
-
-            {/* 📍 ปุ่มขยาย/ปิด ฝั่งขวา */}
-            <div style={{ flex: '1 1 0%', display: 'flex', justifyContent: 'flex-end', gap: '10px', flexShrink: 0 }}>
-              <button className="modal-close-btn" style={{ width: '36px', height: '36px', fontSize: '18px', borderColor: 'var(--cyan)', color: 'var(--cyan)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onClick={() => toggleMaximize('angles')}>{maximizedWins.angles ? '🗗' : '🗖'}</button>
-              <button className="modal-close-btn" style={{ width: '36px', height: '36px', fontSize: '20px', borderColor: 'var(--red)', color: 'var(--red)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} onClick={() => setIsAnglesOpen(false)}>✕</button>
-            </div>
-          </div>
-
-          {/* Body & Logic */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px', overflow: 'hidden' }}>
-            
-            {(() => {
-              if (!targetSatrec || passSchedule.length === 0) return <div style={{ color: 'var(--red)', textAlign: 'center', marginTop: '50px', fontSize: '20px', fontFamily: 'Orbitron', textShadow: '0 0 10px var(--red)' }}>NO PASS SCHEDULE AVAILABLE</div>;
-              
-              let targetPass = passSchedule.find(p => p.losTime > simulatedTimeMs);
-              if (!targetPass) targetPass = passSchedule[passSchedule.length - 1]; 
-
-              const getSunPos = (timestamp) => {
-                  const d = new Date(timestamp);
-                  const tDays = (d.getTime() / 86400000) + 2440587.5 - 2451545.0;
-                  const L = (280.460 + 0.9856474 * tDays) % 360;
-                  const g = (357.528 + 0.9856003 * tDays) % 360;
-                  const lambda = L + 1.915 * Math.sin(g*Math.PI/180) + 0.020 * Math.sin(2*g*Math.PI/180);
-                  const eps = 23.439 - 0.0000004 * tDays;
-                  const alpha = Math.atan2(Math.cos(eps*Math.PI/180)*Math.sin(lambda*Math.PI/180), Math.cos(lambda*Math.PI/180)) * 180/Math.PI;
-                  const delta = Math.asin(Math.sin(eps*Math.PI/180)*Math.sin(lambda*Math.PI/180)) * 180/Math.PI;
-                  
-                  const gmst = (18.697374558 + 24.06570982441908 * tDays) % 24;
-                  const lmst = (gmst * 15 + activeStation.lng) % 360;
-                  const ha = (lmst - alpha + 360) % 360;
-                  
-                  const latRad = activeStation.lat * Math.PI/180;
-                  const decRad = delta * Math.PI/180;
-                  const haRad = ha * Math.PI/180;
-                  
-                  const sunElArg = Math.max(-1, Math.min(1, Math.sin(decRad)*Math.sin(latRad) + Math.cos(decRad)*Math.cos(latRad)*Math.cos(haRad)));
-                  const sunElRad = Math.asin(sunElArg);
-                  const sunEl = sunElRad * 180/Math.PI;
-                  const azDen = Math.cos(sunElRad)*Math.cos(latRad);
-                  const azCos = azDen === 0 ? 1 : Math.max(-1, Math.min(1, (Math.sin(decRad) - Math.sin(sunElRad)*Math.sin(latRad)) / azDen));
-                  const sunAzRad = Math.acos(azCos);
-                  let sunAz = sunAzRad * 180/Math.PI;
-                  if (Math.sin(haRad) > 0) sunAz = 360 - sunAz;
-                  return { el: sunEl, az: sunAz };
-              };
-
-              const stepMs = angleInterval * 1000;
-              const rows = [];
-              for (let t = targetPass.aosTime; t <= targetPass.losTime; t += stepMs) {
-                 const pos = calculateSatData(new Date(t), targetSatrec, activeStation);
-                 const sun = getSunPos(t);
-                 rows.push({ time: new Date(t), satEl: pos ? Math.max(0, pos.elevationDeg) : 0, satAz: pos ? pos.azimuthDeg : 0, sunEl: sun.el, sunAz: sun.az });
-              }
-
-              const fmt3 = (num) => String(num.toFixed(3)).padStart(7, '0');
-              const dStr = new Date(targetPass.aosTime).toISOString().substring(0, 10).toUpperCase();
-
-              return (
-                <>
-                  {/* 📍 ฟันธง: รีดขนาดของกล่องแสดงข้อมูล AOS/LOS ให้เพรียวบางลง ลด gap และ marginBottom */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px', fontFamily: 'Orbitron' }}>
-                    
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', fontSize: '13px' }}>
-                      <span style={{ flex: 1, textAlign: 'center', background: 'rgba(255, 255, 255, 0.05)', padding: '4px 8px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px', color: '#fff', letterSpacing: '1px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{fontSize: '10px', color:'rgba(255,255,255,0.6)'}}>DATE</span>
-                        <strong style={{ fontSize: '15px' }}>{dStr}</strong>
-                      </span>
-                      <span style={{ flex: 1, textAlign: 'center', background: 'rgba(255, 204, 0, 0.1)', padding: '4px 8px', border: '1px solid var(--gold)', borderRadius: '4px', color: 'rgba(255,255,255,0.8)', letterSpacing: '1px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{fontSize: '10px', color:'rgba(255,255,255,0.6)'}}>ORBIT</span>
-                        <strong style={{ color: 'var(--gold)', fontSize: '15px', textShadow: '0 0 8px var(--gold)' }}>{tles[selectedCatnr]?.line2.substring(63, 68).trim() || 'N/A'}</strong>
-                      </span>
-                      <span style={{ flex: 1, textAlign: 'center', background: 'rgba(0, 255, 102, 0.1)', padding: '4px 8px', border: '1px solid var(--green)', borderRadius: '4px', color: 'rgba(255,255,255,0.8)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{fontSize: '10px', color:'rgba(255,255,255,0.6)'}}>AOS</span>
-                        <strong style={{ color: 'var(--green)', fontSize: '15px' }}>{new Date(targetPass.aosTime).toISOString().substring(11, 19)}</strong>
-                      </span>
-                      <span style={{ flex: 1, textAlign: 'center', background: 'rgba(255, 204, 0, 0.1)', padding: '4px 8px', border: '1px solid var(--gold)', borderRadius: '4px', color: 'rgba(255,255,255,0.8)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{fontSize: '10px', color:'rgba(255,255,255,0.6)'}}>PCA</span>
-                        <strong style={{ color: 'var(--gold)', fontSize: '15px' }}>{new Date(targetPass.peakTime).toISOString().substring(11, 19)}</strong>
-                      </span>
-                      <span style={{ flex: 1, textAlign: 'center', background: 'rgba(255, 51, 51, 0.1)', padding: '4px 8px', border: '1px solid var(--red)', borderRadius: '4px', color: 'rgba(255,255,255,0.8)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{fontSize: '10px', color:'rgba(255,255,255,0.6)'}}>LOS</span>
-                        <strong style={{ color: 'var(--red)', fontSize: '15px' }}>{new Date(targetPass.losTime).toISOString().substring(11, 19)}</strong>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 📍 ฟันธง: รีดขนาดของแถบ INTERVAL SETTING ให้แคบลง (ลด padding, margin และไซส์ฟอนต์) */}
-                  <div style={{ background: 'rgba(0, 0, 0, 0.5)', border: '1px solid rgba(0, 234, 255, 0.3)', padding: '6px 15px', borderRadius: '6px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <span style={{ fontFamily: 'Orbitron', fontSize: '13px', color: 'var(--cyan)', fontWeight: 'bold' }}>INTERVAL SETTING:</span>
-                    <input type="range" min="1" max="60" value={angleInterval} onChange={(e) => setAngleInterval(Number(e.target.value))} className="sci-fi-slider" style={{ flex: 1, height: '6px', '--thumb-color': 'var(--cyan)', '--thumb-glow': 'rgba(0,234,255,0.8)' }} />
-                    <span style={{ background: 'rgba(0, 234, 255, 0.1)', padding: '4px 15px', border: '1px solid var(--cyan)', borderRadius: '4px', fontFamily: 'Rajdhani', fontSize: '18px', fontWeight: 'bold', color: '#fff', textShadow: '0 0 10px var(--cyan)', minWidth: '80px', textAlign: 'center' }}>{angleInterval} <span style={{fontSize:'12px', color:'rgba(255,255,255,0.6)'}}>SEC</span></span>
-                  </div>
-
-                  <div className="hide-scroll-angles" style={{ flex: 1, overflowY: 'auto', background: '#f8fafc', borderRadius: '6px', border: '2px solid var(--cyan)', boxShadow: '0 0 15px rgba(0, 234, 255, 0.2)' }}>
-                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: 'monospace', fontSize: '15px', color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>
-                      <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
-                        <tr style={{ background: '#0b1121', color: '#e2e8f0', fontFamily: 'Orbitron', fontSize: '14px', letterSpacing: '1px' }}>
-                          <th style={{ borderBottom: '1px solid var(--cyan)', padding: '12px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }} rowSpan={2}>TIME (UTC)</th>
-                          <th style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '12px', textAlign: 'center', color: 'var(--cyan)', borderRight: '1px solid rgba(255,255,255,0.1)' }} colSpan={2}>PREDICTED SATELLITE</th>
-                          <th style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', padding: '12px', textAlign: 'center', color: 'var(--gold)' }} colSpan={2}>SUN POSITION</th>
-                        </tr>
-                        <tr style={{ background: '#0f172a', color: '#94a3b8', fontFamily: 'Orbitron', fontSize: '13px' }}>
-                          <th style={{ borderBottom: '2px solid var(--cyan)', padding: '10px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>ELEVATION</th>
-                          <th style={{ borderBottom: '2px solid var(--cyan)', padding: '10px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>AZIMUTH</th>
-                          <th style={{ borderBottom: '2px solid var(--gold)', padding: '10px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)' }}>ELEVATION</th>
-                          <th style={{ borderBottom: '2px solid var(--gold)', padding: '10px', textAlign: 'center' }}>AZIMUTH</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((r, i) => (
-                          <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#ffffff' : '#f1f5f9', transition: 'background 0.2s' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e0f2fe'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#ffffff' : '#f1f5f9'}>
-                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: '12px', textAlign: 'center', fontWeight: 'bold' }}>{r.time.toISOString().substring(11, 23)}</td>
-                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: '12px', textAlign: 'center', color: '#0369a1', fontWeight: 'bold' }}>{fmt3(r.satEl)}</td>
-                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #94a3b8', padding: '12px', textAlign: 'center', color: '#0369a1', fontWeight: 'bold' }}>{fmt3(r.satAz)}</td>
-                            <td style={{ borderBottom: '1px solid #e2e8f0', borderRight: '1px dashed #cbd5e1', padding: '12px', textAlign: 'center', color: '#b45309' }}>{fmt3(r.sunEl)}</td>
-                            <td style={{ borderBottom: '1px solid #e2e8f0', padding: '12px', textAlign: 'center', color: '#b45309' }}>{fmt3(r.sunAz)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
+{isAnglesOpen && (<SatToolSurface id="angles" viewer={toolWindows.angles}>
+  <SatDataWindow id="angles" hostRevision={toolHostRevision} scale={presentationScale} position={anglesPos} maximized={maximizedWins.angles} width={780} height={520} zIndex={windowZ.angles} onFocus={() => bringToFront('angles')} dragging={isDraggingAngles}>
+    <SatDataHeader title="📐 POINTING ANGLES" subtitle={targetConfig.displayName} windowControl={toolWindowButton('angles')} maximized={maximizedWins.angles}
+      onMaximize={() => toggleWorkspacePanel('angles')} onClose={() => closeTool('angles')}
+      onDrag={event => { if (!toolWindows.angles && !maximizedWins.angles) handleAnglesMouseDown(event); }} />
+    <SatPointingData targetSatrec={targetSatrec} passes={passSchedule} simTime={simulatedTimeMs} station={activeStation}
+      interval={angleInterval} onInterval={setAngleInterval} orbit={tles[selectedCatnr]?.line2.substring(63,68).trim() || 'N/A'}
+      hostRevision={toolHostRevision} scale={presentationScale} />
+  </SatDataWindow>
+</SatToolSurface>)}
 
 {/* ===================================================================== */}
 {/* 📍 WOW Feature 1: SIGNAL FLOW DIAGRAM (MASTER BLUEPRINT & COMMENTS) */}
 {/* ===================================================================== */}
-{isDiagramOpen && (
+{isDiagramOpen && (<SatToolSurface id="diagram" viewer={toolWindows.diagram} quad={workspaceMode === 'quad'} rect={focusedWorkspacePanel === 'diagram' ? workspaceFullRect : workspaceRects.diagram} hidden={!!focusedWorkspacePanel && focusedWorkspacePanel !== 'diagram'}>
   <div className="modal-box diagram-modal" onMouseDownCapture={() => startTransition(() => bringToFront('diagram'))} style={{
     position: 'fixed', 
-    top: maximizedWins?.diagram ? '0px' : `calc(50dvh - 325px + ${diagramPos.y - 150}px)`, 
-    left: maximizedWins?.diagram ? '0px' : `calc(50vw - 550px + ${diagramPos.x - 200}px)`,
+    top: maximizedWins?.diagram ? '0px' : `${diagramPos.y}px`, 
+    left: maximizedWins?.diagram ? '0px' : `${diagramPos.x}px`,
     width: maximizedWins?.diagram ? '100vw' : 'min(1050px, 95vw)', 
     height: maximizedWins?.diagram ? '100vh' : 'min(600px, 85vh)', 
-    minWidth: 'min(950px, 90vw)', minHeight: 'min(500px, 80vh)',
+    minWidth: 'min(320px, 90vw)', minHeight: 'min(300px, 80vh)',
     resize: maximizedWins?.diagram ? 'none' : 'both', 
     overflow: 'hidden',
     background: '#000 url("//unpkg.com/three-globe/example/img/night-sky.png")',
     backgroundSize: 'cover', backgroundPosition: 'center',
-    border: maximizedWins?.diagram ? 'none' : `2px solid ${linkActive ? 'var(--green)' : 'var(--cyan)'}`, 
+    border: maximizedWins?.diagram ? 'none' : `2px solid ${rfState.color}`, 
     borderRadius: maximizedWins?.diagram ? '0px' : '12px',
-    boxShadow: `0 0 40px ${linkActive ? 'rgba(0,255,102,0.3)' : 'rgba(0,234,255,0.3)'}`,
+    boxShadow: `0 0 40px ${rfState.locked ? 'rgba(0,255,102,0.30)' : rfState.status === 'ACQUIRING' ? 'rgba(255,204,0,0.28)' : 'rgba(0,234,255,0.22)'}`,
     display: 'flex', flexDirection: 'column', 
     zIndex: windowZ?.diagram || 10003, 
     transition: isDraggingDiagram ? 'none' : 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
@@ -9823,10 +11491,10 @@ return (
         <div style={{ color: '#fff', fontFamily: 'Orbitron', fontWeight: '900', fontSize: '18px', letterSpacing: '2px', textShadow: '0 0 10px var(--cyan)', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
           <span style={{ fontSize: '22px' }}>⚙️</span> SIGNAL FLOW
         </div>
-        <div className={`status-badge-top ${linkActive ? 'active' : 'standby'}`} style={{ display: 'flex', alignItems: 'center', borderRadius: '20px', border: '2px solid', padding: '6px 20px', whiteSpace: 'nowrap', background: linkActive ? 'rgba(0,255,102,0.15)' : 'rgba(255,51,51,0.15)', borderColor: linkActive ? 'var(--green)' : 'var(--red)', boxShadow: linkActive ? '0 0 25px rgba(0,255,102,0.5), inset 0 0 15px rgba(0,255,102,0.3)' : '0 0 25px rgba(255,51,51,0.5), inset 0 0 15px rgba(255,51,51,0.3)' }}>
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: linkActive ? 'var(--green)' : 'var(--red)', marginRight: '10px', animation: linkActive ? 'pulse 1.5s infinite' : 'none', boxShadow: `0 0 12px ${linkActive ? 'var(--green)' : 'var(--red)'}` }}></div>
-            <span style={{ fontFamily: 'Orbitron', fontWeight: '900', fontSize: '14px', color: linkActive ? 'var(--green)' : 'var(--red)', letterSpacing: '2px', textShadow: `0 0 10px ${linkActive ? 'var(--green)' : 'var(--red)'}` }}>
-              {linkActive ? 'ACTIVE: DOWNLINK' : 'SYSTEM STANDBY'}
+        <div className={`status-badge-top ${rfState.locked ? 'active' : 'standby'}`} style={{ display: 'flex', alignItems: 'center', borderRadius: '20px', border: '2px solid', padding: '6px 20px', whiteSpace: 'nowrap', background: rfState.locked ? 'rgba(0,255,102,0.15)' : rfState.status === 'ACQUIRING' ? 'rgba(255,204,0,0.15)' : 'rgba(255,51,51,0.15)', borderColor: rfState.color, boxShadow: `0 0 25px ${rfState.locked ? 'rgba(0,255,102,.5)' : rfState.status === 'ACQUIRING' ? 'rgba(255,204,0,.42)' : 'rgba(255,51,51,.42)'}` }}>
+            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: rfState.color, marginRight: '10px', animation: rfState.eligible ? 'pulse 1.5s infinite' : 'none', boxShadow: `0 0 12px ${rfState.color}` }}></div>
+            <span style={{ fontFamily: 'Orbitron', fontWeight: '900', fontSize: '14px', color: rfState.color, letterSpacing: '2px', textShadow: `0 0 10px ${rfState.color}` }}>
+              {rfState.locked ? 'ACTIVE: DOWNLINK' : rfState.status === 'ACQUIRING' ? 'ACQUIRING' : rfState.status === 'MASKED' ? 'BELOW MASK' : 'NO CARRIER'}
             </span>
         </div>
       </div>
@@ -9837,9 +11505,10 @@ return (
           {targetConfig.flag && <img src={`https://flagcdn.com/w40/${targetConfig.flag.toLowerCase()}.png`} style={{ width: '32px', borderRadius: '3px', marginRight: '12px', boxShadow: '0 0 10px rgba(255,255,255,0.3)' }} alt="flag" />}
           <span style={{ fontFamily: 'Orbitron', fontSize: '24px', fontWeight: '900', color: '#ffffff', letterSpacing: '2px', textShadow: '0 0 15px var(--cyan)', whiteSpace: 'nowrap' }}>{targetConfig.displayName}</span>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {toolWindowButton('diagram')}
           <button className="modal-close-btn" style={{ width: '38px', height: '38px', background: 'transparent', border: '1px solid var(--cyan)', color: 'var(--cyan)', cursor: 'pointer', borderRadius: '4px', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => toggleMaximize('diagram')}>{maximizedWins?.diagram ? '🗗' : '🗖'}</button>
-          <button className="modal-close-btn" style={{ width: '38px', height: '38px', background: 'rgba(255,51,51,0.1)', border: '1px solid var(--red)', color: 'var(--red)', cursor: 'pointer', borderRadius: '4px', fontSize: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsDiagramOpen(false)}>✕</button>
+          <button className="modal-close-btn" style={{ width: '38px', height: '38px', background: 'rgba(255,51,51,0.1)', border: '1px solid var(--red)', color: 'var(--red)', cursor: 'pointer', borderRadius: '4px', fontSize: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => closeTool('diagram')}>✕</button>
         </div>
       </div>
     </div>
@@ -9871,6 +11540,42 @@ return (
         .l-tc { stroke: var(--gold); animation: dash-fwd 0.6s linear infinite; filter: drop-shadow(0 0 5px var(--gold)); }
         .l-pl { stroke: var(--green); animation: dash-fwd 0.8s linear infinite; filter: drop-shadow(0 0 5px var(--green)); }
         .l-dual { stroke: var(--cyan); stroke-width: 3; animation: dash-fwd 0.8s linear infinite; filter: drop-shadow(0 0 5px var(--cyan)); }
+
+        /* SIGNAL FLOW FINAL LOCK: engineering labels + processing stages */
+        .flow-tech-tag {
+          display: inline-flex; align-items: center; justify-content: center;
+          min-height: 18px; padding: 2px 7px; border-radius: 4px;
+          font-family: 'Rajdhani', sans-serif; font-size: clamp(7px, 0.62cqw, 10px);
+          font-weight: 900; letter-spacing: .35px; white-space: nowrap;
+          color: #dffaff; background: rgba(1, 8, 16, 0.92);
+          box-shadow: inset 0 0 10px rgba(0,0,0,.75);
+        }
+        .flow-tech-tag.cyan { border: 1px solid rgba(0,234,255,.75); color: #7ff8ff; box-shadow: 0 0 9px rgba(0,234,255,.18), inset 0 0 10px rgba(0,234,255,.06); }
+        .flow-tech-tag.gold { border: 1px solid rgba(255,204,0,.75); color: #ffe86a; box-shadow: 0 0 9px rgba(255,204,0,.18), inset 0 0 10px rgba(255,204,0,.06); }
+        .flow-freq-tag {
+          position: absolute; z-index: 16; transform: translate(-50%, -50%);
+          min-width: max-content; padding: 4px 8px; border-radius: 4px;
+          background: rgba(1, 8, 16, .88); border: 1px solid currentColor;
+          font-family: 'Orbitron', sans-serif; font-weight: 900;
+          font-size: clamp(7px, .62cqw, 10px); letter-spacing: .45px; line-height: 1.05;
+          text-align: center; box-shadow: 0 0 12px currentColor; pointer-events: none;
+        }
+        .flow-freq-tag small {
+          display: block; margin-top: 2px; color: rgba(255,255,255,.8);
+          font-family: 'Rajdhani', sans-serif; font-size: .82em; letter-spacing: .65px;
+        }
+        .flow-stage-strip {
+          width: 100%; display: flex; align-items: center; justify-content: center; gap: 3px;
+          min-height: 22px; overflow: hidden;
+        }
+        .flow-stage {
+          flex: 1 1 0; min-width: 0; padding: 3px 4px; border-radius: 3px;
+          border: 1px solid rgba(0,255,102,.35); background: rgba(0,255,102,.055);
+          color: #cffff0; font-family: 'Rajdhani', sans-serif;
+          font-size: clamp(6px, .52cqw, 8px); font-weight: 900; line-height: 1.02;
+          letter-spacing: .3px; text-align: center; white-space: normal;
+        }
+        .flow-stage-arrow { color: #ff4df8; font-size: clamp(8px, .7cqw, 11px); font-weight: 900; text-shadow: 0 0 6px rgba(255,77,248,.7); }
         
         /* 📍 จุดแก้ขนาดกล่องหลัก (UP/DOWN, SRC, X-BAND) */
         /* 📍 เปลี่ยน px เป็น cqw ให้ยืดหดตามจอ 100% */
@@ -9931,6 +11636,9 @@ return (
         };
 
         let satSpecs = overrides[selectedCatnr] || spec;
+        const isTheos2Flow = selectedCatnr === '58016';
+        const sIfDetail = isTheos2Flow ? '2244.228 MHz → IF 70 MHz' : `RF ${satSpecs.tmFreq} → IF 70 MHz`;
+        const xIfDetail = isTheos2Flow ? '8150 MHz → IF 720 MHz' : `RF ${satSpecs.xBandFreq} → IF 720 MHz`;
         
         return (
           <>
@@ -9940,26 +11648,32 @@ return (
             {/* 🌟 เส้นสายไฟ และ คลื่นสัญญาณ (อัปเดตแกนสมมาตรใหม่ 8 - 38 - 46 - 54 - 62 - 92) */}
             {/* ========================================= */}
             <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
+              <defs>
+                <marker id="flowArrowCyan" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#00eaff" /></marker>
+                <marker id="flowArrowGold" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ffcc00" /></marker>
+                <marker id="flowArrowGreen" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#00ff66" /></marker>
+              </defs>
               
-              {/* สายอวกาศ V-Shape (46 - 54) */}
-              <line x1="50%" y1="8%" x2="46%" y2="55%" className={`p-line ${linkActive ? 'l-dual' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,255,255,0.1)'} />
-              <line x1="50%" y1="8%" x2="54%" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
+              {/* Space link: TM/Payload downlink plus TC uplink. Arrowheads make direction explicit. */}
+              <line x1="50%" y1="8%" x2="46%" y2="55%" className={`p-line ${rfState.locked ? 'l-dual' : ''}`} stroke={rfState.locked ? 'none' : 'rgba(255,255,255,0.1)'} markerEnd={rfState.locked ? 'url(#flowArrowCyan)' : undefined} />
+              <line x1="46%" y1="55%" x2="50%" y2="8%" className={`p-line ${rfState.locked ? 'l-tc' : ''}`} stroke={rfState.locked ? 'none' : 'rgba(255,204,0,0.12)'} markerEnd={rfState.locked ? 'url(#flowArrowGold)' : undefined} />
+              <line x1="50%" y1="8%" x2="54%" y2="55%" className={`p-line ${rfState.locked ? 'l-pl' : ''}`} stroke={rfState.locked ? 'none' : 'rgba(0,255,102,0.2)'} markerEnd={rfState.locked ? 'url(#flowArrowGreen)' : undefined} />
 
-              {/* S-Band แนวนอน (8% -> 46%) */}
-              <line x1="8%" y1="55%" x2="46%" y2="55%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateY(-30px)' }} />
-              <line x1="8%" y1="55%" x2="46%" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateY(30px)' }} />
+              {/* S-Band TM downlink: antenna -> converter; TC uplink: converter -> antenna. */}
+              <line x1="46%" y1="55%" x2="8%" y2="55%" className={`p-line ${rfState.locked ? 'l-tm' : ''}`} stroke={rfState.locked ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateY(-30px)' }} markerEnd={rfState.locked ? 'url(#flowArrowCyan)' : undefined} />
+              <line x1="8%" y1="55%" x2="46%" y2="55%" className={`p-line ${rfState.locked ? 'l-tc' : ''}`} stroke={rfState.locked ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateY(30px)' }} markerEnd={rfState.locked ? 'url(#flowArrowGold)' : undefined} />
 
-              {/* S-Band แนวตั้ง (8%) */}
-              <line x1="8%" y1="55%" x2="8%" y2="85%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateX(-30px)' }} />
-              <line x1="8%" y1="85%" x2="8%" y2="55%" className={`p-line ${linkActive ? 'l-tc' : ''}`} stroke={linkActive ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateX(30px)' }} />
+              {/* S-Band IF/baseband: converter -> TT&C for TM, reverse for TC. */}
+              <line x1="8%" y1="55%" x2="8%" y2="85%" className={`p-line ${rfState.locked ? 'l-tm' : ''}`} stroke={rfState.locked ? 'none' : 'rgba(0,234,255,0.2)'} style={{ transform: 'translateX(-30px)' }} markerEnd={rfState.locked ? 'url(#flowArrowCyan)' : undefined} />
+              <line x1="8%" y1="85%" x2="8%" y2="55%" className={`p-line ${rfState.locked ? 'l-tc' : ''}`} stroke={rfState.locked ? 'none' : 'rgba(255,204,0,0.2)'} style={{ transform: 'translateX(30px)' }} markerEnd={rfState.locked ? 'url(#flowArrowGold)' : undefined} />
               
-              {/* S-Band แนวนอนล่าง (8% -> 38%) */}
-              <line x1="8%" y1="85%" x2="38%" y2="85%" className={`p-line ${linkActive ? 'l-tm' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,234,255,0.2)'} />
+              {/* TT&C decoded stream -> monitor. */}
+              <line x1="8%" y1="85%" x2="38%" y2="85%" className={`p-line ${rfState.locked ? 'l-tm' : ''}`} stroke={rfState.locked ? 'none' : 'rgba(0,234,255,0.2)'} markerEnd={rfState.locked ? 'url(#flowArrowCyan)' : undefined} />
               
-              {/* X-Band (54% -> 92%) */}
-              <line x1="54%" y1="55%" x2="92%" y2="55%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
-              <line x1="92%" y1="55%" x2="92%" y2="85%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
-              <line x1="92%" y1="85%" x2="62%" y2="85%" className={`p-line ${linkActive ? 'l-pl' : ''}`} stroke={linkActive ? 'none' : 'rgba(0,255,102,0.2)'} />
+              {/* X-Band payload: antenna -> downconverter -> demodulator -> processing. */}
+              <line x1="54%" y1="55%" x2="92%" y2="55%" className={`p-line ${rfState.locked ? 'l-pl' : ''}`} stroke={rfState.locked ? 'none' : 'rgba(0,255,102,0.2)'} markerEnd={rfState.locked ? 'url(#flowArrowGreen)' : undefined} />
+              <line x1="92%" y1="55%" x2="92%" y2="85%" className={`p-line ${rfState.locked ? 'l-pl' : ''}`} stroke={rfState.locked ? 'none' : 'rgba(0,255,102,0.2)'} markerEnd={rfState.locked ? 'url(#flowArrowGreen)' : undefined} />
+              <line x1="92%" y1="85%" x2="62%" y2="85%" className={`p-line ${rfState.locked ? 'l-pl' : ''}`} stroke={rfState.locked ? 'none' : 'rgba(0,255,102,0.2)'} markerEnd={rfState.locked ? 'url(#flowArrowGreen)' : undefined} />
 
               {/* 🌟 HPA ขยับมาที่ 22% ให้สมมาตรพอดีกับเส้นที่ยาวขึ้น */}
               <g style={{ transform: 'translateY(30px)' }}>
@@ -9971,7 +11685,7 @@ return (
                 </svg>
               </g>
 
-              {linkActive && (
+              {rfState.locked && (
                 <g>
                   {/* คลื่นดาวเทียม V-Shape */}
                   <g>
@@ -10104,23 +11818,23 @@ return (
             {/* ========================================= */}
             {/* 🌟 5. FREQUENCY LABELS (ป้ายกำกับความถี่) */}
             {/* ========================================= */}
-            {linkActive && (
+            {rfState.locked && (
               <>
                 <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid var(--cyan)', borderRadius: '4px', padding: '6px 12px', fontFamily: '"Orbitron", sans-serif', fontSize: '11px', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 10, 20, 0.85)', backdropFilter: 'blur(4px)', left: '33%', top: 'calc(55% - 60px)', color: 'var(--cyan)', boxShadow: '0 0 10px rgba(0,234,255,0.4)', transform: 'translate(-50%, -50%)' }}>
-                  {satSpecs.tmFreq}<br/><span style={{fontSize:'8px', color:'#fff'}}>S-BAND TM (DOWN)</span>
+                  {satSpecs.tmFreq}<br/><span style={{fontSize:'8px', color:'#fff'}}>S-BAND TM DOWN</span>
                 </div>
                 <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid var(--gold)', borderRadius: '4px', padding: '6px 12px', fontFamily: '"Orbitron", sans-serif', fontSize: '11px', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(20, 10, 0, 0.85)', backdropFilter: 'blur(4px)', left: '33%', top: 'calc(55% + 60px)', color: 'var(--gold)', boxShadow: '0 0 10px rgba(255,204,0,0.4)', transform: 'translate(-50%, -50%)' }}>
-                  {satSpecs.tcFreq}<br/><span style={{fontSize:'8px', color:'#fff'}}>S-BAND TC (UP)</span>
+                  {satSpecs.tcFreq}<br/><span style={{fontSize:'8px', color:'#fff'}}>S-BAND TC UP</span>
                 </div>
                 <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid var(--green)', borderRadius: '4px', padding: '6px 12px', fontFamily: '"Orbitron", sans-serif', fontSize: '11px', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 10, 20, 0.85)', backdropFilter: 'blur(4px)', left: '73%', top: 'calc(55% - 33px)', color: 'var(--green)', boxShadow: '0 0 10px rgba(0,255,102,0.4)', transform: 'translate(-50%, -50%)' }}>
-                  {satSpecs.xBandFreq}<br/><span style={{fontSize:'8px', color:'#fff'}}>X-BAND DOWNLINK</span>
+                  {satSpecs.xBandFreq}<br/><span style={{fontSize:'8px', color:'#fff'}}>X-BAND PAYLOAD DOWN</span>
                 </div>
 
                {/* 📍 ป้าย IF 70 MHz (พลิกให้ผลักเข้ามาด้านขวาของเส้น 8% ไม่มีทางตกขอบซ้าย) */}
-               <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid #FF6600', borderRadius: '4px', padding: '6px 12px', fontFamily: '"Orbitron", sans-serif', fontSize: '11px', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(4px)', left: '10%', top: '70%', color: '#ffffff', boxShadow: '0 0 15px rgba(255,102,0,0.4)', transform: 'translate(15px, -50%)' }}>IF 70 MHz</div>
+               <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid #FF6600', borderRadius: '4px', padding: '6px 12px', fontFamily: '"Orbitron", sans-serif', fontSize: '11px', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(4px)', left: '10%', top: '70%', color: '#ffffff', boxShadow: '0 0 15px rgba(255,102,0,0.4)', transform: 'translate(15px, -50%)' }}>{sIfDetail}</div>
 
               {/* 📍 ป้าย IF 720 MHz (พลิกให้ผลักเข้ามาด้านซ้ายของเส้น 92% ไม่มีทางตกขอบขวา) */}
-              <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid #00aaff', borderRadius: '4px', padding: '6px 12px', fontFamily: '"Orbitron", sans-serif', fontSize: '11px', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 10, 20, 0.85)', backdropFilter: 'blur(4px)', left: '92%', top: '70%', color: '#ffffff', boxShadow: '0 0 10px rgba(0,170,255,0.4)', transform: 'translate(calc(-100% - 15px), -50%)' }}>IF 720 MHz</div>
+              <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid #00aaff', borderRadius: '4px', padding: '6px 12px', fontFamily: '"Orbitron", sans-serif', fontSize: '11px', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 10, 20, 0.85)', backdropFilter: 'blur(4px)', left: '92%', top: '70%', color: '#ffffff', boxShadow: '0 0 10px rgba(0,170,255,0.4)', transform: 'translate(calc(-100% - 15px), -50%)' }}>{xIfDetail}</div>
               </>
             )}
 
@@ -10129,24 +11843,43 @@ return (
             {/* ========================================= */}
             <div style={{ position: 'absolute', left: '0', top: '-4%', width: '100%', zIndex: 20, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
               {selectedCatnr === '58016' ? (
-                // 📍 ฟันธง: ใส่ onError ป้องกันภาพแตกตอนโหลดแอปครั้งแรก ถ้าโหลดไม่ทันให้ดึงรูป THEOS-2-1 มาค้ำไว้ก่อน
-                <img key="signal-theos2" src={runtimeAsset('/textures/THEOS-2.webp')} onError={(e) => handleRuntimeImageError(e, runtimeAsset('/textures/THEOS-2-1.webp'))} className={linkActive ? 'anim-wobble' : ''} alt="THEOS-2" style={{ width: '18cqw', minWidth: '120px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
+                // THEOS-2: keep the verified mission image. If it is unavailable, fail safe to the neutral generic spacecraft.
+                <img key="signal-theos2" src={runtimeAsset('/textures/THEOS-2.webp')} onError={(e) => handleRuntimeImageError(e, GENERIC_LEO_SATELLITE_SVG)} className={rfState.locked ? 'anim-wobble' : ''} alt="THEOS-2" style={{ width: '18cqw', minWidth: '120px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
               ) : selectedCatnr === '33396' ? (
-                <img key="signal-theos1" src={runtimeAsset('/textures/THEOS.webp')} onError={(e) => handleRuntimeImageError(e, runtimeAsset('/textures/THEOS-2-1.webp'))} className={linkActive ? 'anim-wobble' : ''} alt="THEOS" style={{ width: '18cqw', minWidth: '120px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
+                // THEOS: keep the verified mission image. If it is unavailable, use the neutral generic spacecraft rather than another mission's image.
+                <img key="signal-theos1" src={runtimeAsset('/textures/THEOS.webp')} onError={(e) => handleRuntimeImageError(e, GENERIC_LEO_SATELLITE_SVG)} className={rfState.locked ? 'anim-wobble' : ''} alt="THEOS" style={{ width: '12.5cqw', minWidth: '88px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
               ) : (
-                <img key={`signal-${selectedCatnr}`} src={runtimeAsset('/textures/THEOS-2-1.webp')} onError={(e) => handleRuntimeImageError(e, null)} className={linkActive ? 'anim-wobble' : ''} alt="Satellite" style={{ width: '18cqw', minWidth: '120px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
+                // Any other database target: intentionally use a premium neutral LEO spacecraft.
+                // The header still shows targetConfig.displayName, so the selected target name remains truthful while the image stays non-mission-specific.
+                <img key={`signal-generic-${selectedCatnr}`} src={GENERIC_LEO_SATELLITE_SVG} className={rfState.locked ? 'anim-wobble' : ''} alt={`${targetConfig.displayName} - generic satellite visualization`} style={{ width: '18cqw', minWidth: '120px', height: 'auto', objectFit: 'contain', zIndex: 2, filter: 'drop-shadow(0 20px 15px rgba(0,0,0,0.8))' }} />
               )}
             </div>
+            {/* FINAL LOCK: Idle RF/IF labels remain visible only before carrier lock.
+                When locked, the dedicated active labels above are the single source of truth. */}
+            {!rfState.locked && (<>
+              <div className="flow-freq-tag" style={{ left: '30%', top: '45%', color: 'var(--cyan)' }}>
+                {isTheos2Flow ? '2244.228 MHz' : satSpecs.tmFreq}<small>{isTheos2Flow ? 'S-BAND TM DOWN' : 'S-BAND TM · SIM PROFILE'}</small>
+              </div>
+              <div className="flow-freq-tag" style={{ left: '30%', top: '62%', color: 'var(--gold)' }}>
+                {isTheos2Flow ? '2066.56 MHz' : satSpecs.tcFreq}<small>{isTheos2Flow ? 'S-BAND TC UP' : 'S-BAND TC · SIM PROFILE'}</small>
+              </div>
+              <div className="flow-freq-tag" style={{ left: '72%', top: '49%', color: 'var(--green)' }}>
+                {isTheos2Flow ? '8150.00 MHz' : satSpecs.xBandFreq}<small>{isTheos2Flow ? 'X-BAND PAYLOAD' : 'PAYLOAD · SIM PROFILE'}</small>
+              </div>
+              <div className="flow-freq-tag" style={{ left: '13%', top: '71%', color: 'var(--cyan)' }}>IF 70 MHz</div>
+              <div className="flow-freq-tag" style={{ left: '89%', top: '71%', color: '#00aaff' }}>IF 720 MHz</div>
+            </>)}
+
             {/* ========================================= */}
             {/* 🌟 7. HARDWARE BOXES (กล่องอุปกรณ์ภาคพื้นดิน) */}
             {/* ========================================= */}
 
             {/* 📍 7.1 โหนดซ้าย (UP/DOWN) ขยับซ้ายสุดที่ 8% */}
-            <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '8%', top: '55%', zIndex: 20 }}>
-              <img src="https://api.iconify.design/mdi:swap-vertical-bold.svg?color=%2300eaff" className="n-icon" alt="Converter" />
+            <div className={`flow-node ${rfState.locked ? 'active' : ''}`} style={{ left: '8%', top: '55%', zIndex: 20 }}>
+              <FlowHardwareIcon kind="converter" color="#00eaff" label="Converter" />
               <div className="n-title">UP/DOWN</div>
               <div className="n-sub">S-BAND CONVERTER</div>
-              {linkActive && (<>
+              {rfState.locked && (<>
                 <div className="conn-dot" style={{ top: 'calc(50% - 30px)', left: '100%', background: 'var(--cyan)' }}></div>
                 <div className="conn-dot" style={{ top: 'calc(50% + 30px)', left: '100%', background: 'var(--gold)' }}></div>
                 <div className="conn-dot" style={{ left: 'calc(50% - 30px)', top: '100%', background: 'var(--cyan)' }}></div>
@@ -10155,41 +11888,40 @@ return (
             </div>
 
             {/* 📍 7.2 โหนดเสาอากาศ (SRC ซ้าย) ขยับที่ 46% */}
-            <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '46%', top: '55%', zIndex: 20 }}>
-              <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300eaff" className="n-icon" alt="Antenna" />
+            <div className={`flow-node ${rfState.locked ? 'active' : ''}`} style={{ left: '46%', top: '55%', zIndex: 20 }}>
+              <FlowHardwareIcon kind="antenna" color="#00eaff" label="S-band antenna" />
               <div className="n-title">{activeStation.id}</div>
               <div className="n-sub">S-BAND ANTENNA</div>
-              {linkActive && (<>
+              {rfState.locked && (<>
                 <div className="conn-dot" style={{ top: 'calc(50% - 30px)', left: '0%' }}></div>
                 <div className="conn-dot" style={{ top: 'calc(50% + 30px)', left: '0%', background: 'var(--gold)' }}></div>
               </>)}
             </div>
 
             {/* 📍 7.3 โหนดเสาอากาศ (SRC ขวา) ขยับที่ 54% */}
-            <div className={`flow-node ${linkActive ? 'active' : ''}`} style={{ left: '54%', top: '55%', zIndex: 20, borderColor: linkActive ? 'var(--green)' : '' }}>
-              <img src="https://api.iconify.design/mdi:satellite-uplink.svg?color=%2300ff66" className="n-icon" alt="Antenna" />
+            <div className={`flow-node ${rfState.locked ? 'active' : ''}`} style={{ left: '54%', top: '55%', zIndex: 20, borderColor: rfState.locked ? 'var(--green)' : '' }}>
+              <FlowHardwareIcon kind="antenna" color="#00ff66" label="X-band antenna" />
               <div className="n-title">{activeStation.id}</div>
               <div className="n-sub">X-BAND ANTENNA</div>
-              {linkActive && (<div className="conn-dot" style={{ top: '50%', left: '100%' }}></div>)}
+              {rfState.locked && (<div className="conn-dot" style={{ top: '50%', left: '100%' }}></div>)}
             </div>
 
             {/* 📍 7.4 โหนดขวา (DOWNCONVERTER) ขยับขวาสุดที่ 92% */}
-            <div className="flow-node" style={{ left: '92%', top: '55%', zIndex: 20, borderColor: linkActive ? '#00aaff' : '' }}>
-              <img src="https://api.iconify.design/mdi:radio-tower.svg?color=%2300aaff" className="n-icon" alt="Tuner" />
-              <div className="n-title" style={{ color: linkActive ? '#00aaff' : '#fff' }}>X-BAND</div>
+            <div className="flow-node" style={{ left: '92%', top: '55%', zIndex: 20, borderColor: rfState.locked ? '#00aaff' : '' }}>
+              <FlowHardwareIcon kind="tuner" color="#00aaff" label="X-band downconverter" />
+              <div className="n-title" style={{ color: rfState.locked ? '#00aaff' : '#fff' }}>X-BAND</div>
               <div className="n-sub">DOWNCONVERTER</div>
-              {linkActive && (<>
+              {rfState.locked && (<>
                 <div className="conn-dot" style={{ top: '50%', left: '0%' }}></div>
                 <div className="conn-dot" style={{ top: '100%', left: '50%' }}></div>
               </>)}
             </div>
 
             {/* 📍 7.5 โหนด TT&C (กล่องเล็กมุมซ้ายล่าง 8%) */}
-            <div className="flow-node" style={{ left: '8%', top: '85%', zIndex: 20, borderColor: linkActive ? 'var(--gold)' : '' }}>
-              <img src="https://api.iconify.design/mdi:router-wireless.svg?color=%23ffcc00" className="n-icon" alt="TTC" />
-              <div className="n-title" style={{ color: linkActive ? 'var(--gold)' : '#fff' }}>TT&C</div>
-              <div className="n-sub">BASEBAND SYSTEM</div>
-              {linkActive && (<>
+            <div className="flow-node" style={{ left: '8%', top: '85%', zIndex: 20, borderColor: rfState.locked ? 'var(--gold)' : '' }}>
+              <FlowHardwareIcon kind="router" color="#ffcc00" label="TT&C baseband" />
+              <div className="n-title" style={{ color: rfState.locked ? 'var(--gold)' : '#fff' }}>TT&C</div>
+              {rfState.locked && (<>
                 <div className="conn-dot" style={{ left: 'calc(50% - 30px)', top: '0%', background: 'var(--cyan)' }}></div>
                 <div className="conn-dot" style={{ left: 'calc(50% + 30px)', top: '0%', background: 'var(--gold)' }}></div>
                 <div className="conn-dot" style={{ left: '100%', top: '50%', background: 'var(--cyan)' }}></div>
@@ -10197,11 +11929,10 @@ return (
             </div>
 
             {/* 📍 7.6 โหนด BASEBAND (กล่องเล็กมุมขวาล่าง 92%) */}
-            <div className="flow-node" style={{ left: '92%', top: '85%', zIndex: 20, borderColor: linkActive ? 'var(--red)' : '' }}>
-              <img src="https://api.iconify.design/mdi:server-network.svg?color=%23ff3333" className="n-icon" alt="Baseband" />
-              <div className="n-title" style={{ color: linkActive ? 'var(--red)' : '#fff' }}>BASEBAND</div>
-              <div className="n-sub">DEMODULATOR</div>
-              {linkActive && (<>
+            <div className="flow-node" style={{ left: '92%', top: '85%', zIndex: 20, borderColor: rfState.locked ? 'var(--red)' : '' }}>
+              <FlowHardwareIcon kind="baseband" color="#ff3333" label="Payload baseband demodulator" />
+              <div className="n-title" style={{ color: rfState.locked ? 'var(--red)' : '#fff' }}>BASEBAND</div>
+              {rfState.locked && (<>
                 <div className="conn-dot" style={{ top: '0%', left: '50%' }}></div>
                 <div className="conn-dot" style={{ top: '50%', left: '0%' }}></div>
               </>)}
@@ -10212,32 +11943,31 @@ return (
             {/* ========================================= */}
             
             {/* 📍 8.1 กล่องจอวิเคราะห์ TT&C (ขยับเข้า 38%) */}
-            <div className={`flow-node ${linkActive ? 'active' : ''}`} 
-                 style={{ left: '38%', top: '85%', zIndex: 20, width: '18cqw', height: '8.5cqw', padding: '8px', borderColor: linkActive ? 'var(--gold)' : 'rgba(255,204,0,0.3)', background: '#020617', flexDirection: 'column', gap: '6px', cursor: 'pointer', boxShadow: linkActive ? '0 0 30px rgba(255,204,0,0.4), inset 0 0 15px rgba(255,204,0,0.2)' : '' }} 
+            <div className={`flow-node ${rfState.locked ? 'active' : ''}`} 
+                 style={{ left: '38%', top: '85%', zIndex: 20, width: '18cqw', height: '8.5cqw', padding: '8px', borderColor: rfState.locked ? 'var(--gold)' : 'rgba(255,204,0,0.3)', background: '#020617', flexDirection: 'column', gap: '6px', cursor: 'pointer', boxShadow: rfState.locked ? '0 0 30px rgba(255,204,0,0.4), inset 0 0 15px rgba(255,204,0,0.2)' : '' }} 
                  onClick={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '4px' }}>
                 <span style={{ color: '#fff', fontSize: '11px', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
-                  <span style={{ color: linkActive ? 'var(--gold)' : 'var(--red)', textShadow: linkActive ? '0 0 8px var(--gold)' : 'none', animation: linkActive ? 'pulse 1s infinite' : 'none' }}>●</span> TT&C
+                  <span style={{ color: rfState.locked ? 'var(--gold)' : 'var(--red)', textShadow: rfState.locked ? '0 0 8px var(--gold)' : 'none', animation: rfState.locked ? 'pulse 1s infinite' : 'none' }}>●</span> TT&C
                 </span>
-                <span style={{ color: '#000', background: linkActive ? 'var(--cyan)' : 'rgba(255,255,255,0.3)', fontSize: '9px', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 6px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--cyan)' : 'none' }}>70 MHz IF</span>
               </div>
               <div style={{ display: 'flex', width: '100%', flex: 1, gap: '6px', minHeight: 0 }}>
                 <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
-                  {linkActive && ['50%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
-                    <div key={`bpsk-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
+                  {rfState.locked && (rfProfile.sBand.mod.includes('BPSK') ? [['20%','50%'],['80%','50%']] : [['20%','20%'],['80%','20%'],['20%','80%'],['80%','80%']]).map(([cx,cy], i) => (
+                    <div key={`s-iq-${i}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
                       <div style={{ width: '3px', height: '3px', background: 'var(--cyan)', borderRadius: '50%', boxShadow: '0 0 5px var(--cyan)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
-                      <div style={{ width: '10px', height: '10px', background: 'rgba(0,234,255,0.6)', position: 'absolute', top: '-5px', left: '-5px', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
+                      <div style={{ width: '10px', height: '10px', background: 'rgba(0,234,255,0.6)', position: 'absolute', top: '-5px', left: '-5px', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + (i * 0.03)}s infinite alternate` }}></div>
                     </div>
-                  )))}
+                  ))}
                 </div>
                 <div style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '10% 20%' }}></div>
                   <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '90%', overflow: 'visible' }} preserveAspectRatio="none" viewBox="0 0 100 100">
-                    {linkActive ? (
+                    {rfState.locked ? (
                       <>
                         <path d="M0,95 L5,93 L10,96 L15,94 L20,95 L25,93 L30,95 L35,92 L40,95 L45,94 L50,96 L55,93 L60,95 L65,94 L70,95 L75,92 L80,96 L85,93 L90,95 L95,92 L100,95" fill="none" stroke="rgba(0,234,255,0.4)" strokeWidth="1">
                           <animateTransform attributeName="transform" type="translate" values="0 0; 0 -1.5; 0 1; 0 0" dur="0.1s" repeatCount="indefinite" />
@@ -10257,32 +11987,31 @@ return (
             </div>
 
             {/* 📍 8.2 กล่องจอวิเคราะห์ BASEBAND (ขยับเข้า 62%) */}
-            <div className={`flow-node ${linkActive ? 'active' : ''}`} 
-                 style={{ left: '62%', top: '85%', zIndex: 20, width: '18cqw', height: '8.5cqw', padding: '8px', borderColor: linkActive ? 'var(--green)' : 'rgba(0,234,255,0.3)', background: '#020617', flexDirection: 'column', gap: '6px', cursor: 'pointer', boxShadow: linkActive ? '0 0 30px rgba(0,255,102,0.4), inset 0 0 15px rgba(0,255,102,0.2)' : '' }} 
+            <div className={`flow-node ${rfState.locked ? 'active' : ''}`} 
+                 style={{ left: '62%', top: '85%', zIndex: 20, width: '18cqw', height: '8.5cqw', padding: '8px', borderColor: rfState.locked ? 'var(--green)' : 'rgba(0,234,255,0.3)', background: '#020617', flexDirection: 'column', gap: '6px', cursor: 'pointer', boxShadow: rfState.locked ? '0 0 30px rgba(0,255,102,0.4), inset 0 0 15px rgba(0,255,102,0.2)' : '' }} 
                  onClick={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '4px' }}>
                 <span style={{ color: '#fff', fontSize: '11px', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
-                  <span style={{ color: linkActive ? 'var(--green)' : 'var(--red)', textShadow: linkActive ? '0 0 8px var(--green)' : 'none', animation: linkActive ? 'pulse 1s infinite' : 'none' }}>●</span> BASEBAND
+                  <span style={{ color: rfState.locked ? 'var(--green)' : 'var(--red)', textShadow: rfState.locked ? '0 0 8px var(--green)' : 'none', animation: rfState.locked ? 'pulse 1s infinite' : 'none' }}>●</span> BASEBAND
                 </span>
-                <span style={{ color: '#000', background: linkActive ? 'var(--gold)' : 'rgba(255,255,255,0.3)', fontSize: '9px', fontFamily: 'Rajdhani', fontWeight: '900', padding: '2px 6px', borderRadius: '2px', boxShadow: linkActive ? '0 0 8px var(--gold)' : 'none' }}>720 MHz</span>
               </div>
               <div style={{ display: 'flex', width: '100%', flex: 1, gap: '6px', minHeight: 0 }}>
                 <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
-                  {linkActive && ['20%', '80%'].map((cy, i) => ['20%', '80%'].map((cx, j) => (
-                    <div key={`c-${i}-${j}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
+                  {rfState.locked && (rfProfile.xBand.mod.includes('BPSK') ? [['20%','50%'],['80%','50%']] : [['20%','20%'],['80%','20%'],['20%','80%'],['80%','80%']]).map(([cx,cy], i) => (
+                    <div key={`x-iq-${i}`} style={{ position: 'absolute', top: cy, left: cx, transform: 'translate(-50%, -50%)' }}>
                       <div style={{ width: '3px', height: '3px', background: 'var(--red)', borderRadius: '50%', boxShadow: '0 0 5px var(--red)', position: 'absolute', top: '-1.5px', left: '-1.5px', zIndex: 2 }}></div>
-                      <div style={{ width: '10px', height: '10px', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: '-5px', left: '-5px', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + ((i + j) * 0.05)}s infinite alternate` }}></div>
+                      <div style={{ width: '10px', height: '10px', background: 'rgba(255,255,255,0.8)', position: 'absolute', top: '-5px', left: '-5px', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', animation: `pulse ${0.15 + (i * 0.03)}s infinite alternate` }}></div>
                     </div>
-                  )))}
+                  ))}
                 </div>
                 <div style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '10% 20%' }}></div>
                   <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '90%', overflow: 'visible' }} preserveAspectRatio="none" viewBox="0 0 100 100">
-                    {linkActive ? (
+                    {rfState.locked ? (
                       <>
                         <path d="M0,95 L30,95 C38,95 42,15 50,15 C58,15 62,95 70,95 L100,95" fill="none" stroke="var(--gold)" strokeWidth="1.5" style={{ filter: 'drop-shadow(0 0 3px var(--gold))', transformOrigin: 'bottom' }}>
                           <animateTransform attributeName="transform" type="scale" values="1 0.95; 1 1.05; 1 0.97; 1 1" dur="0.12s" repeatCount="indefinite" />
@@ -10302,12 +12031,29 @@ return (
 
     </div>
   </div>
-)}
+</SatToolSurface>)}
     </>
   );
 }
 
+function SatDetachedBootstrap({ toolId }) {
+  const title = SAT_WORKSPACE_TOOLS[toolId] || 'Detached Tool';
+  useEffect(() => {
+    document.title = `SAT-Orbit — ${title}`;
+  }, [title]);
+  return (
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#010408', color: '#b7f6ff', fontFamily: 'Rajdhani, Arial, sans-serif', textAlign: 'center', padding: 24 }}>
+      <div style={{ border: '1px solid #337689', borderRadius: 8, padding: '18px 24px', background: '#071720', boxShadow: '0 0 24px rgba(0,234,255,.12)' }}>
+        <div style={{ fontFamily: 'Orbitron, sans-serif', fontWeight: 900, letterSpacing: 1.5, color: '#00eaff' }}>{title}</div>
+        <div style={{ marginTop: 8, fontSize: 13 }}>CONNECTING TO MAIN SAT-ORBIT SESSION…</div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const detachedToolId = typeof window !== 'undefined' ? getSatDetachedToolFromLocation(window) : null;
+  if (detachedToolId) return <SatDetachedBootstrap toolId={detachedToolId} />;
   return (
     <SatOrbitErrorBoundary>
       <SatOrbitCore />
