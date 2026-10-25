@@ -5670,7 +5670,7 @@ function SatSignalFlow({ rfState, rfProfile, satSpecs, stationId, miniSpectrumPa
 // A tool keeps one portal container across hosts. Moving it never mounts another
 // SatOrbitCore, orbit clock, audio engine, network poller or notification sender.
 const SAT_WORKSPACE_TOOLS = {
-  radar: 'Radar Skyplot', diagram: 'Signal Flow', analyzer: 'Signal Analyzer',
+  radar: 'Radar Skyplot', diagram: 'Signal Flow', analyzer: 'Signal Analyzer', iq: 'IQ Constellation',
   antenna3d: 'Antenna 3D', weather: 'Weather Center', gs: 'Ground Station',
   db: 'Satellite Database', pass: 'Pass Schedule', angles: 'Pointing Angles', img: 'Imaging Plan'
 };
@@ -5802,6 +5802,8 @@ const SAT_WORKSPACE_CSS = `
   .sat-tool-surface[data-host="quad"] {
     background:#010408!important;
     box-shadow:0 0 0 1px rgba(255,255,255,.025), 0 10px 28px rgba(0,0,0,.48)!important;
+    box-sizing:border-box!important;
+    overflow:hidden!important;
   }
   .sat-globe-host[data-quad="true"] { border-color:rgba(0,234,255,.42)!important; }
   .sat-tool-surface[data-host="quad"][data-tool="radar"] { border:1px solid rgba(0,255,102,.52)!important; }
@@ -5886,7 +5888,7 @@ const SAT_WORKSPACE_CSS = `
   .sat-workspace-toolbar button:hover, .sat-popout-btn:hover, .sat-workspace-toggle:hover { background: #164559; color: white; }
   .sat-workspace-toggle { margin: 0; padding: 4px 8px; }
   .sat-hud-multiview { margin-left:auto; flex:0 0 auto; padding:3px 7px!important; min-height:24px!important; font-size:10px!important; letter-spacing:.5px; line-height:1!important; }
-  .sat-empty-tool { position: fixed; z-index: 20000; border: 1px dashed #337689; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #040e18; color: #acc7d3; font: 16px Rajdhani,Arial,sans-serif; }
+  .sat-empty-tool { position: fixed; z-index: 20000; box-sizing:border-box; overflow:hidden; border: 1px dashed #337689; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #040e18; color: #acc7d3; font: 16px Rajdhani,Arial,sans-serif; }
   .sat-empty-tool button { cursor: pointer; padding: 8px 16px; border: 1px solid #00eaff; color: #00eaff; background: #06202b; border-radius: 5px; }
   .sat-globe-caption { position: absolute; left: 10px; right: 10px; top: 8px; z-index: 2; color: #d6f5ff; font: 600 calc(clamp(12px,.9vw,22px) * var(--sat-text-scale,1)) Rajdhani,Arial,sans-serif; pointer-events: none; text-shadow: 0 1px 5px #000; }
   .sat-globe-caption > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -6475,7 +6477,9 @@ function rfVisualNoise(seed) {
 
 function rfSpectrumPowerDb(channel, offsetMHz, state, simulatedTimeMs, isXBand) {
   const referenceDbm = isXBand ? -35 : -20;
-  const tick = Math.floor(simulatedTimeMs / 40);
+  // Bench-analyzer visual cadence: keep the deterministic SIM noise alive, but
+  // update it slowly enough that a stable carrier does not appear to "breathe".
+  const tick = Math.floor(simulatedTimeMs / 220);
   const t = simulatedTimeMs / 1000;
 
 
@@ -6491,7 +6495,14 @@ function rfSpectrumPowerDb(channel, offsetMHz, state, simulatedTimeMs, isXBand) 
     const progress = state.locked ? 1 : Math.max(0, Math.min(1, state.acquisitionProgress ?? state.quality ?? 0));
     const residual = 1 - progress;
 
-    // Same old AFC wander used before lock. It collapses completely at LOCK.
+    // NO CARRIER must be instrument noise only. Do not render a synthetic payload
+    // envelope before acquisition begins. Noise still moves subtly like a real trace.
+    if (!state.eligible) {
+      const floorNoise = (rfVisualNoise(tick * 0.73 + offsetMHz * 173.1 + 11) - 0.5) * 1.2;
+      return referenceDbm - 44 + floorNoise;
+    }
+
+    // Same AFC search used before lock. It collapses completely at LOCK.
     const driftMHz = state.locked
       ? 0
       : (Number(channel.bw) || 310) * 0.055 * residual * Math.sin(t * 1.15 + 0.3);
@@ -6514,12 +6525,17 @@ function rfSpectrumPowerDb(channel, offsetMHz, state, simulatedTimeMs, isXBand) 
     // Reference trace noise was 0.02..0.08 plus a small per-pixel vertical jitter.
     // Use deterministic SIM noise so PAUSE still freezes the current application.
     const noiseAmp = 0.02 + 0.06 * rfVisualNoise(tick * 0.73 + effectiveOffset * 173.1 + 11);
-    const jitterAmp = (rfVisualNoise(tick * 1.37 + effectiveOffset * 91.7 + 211) - 0.5) * 0.018;
+    // Keep the locked payload silhouette stationary. Any visible motion belongs to
+    // the noise floor, not to the occupied-band envelope itself.
+    const jitterAmp = state.locked
+      ? 0
+      : (rfVisualNoise(tick * 1.37 + effectiveOffset * 91.7 + 211) - 0.5) * 0.008;
 
-    // Old reference: full-strength at lock; during acquisition the lobe breathes.
+    // Acquisition gain follows acquisition progress only; remove periodic amplitude
+    // breathing so the analyzer behaves like a stable bench instrument.
     const acquisitionGain = state.locked
       ? 1
-      : Math.max(0, Math.min(1, (0.35 + 0.65 * progress) * (0.90 + 0.10 * Math.sin(t * 3.2 + 0.4))));
+      : Math.max(0, Math.min(1, 0.35 + 0.65 * progress));
     const signalAmp = shapeAmp * acquisitionGain;
     const totalAmp = Math.max(0, Math.min(1, Math.max(noiseAmp, signalAmp) + jitterAmp * (0.25 + 0.75 * shapeAmp)));
 
@@ -6540,10 +6556,13 @@ function rfSpectrumPowerDb(channel, offsetMHz, state, simulatedTimeMs, isXBand) 
   const symbolRateMHz = Math.max(1e-6, Number(channel.symbolRateMsps) || Math.max(1e-6, Number(channel.bw) / 2));
 
   // Instrument-like noise floor: deterministic in SIM time so PAUSE freezes the trace.
-  const fastNoise = (rfVisualNoise(tick * 0.731 + offsetMHz * (isXBand ? 47.3 : 811.7) + (isXBand ? 13 : 37)) - 0.5) * (isXBand ? 2.4 : 2.0);
+  const fastNoise = (rfVisualNoise(tick * 0.731 + offsetMHz * (isXBand ? 47.3 : 811.7) + (isXBand ? 13 : 37)) - 0.5) * (isXBand ? 1.2 : 1.0);
+  // At RF LOCK the spectral envelope is stationary; only the noise floor updates.
+  // Before lock, a small correlated component remains to suggest acquisition activity.
+  const correlatedTime = state.locked ? 0 : t;
   const correlatedNoise =
-    Math.sin(offsetMHz * (isXBand ? 0.043 : 19.0) + t * 0.91) * (isXBand ? 0.38 : 0.22) +
-    Math.sin(offsetMHz * (isXBand ? 0.017 : 7.3) - t * 0.47) * (isXBand ? 0.22 : 0.14);
+    Math.sin(offsetMHz * (isXBand ? 0.043 : 19.0) + correlatedTime * 0.91) * (isXBand ? 0.22 : 0.12) +
+    Math.sin(offsetMHz * (isXBand ? 0.017 : 7.3) - correlatedTime * 0.47) * (isXBand ? 0.12 : 0.08);
   const noiseDbm = referenceDbm - 44 + fastNoise + correlatedNoise;
   if (!state.eligible) return noiseDbm;
 
@@ -6573,17 +6592,18 @@ function rfSpectrumPowerDb(channel, offsetMHz, state, simulatedTimeMs, isXBand) 
   // not a second synthetic lobe generator.
   if (signalPower > 0) {
     const textureWindow = Math.exp(-0.22 * ax * ax);
+    const textureTime = state.locked ? 0 : t;
     const textureDb = textureWindow * (
-      (isXBand ? 0.26 : 0.16) * Math.sin(effectiveOffset * (isXBand ? 0.091 : 28.0) + t * 0.42) +
-      (isXBand ? 0.15 : 0.09) * Math.sin(effectiveOffset * (isXBand ? 0.027 : 11.0) - t * 0.31)
+      (isXBand ? 0.26 : 0.16) * Math.sin(effectiveOffset * (isXBand ? 0.091 : 28.0) + textureTime * 0.42) +
+      (isXBand ? 0.15 : 0.09) * Math.sin(effectiveOffset * (isXBand ? 0.027 : 11.0) - textureTime * 0.31)
     );
     signalPower *= Math.pow(10, textureDb / 10);
   }
 
   if (!state.locked && signalPower > 0) {
     const flutterDb = residual * (
-      1.8 * Math.sin(t * 2.1 + (isXBand ? 0.4 : 1.7)) +
-      0.9 * Math.sin(t * 4.3 + (isXBand ? 2.2 : 0.6))
+      0.8 * Math.sin(t * 2.1 + (isXBand ? 0.4 : 1.7)) +
+      0.35 * Math.sin(t * 4.3 + (isXBand ? 2.2 : 0.6))
     );
     signalPower *= Math.pow(10, flutterDb / 10);
   }
@@ -6996,6 +7016,7 @@ const publishToolWindows = (next) => {
 const setToolOpen = (id, open) => {
   if (id === 'radar') setIsRadarOpen(open);
   if (id === 'analyzer') setIsAnalyzerOpen(open);
+  if (id === 'iq') setIsIqOpen(open);
   if (id === 'diagram') setIsDiagramOpen(open);
   if (id === 'antenna3d') setIsAntenna3DOpen(open);
   if (id === 'weather') setIsWeatherOpen(open);
@@ -9601,7 +9622,22 @@ return (
       </select>
       <button onClick={() => setStationMask(value => value === 0 ? 3 : value === 3 ? 5 : 0)}>MASK {stationMask}°</button>
       <button onClick={() => setIsFlatMap(value => !value)}>{isFlatMap ? '3D GLOBE' : '2D MAP'}</button>
-      <select aria-label="Open workspace tool" value="" onChange={event => { const id = event.target.value; if (id) { const viewer = toolWindowsRef.current[id]; if (viewer && !viewer.win.closed) viewer.win.focus(); else { setToolOpen(id, true); bringToFront(id); if (SAT_QUAD_TOOL_IDS.includes(id)) setFocusedWorkspacePanel(id); } } }}>
+      <select aria-label="Open workspace tool" value="" onChange={event => {
+        const id = event.target.value;
+        if (!id) return;
+        const viewer = toolWindowsRef.current[id];
+        if (viewer && !viewer.win.closed) { viewer.win.focus(); return; }
+        if (SAT_QUAD_TOOL_IDS.includes(id)) {
+          // Core 4-UP tools stay inside MULTI-VIEW and use the existing full-panel focus mode.
+          setToolOpen(id, true);
+          bringToFront(id);
+          setFocusedWorkspacePanel(id);
+        } else {
+          // Auxiliary tools (including IQ) must remain visible while MULTI-VIEW stays on screen.
+          // Open them in the hardened detached viewer instead of underneath the 4-UP backdrop.
+          openToolWindow(id);
+        }
+      }}>
         <option value="">TOOLS…</option>{Object.entries(SAT_WORKSPACE_TOOLS).map(([id, label]) => <option value={id} key={id}>{label}</option>)}
       </select>
     </nav>
@@ -11379,7 +11415,8 @@ return (
       </SatToolSurface>)}
 
 {/* --- IQ CONSTELLATION: SEPARATE FROM SPECTRUM ANALYZER --- */}
-{isIqOpen && <div className="modal-box iq-modal" onMouseDownCapture={()=>bringToFront('iq')} style={{
+{isIqOpen && (<SatToolSurface id="iq" viewer={toolWindows.iq}>
+<div className="modal-box iq-modal" onMouseDownCapture={()=>bringToFront('iq')} style={{
   position:'fixed', top:maximizedWins.iq?'0px':`${iqPos.y}px`, left:maximizedWins.iq?'0px':`${iqPos.x}px`,
   width:maximizedWins.iq?'100vw':'min(620px,92vw)', height:maximizedWins.iq?'100vh':'min(620px,82vh)',
   minWidth:'min(320px,90vw)', minHeight:'min(320px,80vh)', resize:maximizedWins.iq?'none':'both', overflow:'hidden',
@@ -11391,8 +11428,9 @@ return (
   <div className="modal-header sat-visual-header" onMouseDown={(e)=>{if(!maximizedWins.iq)handleIqMouseDown(e);}}>
     <div className="sat-visual-heading"><strong>IQ CONSTELLATION ANALYZER</strong><div className="sat-visual-meta"><span style={{color:rfState.color}}>{rfState.label}</span><span>{rfProfile.name} · BASEBAND SIM</span></div></div>
     <div className="sat-visual-actions">
+      {toolWindowButton('iq')}
       <button className="modal-close-btn" aria-label="Maximize IQ Analyzer" onMouseDown={e=>e.stopPropagation()} onClick={()=>toggleMaximize('iq')}><SatWindowIcon kind={maximizedWins.iq?'restore':'maximize'} /></button>
-      <button className="modal-close-btn" aria-label="Close IQ Analyzer" onMouseDown={e=>e.stopPropagation()} onClick={()=>setIsIqOpen(false)}>✕</button>
+      <button className="modal-close-btn" aria-label="Close IQ Analyzer" onMouseDown={e=>e.stopPropagation()} onClick={()=>closeTool('iq')}>✕</button>
     </div>
   </div>
   <div className="rf-iq-popup-body">
@@ -11407,7 +11445,8 @@ return (
       <span>SIM MODEL · NOT A RECORDED RF CAPTURE</span>
     </div>
   </div>
-</div>}
+</div>
+</SatToolSurface>)}
 
 {/* --- TRACKING ANGLES (MODERN TACTICAL DATRON) --- */}
 {isAnglesOpen && (<SatToolSurface id="angles" viewer={toolWindows.angles}>
