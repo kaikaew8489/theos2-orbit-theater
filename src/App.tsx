@@ -6486,6 +6486,71 @@ function HudWeatherIcon({ kind = 'unknown' }) {
   </svg>;
 }
 
+// Main HUD only: preserve the deployed scale unless either column actually overflows.
+function useMainHudHeightFit(baseScale, narrow, fullscreen, leftOpen, rightOpen, width, height) {
+  const layerRef = useRef(null);
+  React.useLayoutEffect(() => {
+    const layer = layerRef.current;
+    if (!layer || narrow) return;
+    let frame = 0, disposed = false;
+    const columns = Array.from(layer.querySelectorAll(':scope > .left-container, :scope > .right-container'));
+    const applyScale = (scale) => columns.forEach(column => {
+      column.style.transform = `scale(${scale})`;
+      column.style.height = column.style.maxHeight = `calc(100% / ${scale})`;
+    });
+    const fit = () => {
+      if (disposed) return;
+      applyScale(baseScale);
+      const panels = columns.map(column => column.querySelector('.left-panel, .right-panel')).filter(Boolean);
+      // Leave fitting TV/desktop layouts at their original scale and height.
+      if (!panels.some(panel => panel.scrollHeight > panel.clientHeight + 1)) return;
+      const layerStyle = getComputedStyle(layer);
+      const px = value => parseFloat(value) || 0;
+      const available = layer.clientHeight - px(layerStyle.paddingTop) - px(layerStyle.paddingBottom);
+      let required = 0;
+      columns.forEach(column => {
+        const panel = column.querySelector('.left-panel, .right-panel');
+        if (!panel) return;
+        const pages = panel.querySelector(':scope > .sat-hud-pages');
+        // Measure intrinsic content, not the fullscreen wrapper's forced 100% height.
+        // Restore synchronously before paint; no global CSS or content changes.
+        const saved = [panel, pages].filter(Boolean).map(node => [node, node.getAttribute('style')]);
+        try {
+          [panel, pages].filter(Boolean).forEach(node => {
+            node.style.setProperty('height', 'auto', 'important');
+            node.style.setProperty('min-height', '0', 'important');
+            node.style.setProperty('max-height', 'none', 'important');
+            node.style.setProperty('flex', '0 0 auto', 'important');
+          });
+          const header = column.firstElementChild;
+          const headerStyle = getComputedStyle(header);
+          const panelStyle = getComputedStyle(panel);
+          const naturalHeight = header.getBoundingClientRect().height / baseScale
+            + px(headerStyle.marginTop) + px(headerStyle.marginBottom)
+            + panel.getBoundingClientRect().height / baseScale
+            + px(panelStyle.marginTop) + px(panelStyle.marginBottom);
+          required = Math.max(required, naturalHeight);
+        } finally {
+          saved.forEach(([node, style]) => style === null ? node.removeAttribute('style') : node.setAttribute('style', style));
+        }
+      });
+      if (required > 0 && available > 0) applyScale(Math.min(baseScale, (available - 2) / required));
+    };
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(fit); };
+    // Observe intrinsic cards/header, not the height-compensated container (avoids feedback).
+    const observer = new ResizeObserver(schedule);
+    columns.forEach(column => {
+      observer.observe(column.firstElementChild);
+      column.querySelectorAll('.sat-hud-page > *').forEach(card => observer.observe(card));
+    });
+    document.fonts?.ready.then(() => { if (!disposed) schedule(); });
+    fit();
+    schedule(); // Base stylesheet is injected by the existing mount effect.
+    return () => { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [baseScale, narrow, fullscreen, leftOpen, rightOpen, width, height]);
+  return layerRef;
+}
+
 // Pagination changes visibility only; the original controls keep their React state.
 function SatHudPages({ active, labels, children }) {
   const [page, setPage] = useState(0);
@@ -9772,6 +9837,9 @@ const isMainFullscreenLayout = isMainFullscreen || (
   size.height >= Math.max(1, screenAvailHeight - 12)
 );
 
+const mainHudLayerRef = useMainHudHeightFit(uiScale, pagedHud, isMainFullscreenLayout,
+  isLeftPanelOpen, isRightPanelOpen, size.width, size.height);
+
 const workspaceRects = getWorkspaceRects(size.width, size.height, workspaceToolbarHeight);
 const workspaceFullRect = { left: 8, top: workspaceToolbarHeight + 8, width: Math.max(1, size.width - 16), height: Math.max(1, size.height - workspaceToolbarHeight - 16) };
 workspaceRuntimeRef.current = { time: simulatedTimeMs, station: activeStation.id, clockMode, isPlaying, muted: isMuted };
@@ -10363,7 +10431,7 @@ return (
 
   </div>
 
-      <div className="ui-layer"
+      <div className="ui-layer" ref={mainHudLayerRef}
         data-master-responsive={useAdaptiveHud ? "true" : undefined}
         data-main-fullscreen={isMainFullscreenLayout ? "true" : undefined}
         data-hud-tier={useAdaptiveHud ? hudTier : undefined}
