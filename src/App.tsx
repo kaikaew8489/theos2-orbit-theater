@@ -787,6 +787,36 @@ const injectStyles = () => {
    .info-list span { color: rgba(255, 255, 255, 0.8); font-size: clamp(11px, 1.1vw, 14px); font-weight: 700; letter-spacing: 1px; }
    .info-list strong { color: var(--cyan); font-weight: 900; text-shadow: 0 0 8px rgba(0, 234, 255, 0.4); text-align: right; font-size: clamp(12px, 1.2vw, 16px); letter-spacing: 1px; }
 
+   /* TSX TV ENGINEERING HUD — rendered only in F11/native fullscreen by JSX.
+      Browser mode is intentionally untouched. */
+   .sat-hud-engineering {
+     margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(0,234,255,0.35);
+   }
+   .sat-hud-engineering-title {
+     margin-bottom: 7px; color: var(--cyan); font-family: 'Orbitron', sans-serif;
+     font-size: 12px; font-weight: 900; letter-spacing: 1.4px; text-align: center;
+   }
+   .sat-hud-engineering-grid {
+     display:grid; grid-template-columns:1fr 1fr; gap:5px 7px;
+   }
+   .sat-hud-engineering-item {
+     min-width:0; min-height:32px; box-sizing:border-box; padding:5px 7px;
+     display:flex; align-items:center; justify-content:space-between; gap:6px;
+     background:linear-gradient(145deg,rgba(0,20,34,.62),rgba(0,7,14,.82));
+     border:1px solid rgba(0,234,255,.16); border-left:2px solid rgba(0,234,255,.48); border-radius:4px;
+   }
+   .sat-hud-engineering-item span {
+     color:rgba(255,255,255,.56); font-family:'Rajdhani',sans-serif; font-size:11px; font-weight:800;
+     letter-spacing:.55px; white-space:nowrap;
+   }
+   .sat-hud-engineering-item strong {
+     min-width:0; color:#eaffff; font-family:'Orbitron',sans-serif; font-size:12px; font-weight:900;
+     letter-spacing:.25px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right;
+     font-variant-numeric:tabular-nums; text-shadow:none!important;
+   }
+   .sat-hud-engineering-item[data-rf="true"] { border-left-color:rgba(255,204,0,.72); }
+   .sat-hud-engineering-item[data-rf="true"] strong { color:var(--gold); }
+
    /* 📍 ขยายแผงซ้ายขวาให้สมมาตร 100% ยืดหยุ่น ไม่ล้นจอ */
    /* 📍 แก้บั๊ก: เปลี่ยน height: 100% เป็น max-height: 100% */
    .right-container { width: clamp(380px, 28vw, 460px) !important; display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; max-height: 100%; z-index: 20; }
@@ -1144,6 +1174,86 @@ function calculateSatData(date, satrec, station = GS_NETWORK[0]) {
 }
 
 function getInclinationDeg(line2) { return Number(line2.trim().split(/\s+/)[2] || 0); }
+
+// TSX TV ENGINEERING HUD: derive identity/orbit values locally from the selected TLE.
+// No extra network request is required, so the show remains deterministic if venue Wi-Fi is unavailable.
+function getTleEngineeringData(line1, line2) {
+  try {
+    if (typeof line1 !== 'string' || typeof line2 !== 'string') return null;
+    const parts = line2.trim().split(/\s+/);
+    const eccentricityDigits = parts[4] || '';
+    const eccentricity = /^\d+$/.test(eccentricityDigits) ? Number(`0.${eccentricityDigits}`) : NaN;
+    const meanMotionRevDay = Number(parts[7]);
+    if (!Number.isFinite(eccentricity) || !Number.isFinite(meanMotionRevDay) || meanMotionRevDay <= 0) return null;
+
+    // TLE International Designator: YYNNNP... -> YYYY-NNNP...
+    const rawDesignator = line1.substring(9, 17).trim();
+    let cosparId = '—';
+    const idMatch = /^(\d{2})(\d{3})([A-Z0-9]{0,3})$/.exec(rawDesignator);
+    if (idMatch) {
+      const yy = Number(idMatch[1]);
+      const year = yy >= 57 ? 1900 + yy : 2000 + yy;
+      cosparId = `${year}-${idMatch[2]}${idMatch[3] || ''}`;
+    }
+
+    const periodMin = 1440 / meanMotionRevDay;
+    const meanMotionRadS = meanMotionRevDay * 2 * Math.PI / 86400;
+    const muKm3S2 = 398600.4418;
+    const earthEquatorialKm = 6378.137;
+    const semiMajorKm = Math.cbrt(muKm3S2 / (meanMotionRadS * meanMotionRadS));
+    const perigeeKm = semiMajorKm * (1 - eccentricity) - earthEquatorialKm;
+    const apogeeKm = semiMajorKm * (1 + eccentricity) - earthEquatorialKm;
+    return { cosparId, eccentricity, meanMotionRevDay, periodMin, perigeeKm, apogeeKm };
+  } catch (_) {
+    return null;
+  }
+}
+
+function getDownlinkCarrierMHz(text, band) {
+  if (typeof text !== 'string') return null;
+  const source = text.toUpperCase();
+  let value = null;
+  let unit = 'MHZ';
+
+  // Prefer an explicitly marked downlink when telemetry contains both UP and DN.
+  const dn = /(\d+(?:\.\d+)?)\s*DN(?:\s*(GHZ|MHZ))?/.exec(source);
+  if (dn) {
+    value = Number(dn[1]);
+    unit = dn[2] || (/GHZ/.test(source) ? 'GHZ' : 'MHZ');
+  } else {
+    const numeric = /(\d+(?:\.\d+)?)\s*(GHZ|MHZ)/.exec(source);
+    if (!numeric) return null;
+    value = Number(numeric[1]);
+    unit = numeric[2];
+  }
+  if (!Number.isFinite(value)) return null;
+  const mhz = unit === 'GHZ' ? value * 1000 : value;
+  if (band === 's') return mhz >= 1800 && mhz <= 4500 ? mhz : null;
+  if (band === 'x') return mhz >= 7000 && mhz <= 12000 ? mhz : null;
+  return mhz;
+}
+
+function getRangeRateKmS(timeMs, satrec, station) {
+  if (!satrec || !Number.isFinite(timeMs)) return null;
+  // Central-difference slant range over one second: stable, station-relative and independent of UI frame rate.
+  const halfWindowMs = 500;
+  const before = calculateSatData(new Date(timeMs - halfWindowMs), satrec, station);
+  const after = calculateSatData(new Date(timeMs + halfWindowMs), satrec, station);
+  if (!Number.isFinite(before?.rangeKm) || !Number.isFinite(after?.rangeKm)) return null;
+  return (after.rangeKm - before.rangeKm) / (2 * halfWindowMs / 1000);
+}
+
+function getDopplerShiftKhz(carrierMHz, rangeRateKmS) {
+  if (!Number.isFinite(carrierMHz) || !Number.isFinite(rangeRateKmS)) return null;
+  const cKmS = 299792.458;
+  // Positive range rate = receding => negative received-frequency shift.
+  return -(carrierMHz * 1e6) * (rangeRateKmS / cKmS) / 1000;
+}
+
+function formatSigned(value, digits = 2) {
+  if (!Number.isFinite(value)) return '—';
+  return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}`;
+}
 
 function hasValidTleChecksum(line) {
   if (typeof line !== 'string' || line.length < 69) return false;
@@ -5435,6 +5545,7 @@ const SAT_VISUAL_CSS = `
   .sat-radar-metric-card:last-child { justify-self:end; text-align:right; }
   .sat-radar-metric-label { color:#dbe3e8; font:900 calc(clamp(12px,1.05cqw,17px) * var(--sat-text-scale,1))/1 Rajdhani,sans-serif; letter-spacing:.5px; }
   .sat-radar-metric-card strong { font:900 calc(clamp(22px,2.45cqw,38px) * var(--sat-text-scale,1))/1 Orbitron,sans-serif; letter-spacing:.3px; font-variant-numeric:tabular-nums; }
+  .sat-radar-max-el { position:absolute!important; right:18px; bottom:12px; z-index:25; pointer-events:none; color:var(--cyan); }
   .sat-radar-audio { color:var(--green); background:#06231a; border:1px solid currentColor; border-radius:4px; padding:5px 8px; min-height:28px; cursor:pointer; font:700 calc(12px * var(--sat-text-scale,1)) Rajdhani,sans-serif; }
   .sat-radar-plot { position:relative; min-width:0; min-height:0; flex:1 1 0; z-index:5; font-family:Rajdhani,sans-serif; }
   .sat-radar-legend { position:relative; z-index:10; display:flex; flex-wrap:wrap; justify-content:center; gap:3px 13px; padding:4px 8px 7px; color:#c2d5db; flex:0 0 auto; font:700 calc(clamp(11px,1.05cqw,20px) * var(--sat-text-scale,1))/1.2 Rajdhani,sans-serif; }
@@ -5444,6 +5555,7 @@ const SAT_VISUAL_CSS = `
      Compact Classic popups keep the existing stacked layout. No tracking math changes. */
   @container (min-width: 650px) and (min-height: 560px) {
     .sat-radar-metrics { position:absolute; top:72px; left:0; right:0; z-index:25; pointer-events:none; padding:0 24px; }
+    .sat-radar-max-el { right:26px; bottom:24px; }
     .sat-radar-legend { position:absolute; left:26px; right:auto; bottom:24px; z-index:25; pointer-events:none; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:5px; padding:9px 13px; border:1px solid #51646d; border-radius:6px; background:rgba(2,10,16,.82); box-shadow:0 5px 18px rgba(0,0,0,.55); }
     .sat-radar-plot { flex:1 1 0; margin:0; min-height:0; }
   }
@@ -5619,39 +5731,59 @@ const SAT_VISUAL_CSS = `
   }
 `;
 
-function SatSignalFlow({ rfState, rfProfile, satSpecs, stationId, miniSpectrumPath, sPoints, xPoints, satelliteImage, onSatelliteError, openAnalyzer }) {
-  const hardware = (kind, label, title, subtitle, color, arrow, downArrow) => (
+function SatSignalFlow({ rfState, rfProfile, satSpecs, stationId, satelliteImage, onSatelliteError, openAnalyzer }) {
+  const hardware = (kind, label, title, subtitle, color, arrow, downArrow, extra = null) => (
     <div className={`flow-node ${rfState.locked ? 'active' : ''}`} data-arrow={arrow} data-down-arrow={downArrow}>
       <FlowHardwareIcon kind={kind} color={color} label={label} />
       <div className="n-title">{title}</div><div className="n-sub">{subtitle}</div>
+      {extra}
     </div>
   );
-  const monitor = (channel, isX, points) => (
-    <button type="button" className="sat-flow-monitor" data-arrow="→" data-down-arrow="↓" onClick={openAnalyzer} aria-label={`Open ${isX ? 'X-band' : 'S-band'} receiver in Signal Analyzer`}>
-      <div className="sat-flow-monitor-header"><strong>{isX ? 'BASEBAND' : 'TT&C'}</strong><span>{channel.mod} · {channel.freq} MHz</span></div>
-      <div className="sat-flow-monitor-charts">
-        <svg className="sat-flow-mini-iq" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Simulated ${isX ? 'X-band' : 'S-band'} IQ constellation`}>
-          <path d="M0 50 H100 M50 0 V100" stroke="#63748d" strokeWidth="1"/><circle cx="50" cy="50" r="35" fill="none" stroke="#607580" strokeDasharray="4 4"/>
-          {rfState.locked && points.map(([cx,cy],i)=><circle key={i} cx={cx} cy={cy} r="4" fill={isX?'#ffcc00':'#00eaff'}/>)}
-        </svg>
-        <svg className="sat-flow-mini-spectrum" preserveAspectRatio="none" viewBox="0 0 100 100" role="img" aria-label="Simulated receiver spectrum">
-          <title>{`SIM · ${channel.mod} · SPAN ${(channel.bw * 2.5).toFixed(3)} MHz`}</title>
-          <path d="M0 25H100 M0 50H100 M0 75H100 M25 0V100 M50 0V100 M75 0V100" stroke="#324251" strokeWidth=".6" fill="none"/>
-          <path d={miniSpectrumPath(channel,isX)} fill="none" stroke={rfState.eligible?(isX?'#ffcc00':'#00eaff'):'#7b8e9d'} strokeWidth="1.7"/>
-        </svg>
-      </div>
-    </button>
-  );
+  const constellationPoints = channel => channel.mod.includes('BPSK')
+    ? [[22,50],[78,50]]
+    : [[22,22],[78,22],[22,78],[78,78]];
+  const miniSpectrumPath = isX => {
+    if (!rfState.eligible) return 'M0 91 L8 89 L16 92 L24 90 L32 93 L40 90 L48 92 L56 89 L64 92 L72 90 L80 93 L88 90 L100 92';
+    if (!rfState.locked) return isX
+      ? 'M0 92 L28 92 C38 91 42 70 50 66 C58 70 62 91 72 92 L100 92'
+      : 'M0 94 L40 94 C45 93 47 72 50 62 C53 72 55 93 60 94 L100 94';
+    return isX
+      ? 'M0 92 L24 92 C34 92 38 36 50 28 C62 36 66 92 76 92 L100 92'
+      : 'M0 94 L42 94 C46 94 47.5 28 50 12 C52.5 28 54 94 58 94 L100 94';
+  };
+  const monitor = (channel, isX) => {
+    const points = constellationPoints(channel);
+    return (
+      <button type="button" className="sat-flow-monitor" data-arrow="→" data-down-arrow="↓" onClick={openAnalyzer} aria-label={`Open ${isX ? 'X-band' : 'S-band'} receiver in Signal Analyzer`}>
+        <div className="sat-flow-monitor-header"><strong>{isX ? 'BASEBAND' : 'TT&C'}</strong><span>{channel.mod} · IF {channel.freq} MHz</span></div>
+        <div className="sat-flow-monitor-charts">
+          <svg className="sat-flow-mini-iq" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Simulated ${isX ? 'X-band' : 'S-band'} IQ constellation`}>
+            <path d="M0 50 H100 M50 0 V100" stroke="#63748d" strokeWidth="1"/><circle cx="50" cy="50" r="35" fill="none" stroke="#607580" strokeDasharray="4 4"/>
+            {rfState.locked && points.map(([cx,cy],i)=><circle key={i} cx={cx} cy={cy} r="4" fill={isX?'#ff6666':'#00eaff'}/>)}
+          </svg>
+          <svg className="sat-flow-mini-spectrum" preserveAspectRatio="none" viewBox="0 0 100 100" role="img" aria-label="Simulated receiver spectrum">
+            <title>{`SIM · ${channel.mod} · ${isX ? 'X-BAND PAYLOAD' : 'S-BAND TM'}`}</title>
+            <path d="M0 25H100 M0 50H100 M0 75H100 M25 0V100 M50 0V100 M75 0V100" stroke="#324251" strokeWidth=".6" fill="none"/>
+            <path d={miniSpectrumPath(isX)} fill="none" stroke={rfState.eligible?(isX?'#ffcc00':'#00eaff'):'#7b8e9d'} strokeWidth="1.7"/>
+          </svg>
+        </div>
+      </button>
+    );
+  };
   return <div className="sat-flow-layout">
-    <div className="sat-flow-spacecraft"><span>SPACE ↕ GROUND<br/>SIM PRESETS</span><img src={satelliteImage} onError={onSatelliteError} alt="Satellite"/><span>S-BAND ⇄ TT&C<br/>X-BAND → PAYLOAD</span></div>
+    <div className="sat-flow-spacecraft">
+      <span>S-BAND TM ↓<br/>TC ↑ · SIM</span>
+      <img src={satelliteImage} onError={onSatelliteError} alt="Satellite"/>
+      <span>X-BAND PAYLOAD ↓<br/>GROUND PROCESSING</span>
+    </div>
     <div className="sat-flow-lanes" data-active={rfState.locked}>
       <section className="sat-flow-lane" style={{'--lane-color':'var(--cyan)'}} aria-label="S-band signal path">
         <div className="sat-flow-lane-heading"><span><b>S-BAND</b> · TM ↓ {satSpecs.tmFreq}</span><span>TC ↑ {satSpecs.tcFreq}</span><span>IF 70 MHz</span></div>
         <div className="sat-flow-chain">
           {hardware('antenna','S-band antenna',stationId,'S-BAND ANTENNA','var(--cyan)','⇄','↕')}
-          {hardware('converter','S-band converter','UP/DOWN','S-BAND CONVERTER','var(--cyan)','⇄','↕')}
+          {hardware('converter','S-band converter','UP/DOWN','S-BAND CONVERTER','var(--cyan)','⇄','↕', <span className="sat-flow-node-tag">HPA · TC UP</span>)}
           {hardware('router','TT and C baseband','TT&C','BASEBAND SYSTEM','var(--gold)','⇄','↕')}
-          {monitor(rfProfile.sBand,false,sPoints)}
+          {monitor(rfProfile.sBand,false)}
         </div>
       </section>
       <section className="sat-flow-lane" style={{'--lane-color':'var(--green)'}} aria-label="X-band signal path">
@@ -5660,7 +5792,7 @@ function SatSignalFlow({ rfState, rfProfile, satSpecs, stationId, miniSpectrumPa
           {hardware('antenna','X-band antenna',stationId,'X-BAND ANTENNA','var(--green)','→','↓')}
           {hardware('tuner','Downconverter','X-BAND',<>DOWN<wbr/>CONVERTER</>,'#00aaff','→','↓')}
           {hardware('baseband','Baseband demodulator','BASEBAND','DEMODULATOR','var(--red)','→','↓')}
-          {monitor(rfProfile.xBand,true,xPoints)}
+          {monitor(rfProfile.xBand,true)}
         </div>
       </section>
     </div>
@@ -5796,6 +5928,39 @@ const SAT_WORKSPACE_CSS = `
   }
   .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:nth-child(3) > div:last-child { gap:5px!important; }
   .sat-tool-surface[data-host="quad"][data-tool="diagram"] .flow-content { overflow:hidden!important; }
+  /* TSX SIGNAL FLOW MULTI-VIEW FIX: preserve the LOCKED Standalone geometry.
+     The quad view scales the complete Signal Flow body uniformly instead of
+     moving individual RF labels/HPA elements, so all lanes keep their spacing. */
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .diagram-modal {
+    --sat-flow-quad-scale:.82;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .diagram-modal > .modal-header + div {
+    position:absolute!important; left:0!important; top:40px!important;
+    width:121.951%!important; height:calc(121.951% - 48.78px)!important;
+    flex:none!important; transform:scale(var(--sat-flow-quad-scale))!important;
+    transform-origin:top left!important; overflow:visible!important;
+  }
+  /* 4-UP ONLY: use the dedicated responsive Signal Flow renderer at native cell size.
+     Focus/expanded Multi-View and Classic/Alone keep the locked engineering blueprint. */
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .diagram-modal.diagram-quad-compact > .modal-header + div {
+    position:relative!important; left:auto!important; top:auto!important;
+    width:100%!important; height:auto!important; min-height:0!important;
+    flex:1 1 0!important; transform:none!important; transform-origin:center!important;
+    overflow:hidden!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .diagram-modal.diagram-quad-compact .sat-flow-layout {
+    padding:1px 8px 8px!important; gap:5px!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .diagram-modal.diagram-quad-compact .sat-flow-chain .flow-node {
+    aspect-ratio:auto!important; border-width:1px!important; border-color:var(--lane-color)!important;
+  }
+  .sat-tool-surface[data-host="quad"][data-tool="diagram"] .diagram-modal.diagram-quad-compact .sat-flow-node-tag {
+    display:inline-flex; align-items:center; justify-content:center; margin-top:2px;
+    padding:1px 4px; border:1px solid rgba(255,204,0,.72); border-radius:3px;
+    color:#ffe66a; background:rgba(255,204,0,.07); white-space:nowrap;
+    font:900 calc(clamp(8px,.95cqw,11px) * var(--sat-text-scale,1))/1.05 Rajdhani,sans-serif;
+    letter-spacing:.3px;
+  }
   /* MULTI-VIEW FINAL PHASE — presentation dashboard only.
      Protected full-size tools remain untouched; every rule below applies ONLY in 4-UP. */
   .sat-globe-host[data-quad="true"],
@@ -5812,7 +5977,13 @@ const SAT_WORKSPACE_CSS = `
 
   /* Keep the 4-UP dashboard clean: detailed controls stay available after Expand. */
   .sat-tool-surface[data-host="quad"] .sat-popout-btn { display:none!important; }
-  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-audio { display:none!important; }
+  /* TSX FINAL POLISH: Radar keeps a compact mute control in 4-UP. The button
+     uses the existing global isMuted state; no new audio state or radar geometry. */
+  .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-radar-audio {
+    display:flex!important; align-items:center!important; justify-content:center!important;
+    width:30px!important; min-width:30px!important; height:30px!important; min-height:30px!important;
+    padding:0!important; font-size:14px!important; line-height:1!important; letter-spacing:0!important;
+  }
   .sat-tool-surface[data-host="quad"][data-tool="radar"] .sat-visual-actions .modal-close-btn:last-child,
   .sat-tool-surface[data-host="quad"][data-tool="analyzer"] .sat-visual-actions .modal-close-btn:last-child,
   .sat-tool-surface[data-host="quad"][data-tool="diagram"] .modal-header > div:nth-child(3) > div:last-child .modal-close-btn:last-child {
@@ -6133,12 +6304,19 @@ const SAT_WORKSPACE_CSS = `
   .ui-layer:not([data-master-responsive="true"]) .left-panel::-webkit-scrollbar,
   .ui-layer:not([data-master-responsive="true"]) .right-panel::-webkit-scrollbar { display:none!important; }
 
+  /* TSX browser-only bottom safety: keep the locked Browser layout unchanged,
+     but lift the final Weather card enough to preserve its cyan bottom border. */
+  .ui-layer:not([data-main-fullscreen="true"]):not([data-master-responsive="true"]) .sat-hud-weather {
+    transform:translateY(-8px)!important;
+  }
+
+  /* TSX FINAL POLISH 2026-10-26: Fullscreen vertical fit also applies to compact TV CSS viewports; narrow/portrait remains paged. */
   /* FULL SCREEN ONLY — Browser mode is intentionally untouched.
      Native Fullscreen and browser/F11 fullscreen-like viewports share the same rule.
      Both HUD columns consume the exact same remaining height and distribute their
      existing cards between one top baseline and one bottom baseline. */
-  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .left-panel,
-  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .right-panel {
+  .ui-layer[data-main-fullscreen="true"]:not([data-hud-tier="narrow"]) .left-panel,
+  .ui-layer[data-main-fullscreen="true"]:not([data-hud-tier="narrow"]) .right-panel {
     display:flex!important;
     flex-direction:column!important;
     flex:1 1 0!important;
@@ -6149,26 +6327,27 @@ const SAT_WORKSPACE_CSS = `
     padding-bottom:0!important;
     overflow-y:hidden!important;
   }
-  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .sat-hud-status,
-  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .sat-hud-credits {
+  .ui-layer[data-main-fullscreen="true"]:not([data-hud-tier="narrow"]) .sat-hud-status,
+  .ui-layer[data-main-fullscreen="true"]:not([data-hud-tier="narrow"]) .sat-hud-credits {
     margin-top:0!important;
   }
 
   /* FULL SCREEN ONLY — SatHudPages is the real direct child of each side panel.
      Stretch that wrapper and distribute its section pages, otherwise space-between on
      left/right-panel sees only one child and leaves a large unused band at the bottom. */
-  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .left-panel > .sat-hud-pages,
-  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .right-panel > .sat-hud-pages {
+  .ui-layer[data-main-fullscreen="true"]:not([data-hud-tier="narrow"]) .left-panel > .sat-hud-pages,
+  .ui-layer[data-main-fullscreen="true"]:not([data-hud-tier="narrow"]) .right-panel > .sat-hud-pages {
     display:flex!important;
     flex-direction:column!important;
     flex:1 1 0!important;
     width:100%!important;
     height:100%!important;
-    min-height:0!important;
+    min-height:100%!important;
+    align-self:stretch!important;
     justify-content:space-between!important;
     gap:clamp(10px,1.15vh,16px)!important;
   }
-  .ui-layer[data-main-fullscreen="true"]:not([data-master-responsive="true"]) .sat-hud-pages > .sat-hud-page {
+  .ui-layer[data-main-fullscreen="true"]:not([data-hud-tier="narrow"]) .sat-hud-pages > .sat-hud-page {
     display:block!important;
     flex:0 0 auto!important;
     width:100%!important;
@@ -6256,6 +6435,56 @@ function SatToolSurface({ id, viewer, quad, rect, hidden, children }) {
   return <div className="sat-tool-placeholder" data-sat-home={id} ref={homeRef}>{createPortal(children, container, id)}</div>;
 }
 
+
+// TSX FINAL POLISH 2026-10-26: self-contained HUD weather glyphs.
+// These SVGs remove the runtime dependency on api.iconify.design so the TSX demo
+// remains visually complete even when the venue network is unavailable.
+function HudWeatherIcon({ kind = 'unknown' }) {
+  const common = {
+    width: 'clamp(30px, 3vw, 40px)',
+    height: 'clamp(30px, 3vw, 40px)',
+    display: 'block',
+    overflow: 'visible'
+  };
+  if (kind === 'clear') {
+    return <svg viewBox="0 0 64 64" role="img" aria-label="Clear" style={{ ...common, color: '#00ff66', filter: 'drop-shadow(0 0 8px rgba(0,255,102,0.75))' }}>
+      <circle cx="32" cy="32" r="10" fill="none" stroke="currentColor" strokeWidth="4" />
+      <g stroke="currentColor" strokeWidth="4" strokeLinecap="round">
+        <path d="M32 7v8M32 49v8M7 32h8M49 32h8" />
+        <path d="M14.3 14.3l5.7 5.7M44 44l5.7 5.7M49.7 14.3L44 20M20 44l-5.7 5.7" />
+      </g>
+    </svg>;
+  }
+  if (kind === 'partly') {
+    return <svg viewBox="0 0 64 64" role="img" aria-label="Partly Cloudy" style={{ ...common, filter: 'drop-shadow(0 0 8px rgba(255,204,0,0.55))' }}>
+      <g stroke="#ffcc00" strokeWidth="3.5" strokeLinecap="round" fill="none">
+        <circle cx="22" cy="21" r="8" />
+        <path d="M22 6v5M22 31v5M7 21h5M32 21h5M11.4 10.4l3.6 3.6M29 28l3.6 3.6M32.6 10.4L29 14M15 28l-3.6 3.6" />
+      </g>
+      <g fill="#f8fafc">
+        <circle cx="26" cy="39" r="9" />
+        <circle cx="37" cy="34" r="12" />
+        <circle cx="49" cy="40" r="8" />
+        <rect x="18" y="39" width="39" height="10" rx="5" />
+      </g>
+    </svg>;
+  }
+  if (kind === 'overcast') {
+    return <svg viewBox="0 0 64 64" role="img" aria-label="Overcast" style={{ ...common, filter: 'drop-shadow(0 0 5px rgba(255,255,255,0.25))' }}>
+      <g fill="#94a3b8" opacity="0.72">
+        <circle cx="22" cy="28" r="8" /><circle cx="32" cy="24" r="10" /><circle cx="43" cy="29" r="7" /><rect x="15" y="28" width="35" height="9" rx="4.5" />
+      </g>
+      <g fill="#f8fafc">
+        <circle cx="25" cy="41" r="8" /><circle cx="36" cy="36" r="11" /><circle cx="48" cy="42" r="8" /><rect x="18" y="41" width="38" height="10" rx="5" />
+      </g>
+    </svg>;
+  }
+  return <svg viewBox="0 0 64 64" role="img" aria-label="Weather unavailable" style={{ ...common, opacity: 0.5 }}>
+    <g fill="#94a3b8">
+      <circle cx="23" cy="37" r="9" /><circle cx="34" cy="31" r="12" /><circle cx="47" cy="38" r="8" /><rect x="15" y="37" width="40" height="10" rx="5" />
+    </g>
+  </svg>;
+}
 
 // Pagination changes visibility only; the original controls keep their React state.
 function SatHudPages({ active, labels, children }) {
@@ -6516,10 +6745,17 @@ function rfSpectrumPowerDb(channel, offsetMHz, state, simulatedTimeMs, isXBand) 
     let shapeAmp = 0;
     if (xNorm <= 1.0) {
       shapeAmp = Math.pow(Math.max(0, Math.cos((xNorm * Math.PI) / 2)), 0.6);
-    } else if (xNorm < 1.8) {
-      shapeAmp = Math.abs(Math.sin((xNorm - 1.0) * Math.PI)) * 0.30 / Math.max(xNorm, 1e-9);
-    } else if (xNorm < 2.6) {
-      shapeAmp = Math.abs(Math.sin((xNorm - 1.8) * Math.PI)) * 0.15 / Math.max(xNorm, 1e-9);
+    } else if (xNorm < 1.85) {
+      // Smooth first sidelobe: sin^2 starts and ends with zero slope, avoiding the
+      // synthetic-looking hook/kink where the lobe meets the analyzer noise floor.
+      const u = (xNorm - 1.0) / 0.85;
+      const lobe = Math.pow(Math.sin(Math.PI * u), 2);
+      shapeAmp = lobe * 0.24 / Math.pow(Math.max(xNorm, 1), 0.40);
+    } else if (xNorm < 2.55) {
+      // Lower second sidelobe with the same C1-like visual transition.
+      const u = (xNorm - 1.85) / 0.70;
+      const lobe = Math.pow(Math.sin(Math.PI * u), 2);
+      shapeAmp = lobe * 0.10 / Math.pow(Math.max(xNorm, 1), 0.50);
     }
 
     // Reference trace noise was 0.02..0.08 plus a small per-pixel vertical jitter.
@@ -6531,13 +6767,26 @@ function rfSpectrumPowerDb(channel, offsetMHz, state, simulatedTimeMs, isXBand) 
       ? 0
       : (rfVisualNoise(tick * 1.37 + effectiveOffset * 91.7 + 211) - 0.5) * 0.008;
 
-    // Acquisition gain follows acquisition progress only; remove periodic amplitude
-    // breathing so the analyzer behaves like a stable bench instrument.
-    const acquisitionGain = state.locked
+    // Acquisition envelope: just above AOS the payload should remain close to the
+    // noise floor, then rise progressively as AFC/AGC/carrier recovery converges.
+    // Keep a small acquisition-only amplitude flutter; it decays continuously and
+    // disappears at RF LOCK so the locked analyzer trace remains bench-stable.
+    const acquisitionBaseGain = state.locked
       ? 1
-      : Math.max(0, Math.min(1, 0.35 + 0.65 * progress));
+      : Math.max(0, Math.min(1, 0.055 + 0.945 * Math.pow(progress, 1.35)));
+    const acquisitionFlutter = state.locked
+      ? 1
+      : 1 + residual * (
+          0.13 * Math.sin(t * 2.05 + 0.45) +
+          0.055 * Math.sin(t * 4.60 + 1.30)
+        );
+    const acquisitionGain = Math.max(0, Math.min(1, acquisitionBaseGain * acquisitionFlutter));
     const signalAmp = shapeAmp * acquisitionGain;
-    const totalAmp = Math.max(0, Math.min(1, Math.max(noiseAmp, signalAmp) + jitterAmp * (0.25 + 0.75 * shapeAmp)));
+    // Smoothly blend the deterministic floor and modeled signal instead of using a
+    // hard Math.max() corner. p=8 keeps the stronger component dominant while
+    // removing the visible elbow at the sidelobe/noise transition.
+    const mergedAmp = Math.pow(Math.pow(noiseAmp, 8) + Math.pow(signalAmp, 8), 1 / 8);
+    const totalAmp = Math.max(0, Math.min(1, mergedAmp + jitterAmp * (0.25 + 0.75 * shapeAmp)));
 
     // Old canvas Y was linear in amplitude. Because the present Y axis is linear
     // in dB, a linear amplitude->display-dB mapping reproduces that silhouette.
@@ -6585,7 +6834,12 @@ function rfSpectrumPowerDb(channel, offsetMHz, state, simulatedTimeMs, isXBand) 
   const receiverEnvelope = Math.exp(-0.10 * Math.pow(ax, 1.35));
   psdLinear *= receiverEnvelope;
 
-  const peakDbm = referenceDbm - 5 - (1 - state.strength) * 12 - (state.locked ? 0 : 9 * residual);
+  // S-BAND acquisition dynamics only: below the 3 deg lock threshold, keep the
+  // carrier close to the analyzer noise floor just after AOS, then let it emerge
+  // progressively as AFC/AGC/carrier recovery converges. At RF LOCK this term is
+  // exactly 0 dB, so the already-approved locked QPSK spectrum shape is unchanged.
+  const acquisitionSuppressionDb = state.locked ? 0 : 36 * Math.pow(residual, 1.75);
+  const peakDbm = referenceDbm - 5 - (1 - state.strength) * 12 - (state.locked ? 0 : 9 * residual) - acquisitionSuppressionDb;
   let signalPower = Math.pow(10, peakDbm / 10) * psdLinear;
 
   // Small in-band texture represents modulation statistics / detector variance,
@@ -7749,13 +8003,14 @@ useEffect(() => {
  
   const toggleWorkspacePanel = (id) => toggleMaximize(id);
 
+  // POPUP FOCUS HOTFIX (2026-10-26): z-order is direct user feedback and must never
+  // be scheduled as a low-priority transition. A pointer/click now promotes the
+  // selected popup in the same discrete event instead of waiting behind Globe/RF renders.
   const bringToFront = (winName) => {
-    startTransition(() => {
-      setWindowZ(prev => {
-        const maxZ = Math.max(workspaceMode === 'quad' ? 20020 : 9999, ...Object.values(prev).map(Number));
-        if (prev[winName] === maxZ) return prev; 
-        return { ...prev, [winName]: maxZ + 1 }; 
-      });
+    setWindowZ(prev => {
+      const maxZ = Math.max(workspaceMode === 'quad' ? 20020 : 9999, ...Object.values(prev).map(Number));
+      if (prev[winName] === maxZ) return prev;
+      return { ...prev, [winName]: maxZ + 1 };
     });
   };
 
@@ -8306,11 +8561,52 @@ const tleUpdateAgeMs = tleUpdatedAtMs ? Math.max(0, Date.now() - tleUpdatedAtMs)
 const tleUpdateAgeLabel = tleUpdateAgeMs === null ? 'N/A' : tleUpdateAgeMs < 60000 ? '<1 min ago' : tleUpdateAgeMs < 3600000 ? `${Math.floor(tleUpdateAgeMs / 60000)} min ago` : tleUpdateAgeMs < 86400000 ? `${Math.floor(tleUpdateAgeMs / 3600000)}h ${Math.floor((tleUpdateAgeMs % 3600000) / 60000)}m ago` : `${Math.floor(tleUpdateAgeMs / 86400000)}d ${Math.floor((tleUpdateAgeMs % 86400000) / 3600000)}h ago`;
 const tleUpdatedLabel = tleUpdatedAtMs ? new Date(tleUpdatedAtMs).toISOString().replace('T',' ').slice(0,19) + ' UTC' : 'N/A';
 const tleLastSyncTimeLabel = tleUpdatedAtMs ? new Date(tleUpdatedAtMs).toISOString().slice(11,19) + ' UTC' : 'N/A';
+const tleCompactAgeLabel = tleUpdateAgeLabel === 'N/A' ? 'N/A' : tleUpdateAgeLabel.replace(/ ago$/, '');
 const tleSyncStatusLabel = isUpdatingTle ? 'SYNCING' : tleSource.includes('Failed') ? 'FAILED' : tleUpdatedAtMs ? 'SYNCED' : 'NO SYNC';
 const tleSyncStatusColor = isUpdatingTle ? 'var(--cyan)' : tleSource.includes('Failed') ? 'var(--red)' : tleUpdatedAtMs ? 'var(--green)' : 'var(--gold)';
+
+// TV/F11 engineering telemetry is derived from the same TLE + SGP4 state as the main HUD.
+// Throttle the station-relative range-rate/Doppler calculation to 4 Hz; the browser HUD itself remains unchanged.
+const engineeringTelemetryTick = Math.floor(simulatedTimeMs / 250);
+const engineeringData = useMemo(() => {
+  const tleEngineering = selectedTlePair ? getTleEngineeringData(selectedTlePair.line1, selectedTlePair.line2) : null;
+  const rangeRateKmS = targetSatrec ? getRangeRateKmS(engineeringTelemetryTick * 250, targetSatrec, activeStation) : null;
+  const sCarrierMHz = getDownlinkCarrierMHz(targetConfig.telemetry, 's');
+  const xCarrierMHz = getDownlinkCarrierMHz(targetConfig.payload, 'x');
+  return {
+    noradId: selectedCatnr || '—',
+    cosparId: tleEngineering?.cosparId || '—',
+    apogeeKm: tleEngineering?.apogeeKm ?? null,
+    perigeeKm: tleEngineering?.perigeeKm ?? null,
+    periodMin: tleEngineering?.periodMin ?? null,
+    rangeRateKmS,
+    sDopplerKhz: getDopplerShiftKhz(sCarrierMHz, rangeRateKmS),
+    xDopplerKhz: getDopplerShiftKhz(xCarrierMHz, rangeRateKmS)
+  };
+}, [engineeringTelemetryTick, targetSatrec, selectedTlePair?.line1, selectedTlePair?.line2, selectedCatnr, targetConfig.telemetry, targetConfig.payload, activeStation.id]);
+
 const linkActive = targetData && targetData.elevationDeg >= stationMask;
 const rfProfile = useMemo(() => getRfProfile(selectedCatnr, targetConfig), [selectedCatnr, targetConfig]);
 const rfState = getRfState(targetData, stationMask);
+
+// TV/F11 operational summary: derived only from existing SAT-Orbit state.
+// No extra network source and no control behavior is changed.
+const rangeTrendLabel = !Number.isFinite(engineeringData.rangeRateKmS)
+  ? 'N/A'
+  : Math.abs(engineeringData.rangeRateKmS) < 0.05 ? 'STATIONARY'
+  : engineeringData.rangeRateKmS < 0 ? 'APPROACHING' : 'RECEDING';
+const passPhaseLabel = !targetData
+  ? 'NO TRACK'
+  : !Number.isFinite(engineeringData.rangeRateKmS)
+    ? (rfState.visible ? 'IN PASS' : 'OFF PASS')
+    : Math.abs(engineeringData.rangeRateKmS) < 0.05
+      ? (rfState.visible ? 'CULMINATION' : 'OFF PASS')
+      : rfState.visible
+        ? (engineeringData.rangeRateKmS < 0 ? 'INBOUND PASS' : 'OUTBOUND PASS')
+        : (engineeringData.rangeRateKmS < 0 ? 'PRE-AOS' : 'POST-LOS');
+const visibilityLabel = rfState.eligible ? 'ABOVE MASK' : rfState.visible ? 'BELOW MASK' : 'BELOW HORIZON';
+const visibilityColor = rfState.eligible ? 'var(--green)' : rfState.visible ? 'var(--gold)' : 'var(--red)';
+const trackModeLabel = cameraMode === 'TRACKING' ? 'TARGET LOCK' : 'FREE LOOK';
 
 // =========================================================================
 // 📍 GISTDA ANTENNA BRIDGE v1.4 - MOUNT POINT
@@ -9243,7 +9539,7 @@ const dayNightOverlay2D = useMemo(() => {
 }, [realtimeSun, currentSunPos, speedMult, mapThemeIdx]);
 
 // 📍 ฟันธง: สร้าง State ควบคุม SPAN และปุ่ม เปิด-ปิด กราฟ
-const [xBandSpan, setXBandSpan] = useState(500); 
+const [xBandSpan, setXBandSpan] = useState(1000); // TSX TV default: wider engineering view 
 const [sBandSpan, setSBandSpan] = useState(20);
 const [showXBand, setShowXBand] = useState(true);
 const [showSBand, setShowSBand] = useState(true);
@@ -9332,10 +9628,11 @@ const [diagramPos, setDiagramPos] = useState(() => ({ x: Math.max(0, window.inne
 const [isDraggingDiagram, setIsDraggingDiagram] = useState(false);
 const dragDiagramRef = useRef({ startX: 0, startY: 0, initX: 0, initY: 0 });
 
-// 📍 WOW Feature 2 & 3: AUTO-PILOT & DOWNLINK MATRIX STATE
+// 📍 WOW Feature 2 & 3: AUTO-EARTH (visual rotation only) & DOWNLINK MATRIX STATE
+// Legacy variable name is retained to minimize TSX-release risk; it now represents
+// AUTO-EARTH only and must not control simulation time, popup tours or pass sequencing.
 const [isAutoPilot, setIsAutoPilot] = useState(false);
 const matrixRef = useRef(null);
-const autoPilotTimer = useRef(null);
 
 // Logic ระบบลากหน้าต่าง Diagram
 const handleDiagramMouseDown = (e) => { if (workspaceMode !== 'classic' || toolWindowsRef.current.diagram || e.target.closest('button,input,select')) return; setIsDraggingDiagram(true); bringToFront('diagram'); dragDiagramRef.current = { startX: e.clientX, startY: e.clientY, initX: diagramPos.x, initY: diagramPos.y }; };
@@ -9346,48 +9643,15 @@ useEffect(() => {
   return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
 }, [isDraggingDiagram]);
 
-// Logic Auto-Pilot 🤖
-const autoPilotRuntimeRef = useRef({});
-autoPilotRuntimeRef.current = { simulatedTimeMs, nextPassTimestamp, workspaceMode, clockMode, isPlaying };
-
+// AUTO-EARTH: visual-only globe rotation. It must never change the clock, seek
+// to a pass, or open/close any tool window. Target Lock can still turn it OFF.
 useEffect(() => {
-  if (autoPilotTimer.current) {
-    clearInterval(autoPilotTimer.current);
-    autoPilotTimer.current = null;
-  }
-
-  if (isAutoPilot) {
-    if (globeRef.current) globeRef.current.controls().autoRotate = true;
-    let windowCycle = 0;
-    autoPilotTimer.current = setInterval(() => {
-      const runtime = autoPilotRuntimeRef.current;
-      if (!runtime.isPlaying || runtime.clockMode !== 'DEMO') return;
-      // Preserve the user's simultaneous views in Quad or on external monitors.
-      if (runtime.workspaceMode === 'classic' && Object.keys(toolWindowsRef.current).length === 0) {
-        windowCycle++;
-        if (windowCycle % 3 === 0) { setIsRadarOpen(true); setIsAnalyzerOpen(false); setIsDiagramOpen(false); }
-        else if (windowCycle % 3 === 1) { setIsRadarOpen(false); setIsAnalyzerOpen(true); setIsDiagramOpen(false); }
-        else { setIsRadarOpen(false); setIsAnalyzerOpen(false); setIsDiagramOpen(true); }
-      }
-      const nextPass = runtime.nextPassTimestamp;
-      if (nextPass && nextPass.time) {
-        const timeToAos = nextPass.time - runtime.simulatedTimeMs;
-        if (timeToAos > 120000) {
-          manualSeekRevisionRef.current += 1;
-          setSimulatedTimeValue(nextPass.time - 30000);
-          setCustomAlert({ show: true, message: 'AUTO-PILOT: TIME TRAVEL INITIATED 🚀', type: 'success' });
-        }
-      }
-    }, 8000);
-  } else if (globeRef.current) {
-    globeRef.current.controls().autoRotate = false;
-  }
-
+  const controls = globeRef.current?.controls?.();
+  if (!controls) return;
+  controls.autoRotate = Boolean(isAutoPilot);
   return () => {
-    if (autoPilotTimer.current) {
-      clearInterval(autoPilotTimer.current);
-      autoPilotTimer.current = null;
-    }
+    const currentControls = globeRef.current?.controls?.();
+    if (currentControls) currentControls.autoRotate = false;
   };
 }, [isAutoPilot]);
 
@@ -9395,6 +9659,9 @@ useEffect(() => {
 const autoSnapRef = useRef({});
 const missionJumpTimerRef = useRef(null);
 const missionSequencerStateRef = useRef({});
+// TSX safety gate: the legacy automatic pass sequencer is intentionally disabled.
+// AUTO-EARTH is visual-only and cannot arm this subsystem.
+const missionAutoSequencerEnabled = false;
 missionSequencerStateRef.current = { validationMode, isPlaying, speedMult, selectedCatnr, stationId: activeStation.id, clockMode, isAutoPilot };
 
 useEffect(() => {
@@ -9410,8 +9677,9 @@ useEffect(() => {
   const activeRealPass = passSchedule.find(p => now >= p.aosTime && now <= p.losTime);
 
   // LIVE follows the clock in one place. Manual SIM is never intercepted at AOS.
-  // Automatic pass jumps belong only to the user-enabled AUTO-EARTH/DEMO mode.
-  const isSimulating = clockMode === 'DEMO' && isAutoPilot && speedMult === 1 && isPlaying;
+  // Legacy automatic pass jumps remain preserved for future work, but the TSX safety
+  // gate below keeps them disabled and fully independent from AUTO-EARTH.
+  const isSimulating = missionAutoSequencerEnabled && clockMode === 'DEMO' && isAutoPilot && speedMult === 1 && isPlaying;
 
   if (!validationMode && isSimulating) {
     // 📍 ค้นหาว่าเพิ่งผ่าน LOS ของ Pass ปัจจุบันมา 10 ถึง 12 วินาทีหรือไม่ (หน่วง 10 วิเพื่อให้ผู้ชมเห็นจังหวะสัญญาณหลุด)
@@ -10243,9 +10511,7 @@ return (
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Telemetry (TT&C):</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.telemetry || 'N/A'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Payload Downlink:</span><strong style={{ color: 'var(--cyan)', textShadow: '0 0 5px rgba(0, 234, 255, 0.4)', textAlign: 'right' }}>{targetConfig.payload || 'N/A'}</strong></li>
                 <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Epoch:</span><strong style={{ color: '#4ade80', fontWeight: '900', textAlign: 'right', textShadow: '0 0 8px rgba(74, 222, 128, 0.4)' }}>{tles[selectedCatnr] ? tles[selectedCatnr].line1.substring(18, 32) : '---'}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Last TLE Sync:</span><strong title={tleUpdatedLabel} style={{ color: tleUpdatedAtMs ? 'var(--green)' : 'var(--gold)', fontWeight: '900', textAlign: 'right', fontSize: 'clamp(10px,0.82vw,12px)', fontVariantNumeric: 'tabular-nums' }}>{tleLastSyncTimeLabel}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Sync Age:</span><strong style={{ color: tleUpdatedAtMs ? 'var(--cyan)' : 'var(--gold)', fontWeight: '900', textAlign: 'right' }}>{tleUpdateAgeLabel}</strong></li>
-                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Sync Status:</span><strong style={{ color: tleSyncStatusColor, fontWeight: '900', textAlign: 'right', letterSpacing: '.7px' }}>{tleSyncStatusLabel}</strong></li>
+                <li><span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Last TLE Sync:</span><strong title={`${tleUpdatedLabel} · ${tleUpdateAgeLabel}`} style={{ color: tleUpdatedAtMs ? 'var(--green)' : 'var(--gold)', fontWeight: '900', textAlign: 'right', fontSize: 'clamp(10px,0.82vw,12px)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{tleLastSyncTimeLabel} · {tleCompactAgeLabel}</strong></li>
                 <li className="sat-hud-tle-row">
                   <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>TLE Source:</span>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', flex: '1 1 auto', minWidth: 0 }}>
@@ -10255,7 +10521,7 @@ return (
                       fontWeight: '900', textAlign: 'right', textShadow: 'none', flex: '1 1 auto', minWidth: 0,
                       fontSize: 'clamp(11px, 0.9vw, 13px)', whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip', lineHeight: 1.25
                     }}>
-                      {selectedTleSourceLabel}{tleSource.includes('Failed') ? ' • SYNC FAILED' : ''}{selectedTleIsStale ? ` • ${clockMode === 'LIVE' ? 'STALE' : 'EPOCH OFFSET'} ${Math.floor(selectedTleAgeDays)}d` : ''}
+                      {selectedTleSourceLabel} • {tleSyncStatusLabel}{selectedTleIsStale ? ` • ${clockMode === 'LIVE' ? 'STALE' : 'EPOCH OFFSET'} ${Math.floor(selectedTleAgeDays)}d` : ''}
                     </strong>
                     {/* 📍 ฟันธง: กู้คืนปุ่ม SYNC TLE กลับมาแล้ว! */}
                     <button 
@@ -10276,6 +10542,28 @@ return (
                   </div>
                 </li>
               </ul>
+
+              {isMainFullscreenLayout && (
+                <div className="sat-hud-engineering">
+                  <div className="sat-hud-engineering-title">ORBIT / RF ENGINEERING</div>
+                  <div className="sat-hud-engineering-grid">
+                    {[
+                      ['NORAD ID', engineeringData.noradId, false],
+                      ['COSPAR ID', engineeringData.cosparId, false],
+                      ['APOGEE', Number.isFinite(engineeringData.apogeeKm) ? `${Math.round(engineeringData.apogeeKm).toLocaleString()} km` : '—', false],
+                      ['PERIGEE', Number.isFinite(engineeringData.perigeeKm) ? `${Math.round(engineeringData.perigeeKm).toLocaleString()} km` : '—', false],
+                      ['ORBITAL PERIOD', Number.isFinite(engineeringData.periodMin) ? `${engineeringData.periodMin.toFixed(2)} min` : '—', false],
+                      ['RANGE RATE', Number.isFinite(engineeringData.rangeRateKmS) ? `${formatSigned(engineeringData.rangeRateKmS, 2)} km/s` : '—', false],
+                      ['S DOPPLER', Number.isFinite(engineeringData.sDopplerKhz) ? `${formatSigned(engineeringData.sDopplerKhz, 1)} kHz` : '—', true],
+                      ['X DOPPLER', Number.isFinite(engineeringData.xDopplerKhz) ? `${formatSigned(engineeringData.xDopplerKhz, 1)} kHz` : '—', true]
+                    ].map(([label, value, rf]) => (
+                      <div key={label} className="sat-hud-engineering-item" data-rf={rf ? 'true' : undefined} title={label === 'RANGE RATE' ? 'Negative = approaching station; positive = receding' : label.includes('DOPPLER') ? 'Calculated from station-relative range rate and configured downlink carrier' : undefined}>
+                        <span>{label}</span><strong>{value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             
         {/* 📍 ANTENNA TELEMETRY - ย้ายมาไว้ฝั่งซ้ายเหนือ LOCAL WEATHER ตาม Mission/Tracking Status */}
@@ -10352,13 +10640,13 @@ return (
                 {/* 📍 ปรับขนาดกล่องไอคอนให้สมดุล */}
                 <div style={{ flex: '0 0 auto', display: 'flex', justifyContent: 'center', alignItems: 'center', width: 'clamp(45px, 4.5vw, 60px)', height: 'clamp(45px, 4.5vw, 60px)', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}>
                   {cloudCover === null ? (
-                    <span style={{ fontSize: 'clamp(24px, 2.5vw, 32px)', filter: 'grayscale(100%)', opacity: 0.5 }}>☁️</span>
+                    <HudWeatherIcon kind="unknown" />
                   ) : cloudCover <= 30 ? (
-                    <img src="https://api.iconify.design/solar:sun-bold-duotone.svg?color=%2300ff66" alt="Clear" style={{ width: 'clamp(30px, 3vw, 40px)', height: 'clamp(30px, 3vw, 40px)', filter: 'drop-shadow(0 0 8px rgba(0,255,102,0.8))' }} />
+                    <HudWeatherIcon kind="clear" />
                   ) : cloudCover <= 70 ? (
-                    <img src="https://api.iconify.design/solar:cloud-sun-bold-duotone.svg?color=%23ffcc00" alt="Partly Cloudy" style={{ width: 'clamp(30px, 3vw, 40px)', height: 'clamp(30px, 3vw, 40px)', filter: 'drop-shadow(0 0 8px rgba(255,204,0,0.8))' }} />
+                    <HudWeatherIcon kind="partly" />
                   ) : (
-                    <img src="https://api.iconify.design/solar:clouds-bold-duotone.svg?color=%23ffffff" alt="Overcast" style={{ width: 'clamp(30px, 3vw, 40px)', height: 'clamp(30px, 3vw, 40px)', filter: 'none' }} />
+                    <HudWeatherIcon kind="overcast" />
                   )}
                 </div>
 
@@ -10459,15 +10747,11 @@ return (
                      onClick={() => {
                       const nextState = !isAutoPilot;
                       setIsAutoPilot(nextState);
-                      setClockMode(nextState ? 'DEMO' : 'SIM');
-                      if (nextState) setIsPlaying(true);
+                      // AUTO-EARTH is camera-only. Do not touch simulation time,
+                      // playback state, pass selection, or any popup/tool window.
                       if (nextState) {
                         setCameraMode('FREE LOOK');
                         isTrackingRef.current = false;
-                      }
-                      if (!nextState && globeRef.current) {
-                        globeRef.current.controls().autoRotate = false;
-                        globeRef.current.pointOfView({ lat: activeStation.lat, lng: activeStation.lng, altitude: 2.2 }, 1000);
                       }
                      }}
                      disabled={isRealtimePassLock}
@@ -10833,7 +11117,6 @@ return (
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px'
             }}>
               <span>SIMULATION STATUS</span>
-              <button className="sat-workspace-toggle sat-hud-multiview" onClick={startQuadWorkspace} title="Open Globe, Radar, Signal Flow and Analyzer together">▦ MULTI-VIEW</button>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '14px', rowGap: '6px' }}>
@@ -10843,7 +11126,17 @@ return (
                 ['MODE', (Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive) ? 'REAL-TIME' : (Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying ? 'LIVE' : 'SIM'), (Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying && linkActive) ? 'var(--green)' : (Math.abs(simulatedTimeMs - Date.now()) < 60000 && speedMult === 1 && isPlaying ? 'var(--green)' : 'var(--gold)')],
                 ['SPEED', `${speedMult}X`, 'var(--gold)'],
                 ['TLE', isUpdatingTle ? 'SYNCING' : (!tles[selectedCatnr] ? 'NO TLE' : (selectedTleIsStale ? 'STALE' : 'SYNCED')), isUpdatingTle ? 'var(--gold)' : (!tles[selectedCatnr] || selectedTleIsStale ? 'var(--red)' : 'var(--green)')],
-                ['ANTENNA', linkActive ? 'TRACKING' : 'STANDBY', linkActive ? 'var(--green)' : 'var(--gold)']
+                ['ANTENNA', linkActive ? 'TRACKING' : 'STANDBY', linkActive ? 'var(--green)' : 'var(--gold)'],
+                ...(isMainFullscreenLayout ? [
+                  ['PROPAGATOR', 'SGP4', 'var(--cyan)'],
+                  ['ORBIT DATA', selectedTleIsStale ? 'STALE TLE' : (selectedTlePair ? 'TLE ACTIVE' : 'NO TLE'), selectedTleIsStale || !selectedTlePair ? 'var(--gold)' : 'var(--green)'],
+                  ['TIME SOURCE', clockMode, clockMode === 'LIVE' ? 'var(--green)' : 'var(--gold)'],
+                  ['RF STATE', rfState.label.replace(' (SIM)', ''), rfState.color],
+                  ['PASS PHASE', passPhaseLabel, rfState.visible ? 'var(--cyan)' : 'var(--gold)'],
+                  ['VISIBILITY', visibilityLabel, visibilityColor],
+                  ['TRACK MODE', trackModeLabel, cameraMode === 'TRACKING' ? 'var(--green)' : 'var(--cyan)'],
+                  ['RANGE TREND', rangeTrendLabel, rangeTrendLabel === 'APPROACHING' ? 'var(--cyan)' : rangeTrendLabel === 'RECEDING' ? 'var(--gold)' : 'rgba(255,255,255,0.75)']
+                ] : [])
               ].map(([label, value, color]) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minWidth: 0, gap: '8px' }}>
                   <span style={{
@@ -10986,7 +11279,7 @@ return (
 
  {/* --- RADAR SKYPLOT --- */}
  {isRadarOpen && (<SatToolSurface id="radar" viewer={toolWindows.radar} quad={workspaceMode === 'quad'} rect={focusedWorkspacePanel === 'radar' ? workspaceFullRect : workspaceRects.radar} hidden={!!focusedWorkspacePanel && focusedWorkspacePanel !== 'radar'}>
-        <div className="radar-perfect-scale" onMouseDownCapture={() => startTransition(() => bringToFront('radar'))} style={{
+        <div className="radar-perfect-scale" onMouseDownCapture={() => bringToFront('radar')} style={{
           position: 'fixed', 
           top: maximizedWins.radar ? '0px' : `${radarPos.y}px`, 
           left: maximizedWins.radar ? '0px' : `${radarPos.x}px`, 
@@ -11040,7 +11333,7 @@ return (
               </div>
             </div>
             <div className="sat-visual-actions">
-              <button className="sat-radar-audio" onClick={toggleAudioMute} aria-pressed={isMuted} aria-label={isMuted?'Enable radar audio':'Mute radar audio'} style={{color:isMuted?'var(--red)':'var(--green)'}}>{isMuted?'🔇 MUTE':'🔊 AUDIO'}</button>
+              <button className="sat-radar-audio" onClick={toggleAudioMute} aria-pressed={isMuted} aria-label={isMuted?'Enable radar audio':'Mute radar audio'} style={{color:isMuted?'var(--red)':'var(--green)'}}>{workspaceMode === 'quad' ? (isMuted ? '🔇' : '🔊') : (isMuted ? '🔇 MUTE' : '🔊 AUDIO')}</button>
               {toolDetachButton('radar')}
               <button className="modal-close-btn" aria-label="Maximize Radar" onMouseDown={e=>e.stopPropagation()} onClick={()=>toggleMaximize('radar')}><SatWindowIcon kind={maximizedWins.radar || focusedWorkspacePanel === 'radar' ? 'restore' : 'maximize'} /></button>
               <button className="modal-close-btn" aria-label="Close Radar" onMouseDown={e=>e.stopPropagation()} onClick={()=>closeTool('radar')}>✕</button>
@@ -11048,7 +11341,7 @@ return (
           </div>
           <div className="sat-radar-metrics">
             <span className="sat-radar-metric-card" style={{color:rfState.locked?'var(--green)':'var(--gold)'}}><span className="sat-radar-metric-label">EL.</span><strong style={{color:rfState.locked?'var(--green)':'var(--gold)'}}>{Number.isFinite(targetData?.elevationDeg)?`${targetData.elevationDeg.toFixed(1)}°`:'N/A'}</strong></span>
-            <span className="sat-radar-metric-card" style={{color:'var(--cyan)'}}><span className="sat-radar-metric-label">MAX EL.</span><strong style={{color:'var(--cyan)'}}>{radarData.maxEl!=='N/A'?`${radarData.maxEl}°`:'N/A'}</strong></span>
+            <span className="sat-radar-metric-card" style={{color:'var(--cyan)'}}><span className="sat-radar-metric-label">AZ.</span><strong style={{color:'var(--cyan)'}}>{Number.isFinite(targetData?.azimuthDeg)?`${(((targetData.azimuthDeg % 360) + 360) % 360).toFixed(1)}°`:'N/A'}</strong></span>
           </div>
           <div className="sat-radar-plot" ref={radarContainerRef}>
           <svg width="100%" height="100%" style={{ display: 'block', position: 'absolute', inset: 0, zIndex: 10, overflow: 'visible' }}>
@@ -11195,6 +11488,7 @@ return (
           <div className="sat-radar-legend">
             <span style={{color:'#7bb1bd'}}>- - DEPARTED</span><span style={{color:'var(--gold)'}}>- - APPROACH</span><span style={{color:'var(--cyan)'}}>━━ VISIBLE</span>
           </div>
+          <span className="sat-radar-metric-card sat-radar-max-el"><span className="sat-radar-metric-label">MAX EL.</span><strong>{radarData.maxEl!=='N/A'?`${radarData.maxEl}°`:'N/A'}</strong></span>
         </div>
      </SatToolSurface>)}
 
@@ -11351,7 +11645,7 @@ return (
 
 {/* --- SIGNAL ANALYZER: SPECTRUM-ONLY INSTRUMENT VIEW --- */}
 {isAnalyzerOpen && (<SatToolSurface id="analyzer" viewer={toolWindows.analyzer} quad={workspaceMode === 'quad'} rect={focusedWorkspacePanel === 'analyzer' ? workspaceFullRect : workspaceRects.analyzer} hidden={!!focusedWorkspacePanel && focusedWorkspacePanel !== 'analyzer'}>
-        <div className="modal-box analyzer-modal" onMouseDownCapture={() => startTransition(() => bringToFront('analyzer'))} style={{
+        <div className="modal-box analyzer-modal" onMouseDownCapture={() => bringToFront('analyzer')} style={{
           position: 'fixed', top: maximizedWins.analyzer ? '0px' : `${analyzerPos.y}px`, left: maximizedWins.analyzer ? '0px' : `${analyzerPos.x}px`,
           width: maximizedWins.analyzer ? '100vw' : 'min(980px, 95vw)', height: maximizedWins.analyzer ? '100vh' : 'min(620px, 88vh)',
           minWidth: 'min(340px, 92vw)', minHeight: 'min(320px, 82vh)',
@@ -11387,7 +11681,7 @@ return (
                 return <div key={isX?'x':'s'} className="rf-spectrum-channel" style={{background:'#0b1121',border:'1px solid #223445',borderRadius:6}}>
                   <div className="rf-channel-header"><strong style={{color:isX?'#ffcc00':'#00eaff'}}>{isX?'CH1: X-BAND PAYLOAD':'CH2: S-BAND TELEMETRY'} · {channel.mod}</strong><span>{Number.isFinite(rfCenter)?`RF ${rfCenter.toFixed(rfCenter < 3000 ? 3 : 0)} MHz · `:''}IF {channel.freq.toFixed(1)} MHz</span></div>
                   <div className="rf-span-controls" style={{color:isX?'#ffcc00':'#00eaff'}}>
-                    <button type="button" title="Fit the modeled bandwidth to this spectrum" onClick={()=>setSpan(isX?Math.min(1000,Math.max(10,Math.round((channel.bw*1.6)/10)*10)):Math.min(50,Math.max(.1,Math.ceil(channel.bw*80)/10)))}>AUTO SPAN</button>
+                    <button type="button" title="Fit the modeled bandwidth to this spectrum" onClick={()=>setSpan(isX?Math.min(1000,Math.max(10,Math.ceil((channel.bw*3.2)/10)*10)):Math.min(50,Math.max(.1,Math.ceil(channel.bw*80)/10)))}>AUTO SPAN</button>
                     <input type="range" aria-label={isX?'X-band span':'S-band span'} min={isX?1:.1} max={isX?1000:50} step={isX?1:.1} value={span} onChange={e=>setSpan(Number(e.target.value))} className="sci-fi-slider" style={{'--thumb-color':isX?'#ffcc00':'#00eaff','--thumb-glow':isX?'#ffcc0077':'#00eaff77'}}/>
                     <output>{span>=1000?`${(span/1000).toFixed(3)} GHz`:`${span.toFixed(1)} MHz`}</output>
                   </div>
@@ -11464,7 +11758,7 @@ return (
 {/* 📍 WOW Feature 1: SIGNAL FLOW DIAGRAM (MASTER BLUEPRINT & COMMENTS) */}
 {/* ===================================================================== */}
 {isDiagramOpen && (<SatToolSurface id="diagram" viewer={toolWindows.diagram} quad={workspaceMode === 'quad'} rect={focusedWorkspacePanel === 'diagram' ? workspaceFullRect : workspaceRects.diagram} hidden={!!focusedWorkspacePanel && focusedWorkspacePanel !== 'diagram'}>
-  <div className="modal-box diagram-modal" onMouseDownCapture={() => startTransition(() => bringToFront('diagram'))} style={{
+  <div className={`modal-box diagram-modal${workspaceMode === 'quad' && !toolWindows.diagram && focusedWorkspacePanel !== 'diagram' ? ' diagram-quad-compact' : ''}`} onMouseDownCapture={() => bringToFront('diagram')} style={{
     position: 'fixed', 
     top: maximizedWins?.diagram ? '0px' : `${diagramPos.y}px`, 
     left: maximizedWins?.diagram ? '0px' : `${diagramPos.x}px`,
@@ -11514,7 +11808,7 @@ return (
     </div>
 
     {/* 📍 ฟันธง: แก้ hidden เป็น visible ดาวเทียมจะทะลุขอบ 3D Pop-out ทันที! */}
-    <div style={{ flex: 1, position: 'relative', overflow: 'visible' }}>
+    <div className={workspaceMode === 'quad' && !toolWindows.diagram && focusedWorkspacePanel !== 'diagram' ? 'flow-content' : undefined} style={{ flex: 1, position: 'relative', overflow: workspaceMode === 'quad' && !toolWindows.diagram && focusedWorkspacePanel !== 'diagram' ? 'hidden' : 'visible' }}>
       
       {/* 🌟 2. CSS STYLES (คุมขนาดกล่องและคลื่น) */}
       <style>{`
@@ -11639,6 +11933,23 @@ return (
         const isTheos2Flow = selectedCatnr === '58016';
         const sIfDetail = isTheos2Flow ? '2244.228 MHz → IF 70 MHz' : `RF ${satSpecs.tmFreq} → IF 70 MHz`;
         const xIfDetail = isTheos2Flow ? '8150 MHz → IF 720 MHz' : `RF ${satSpecs.xBandFreq} → IF 720 MHz`;
+        const useQuadCompactSignalFlow = workspaceMode === 'quad' && !toolWindows.diagram && focusedWorkspacePanel !== 'diagram';
+        if (useQuadCompactSignalFlow) {
+          const satelliteImage = selectedCatnr === '58016'
+            ? runtimeAsset('/textures/THEOS-2.webp')
+            : selectedCatnr === '33396'
+              ? runtimeAsset('/textures/THEOS.webp')
+              : GENERIC_LEO_SATELLITE_SVG;
+          return <SatSignalFlow
+            rfState={rfState}
+            rfProfile={rfProfile}
+            satSpecs={satSpecs}
+            stationId={activeStation.id}
+            satelliteImage={satelliteImage}
+            onSatelliteError={(e) => handleRuntimeImageError(e, GENERIC_LEO_SATELLITE_SVG)}
+            openAnalyzer={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
+          />;
+        }
         
         return (
           <>
@@ -11680,7 +11991,7 @@ return (
                 <svg x="22%" y="55%" style={{ overflow: 'visible' }}>
                   <g style={{ transform: 'scale(1.15)' }}>
                     <polygon points="-35,-20 -35,20 35,0" fill="#020617" stroke="var(--gold)" strokeWidth="3" />
-                    <text x="-2" y="48" fill="var(--gold)" fontSize="0.8cqw" fontFamily="Orbitron" fontWeight="900" textAnchor="middle" style={{ letterSpacing: '1px' }}>HPA</text>
+                    <text className="flow-hpa-label" x="-2" y="48" fill="var(--gold)" fontSize="0.8cqw" fontFamily="Orbitron" fontWeight="900" textAnchor="middle" style={{ letterSpacing: '1px', transform: 'translateY(-18px)' }}>HPA</text>
                   </g>
                 </svg>
               </g>
@@ -11831,7 +12142,7 @@ return (
                 </div>
 
                {/* 📍 ป้าย IF 70 MHz (พลิกให้ผลักเข้ามาด้านขวาของเส้น 8% ไม่มีทางตกขอบซ้าย) */}
-               <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid #FF6600', borderRadius: '4px', padding: '6px 12px', fontFamily: '"Orbitron", sans-serif', fontSize: '11px', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(4px)', left: '10%', top: '70%', color: '#ffffff', boxShadow: '0 0 15px rgba(255,102,0,0.4)', transform: 'translate(15px, -50%)' }}>{sIfDetail}</div>
+               <div className="flow-active-s-if" style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid #FF6600', borderRadius: '4px', padding: '6px 12px', fontFamily: '"Orbitron", sans-serif', fontSize: '11px', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(4px)', left: '11.5%', top: '72%', color: '#ffffff', boxShadow: '0 0 15px rgba(255,102,0,0.4)', transform: 'translate(0, -50%)' }}>{sIfDetail}</div>
 
               {/* 📍 ป้าย IF 720 MHz (พลิกให้ผลักเข้ามาด้านซ้ายของเส้น 92% ไม่มีทางตกขอบขวา) */}
               <div style={{ position: 'absolute', pointerEvents: 'none', border: '2px solid #00aaff', borderRadius: '4px', padding: '6px 12px', fontFamily: '"Orbitron", sans-serif', fontSize: '11px', fontWeight: 900, textAlign: 'center', lineHeight: 1.2, letterSpacing: '1px', whiteSpace: 'nowrap', zIndex: 10005, background: 'rgba(0, 10, 20, 0.85)', backdropFilter: 'blur(4px)', left: '92%', top: '70%', color: '#ffffff', boxShadow: '0 0 10px rgba(0,170,255,0.4)', transform: 'translate(calc(-100% - 15px), -50%)' }}>{xIfDetail}</div>
@@ -11860,14 +12171,14 @@ return (
               <div className="flow-freq-tag" style={{ left: '30%', top: '45%', color: 'var(--cyan)' }}>
                 {isTheos2Flow ? '2244.228 MHz' : satSpecs.tmFreq}<small>{isTheos2Flow ? 'S-BAND TM DOWN' : 'S-BAND TM · SIM PROFILE'}</small>
               </div>
-              <div className="flow-freq-tag" style={{ left: '30%', top: '62%', color: 'var(--gold)' }}>
+              <div className="flow-freq-tag" style={{ left: '30%', top: '64%', color: 'var(--gold)' }}>
                 {isTheos2Flow ? '2066.56 MHz' : satSpecs.tcFreq}<small>{isTheos2Flow ? 'S-BAND TC UP' : 'S-BAND TC · SIM PROFILE'}</small>
               </div>
               <div className="flow-freq-tag" style={{ left: '72%', top: '49%', color: 'var(--green)' }}>
                 {isTheos2Flow ? '8150.00 MHz' : satSpecs.xBandFreq}<small>{isTheos2Flow ? 'X-BAND PAYLOAD' : 'PAYLOAD · SIM PROFILE'}</small>
               </div>
-              <div className="flow-freq-tag" style={{ left: '13%', top: '71%', color: 'var(--cyan)' }}>IF 70 MHz</div>
-              <div className="flow-freq-tag" style={{ left: '89%', top: '71%', color: '#00aaff' }}>IF 720 MHz</div>
+              <div className="flow-freq-tag" style={{ left: '14.4%', top: '71%', color: 'var(--cyan)' }}>IF 70 MHz</div>
+              <div className="flow-freq-tag" style={{ left: '87.6%', top: '71%', color: '#00aaff' }}>IF 720 MHz</div>
             </>)}
 
             {/* ========================================= */}
