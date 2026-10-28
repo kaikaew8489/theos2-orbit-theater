@@ -5747,7 +5747,7 @@ const SAT_VISUAL_CSS = `
   }
 `;
 
-function SatSignalFlow({ rfState, rfProfile, satSpecs, stationId, satelliteImage, onSatelliteError, openAnalyzer }) {
+function SatSignalFlow({ rfState, rfProfile, satSpecs, stationId, satelliteImage, onSatelliteError, openReceiver }) {
   const hardware = (kind, label, title, subtitle, color, arrow, downArrow, extra = null) => (
     <div className={`flow-node ${rfState.locked ? 'active' : ''}`} data-arrow={arrow} data-down-arrow={downArrow}>
       <FlowHardwareIcon kind={kind} color={color} label={label} />
@@ -5770,20 +5770,20 @@ function SatSignalFlow({ rfState, rfProfile, satSpecs, stationId, satelliteImage
   const monitor = (channel, isX) => {
     const points = constellationPoints(channel);
     return (
-      <button type="button" className="sat-flow-monitor" data-arrow="→" data-down-arrow="↓" onClick={openAnalyzer} aria-label={`Open ${isX ? 'X-band' : 'S-band'} receiver in Signal Analyzer`}>
+      <div className="sat-flow-monitor" data-arrow="→" data-down-arrow="↓" onClick={() => openReceiver(isX ? 'x' : 's', 'spectrum')}>
         <div className="sat-flow-monitor-header"><strong>{isX ? 'BASEBAND' : 'TT&C'}</strong><span>{channel.mod} · IF {channel.freq} MHz</span></div>
         <div className="sat-flow-monitor-charts">
-          <svg className="sat-flow-mini-iq" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Simulated ${isX ? 'X-band' : 'S-band'} IQ constellation`}>
+          <svg className="sat-flow-mini-iq" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" role="button" tabIndex={0} onClick={e => { e.stopPropagation(); openReceiver(isX ? 'x' : 's', 'iq'); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openReceiver(isX ? 'x' : 's', 'iq'); } }} aria-label={`Open SIM ${isX ? 'X-band' : 'S-band'} IQ constellation`}>
             <path d="M0 50 H100 M50 0 V100" stroke="#63748d" strokeWidth="1"/><circle cx="50" cy="50" r="35" fill="none" stroke="#607580" strokeDasharray="4 4"/>
             {rfState.locked && points.map(([cx,cy],i)=><circle key={i} cx={cx} cy={cy} r="4" fill={isX?'#ff6666':'#00eaff'}/>)}
           </svg>
-          <svg className="sat-flow-mini-spectrum" preserveAspectRatio="none" viewBox="0 0 100 100" role="img" aria-label="Simulated receiver spectrum">
+          <svg className="sat-flow-mini-spectrum" preserveAspectRatio="none" viewBox="0 0 100 100" role="button" tabIndex={0} onClick={e => { e.stopPropagation(); openReceiver(isX ? 'x' : 's', 'spectrum'); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openReceiver(isX ? 'x' : 's', 'spectrum'); } }} aria-label={`Open SIM ${isX ? 'X-band' : 'S-band'} spectrum`}>
             <title>{`SIM · ${channel.mod} · ${isX ? 'X-BAND PAYLOAD' : 'S-BAND TM'}`}</title>
             <path d="M0 25H100 M0 50H100 M0 75H100 M25 0V100 M50 0V100 M75 0V100" stroke="#324251" strokeWidth=".6" fill="none"/>
             <path d={miniSpectrumPath(isX)} fill="none" stroke={rfState.eligible?(isX?'#ffcc00':'#00eaff'):'#7b8e9d'} strokeWidth="1.7"/>
           </svg>
         </div>
-      </button>
+      </div>
     );
   };
   return <div className="sat-flow-layout">
@@ -9635,6 +9635,19 @@ const [xBandSpan, setXBandSpan] = useState(1000); // TSX TV default: wider engin
 const [sBandSpan, setSBandSpan] = useState(20);
 const [showXBand, setShowXBand] = useState(true);
 const [showSBand, setShowSBand] = useState(true);
+// Signal Flow shortcuts select a band on every click, including already-open tools.
+const openSignalFlowReceiver = (channel, view) => {
+  if (view === 'iq') {
+    setIqDisplayChannel(channel);
+    setIsIqOpen(true);
+    bringToFront('iq');
+  } else {
+    setShowXBand(channel === 'x');
+    setShowSBand(channel === 's');
+    setIsAnalyzerOpen(true);
+    bringToFront('analyzer');
+  }
+};
 
 // Canvas drawing is owned by this effect only. JSX below never draws.
 const iqCanvasRef = useRef(null);
@@ -12068,7 +12081,7 @@ return (
             stationId={activeStation.id}
             satelliteImage={satelliteImage}
             onSatelliteError={(e) => handleRuntimeImageError(e, GENERIC_LEO_SATELLITE_SVG)}
-            openAnalyzer={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
+            openReceiver={openSignalFlowReceiver}
           />;
         }
         
@@ -12377,7 +12390,7 @@ return (
             {/* 📍 8.1 กล่องจอวิเคราะห์ TT&C (ขยับเข้า 38%) */}
             <div className={`flow-node ${rfState.locked ? 'active' : ''}`} 
                  style={{ left: '38%', top: '85%', zIndex: 20, width: '18cqw', height: '8.5cqw', padding: '8px', borderColor: rfState.locked ? 'var(--gold)' : 'rgba(255,204,0,0.3)', background: '#020617', flexDirection: 'column', gap: '6px', cursor: 'pointer', boxShadow: rfState.locked ? '0 0 30px rgba(255,204,0,0.4), inset 0 0 15px rgba(255,204,0,0.2)' : '' }} 
-                 onClick={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
+                 onClick={() => openSignalFlowReceiver('s', 'spectrum')}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '4px' }}>
                 <span style={{ color: '#fff', fontSize: '11px', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
@@ -12385,7 +12398,7 @@ return (
                 </span>
               </div>
               <div style={{ display: 'flex', width: '100%', flex: 1, gap: '6px', minHeight: 0 }}>
-                <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                <div role="button" tabIndex={0} aria-label="Open SIM S-band iq" onClick={e => { e.stopPropagation(); openSignalFlowReceiver('s', 'iq'); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openSignalFlowReceiver('s', 'iq'); } }} style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
@@ -12396,7 +12409,7 @@ return (
                     </div>
                   ))}
                 </div>
-                <div style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                <div role="button" tabIndex={0} aria-label="Open SIM S-band spectrum" onClick={e => { e.stopPropagation(); openSignalFlowReceiver('s', 'spectrum'); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openSignalFlowReceiver('s', 'spectrum'); } }} style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '10% 20%' }}></div>
                   <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '90%', overflow: 'visible' }} preserveAspectRatio="none" viewBox="0 0 100 100">
                     {rfState.locked ? (
@@ -12421,7 +12434,7 @@ return (
             {/* 📍 8.2 กล่องจอวิเคราะห์ BASEBAND (ขยับเข้า 62%) */}
             <div className={`flow-node ${rfState.locked ? 'active' : ''}`} 
                  style={{ left: '62%', top: '85%', zIndex: 20, width: '18cqw', height: '8.5cqw', padding: '8px', borderColor: rfState.locked ? 'var(--green)' : 'rgba(0,234,255,0.3)', background: '#020617', flexDirection: 'column', gap: '6px', cursor: 'pointer', boxShadow: rfState.locked ? '0 0 30px rgba(0,255,102,0.4), inset 0 0 15px rgba(0,255,102,0.2)' : '' }} 
-                 onClick={() => { setIsAnalyzerOpen(true); bringToFront('analyzer'); }}
+                 onClick={() => openSignalFlowReceiver('x', 'spectrum')}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '4px' }}>
                 <span style={{ color: '#fff', fontSize: '11px', fontFamily: 'Orbitron', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', letterSpacing: '1px' }}>
@@ -12429,7 +12442,7 @@ return (
                 </span>
               </div>
               <div style={{ display: 'flex', width: '100%', flex: 1, gap: '6px', minHeight: 0 }}>
-                <div style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                <div role="button" tabIndex={0} aria-label="Open SIM X-band iq" onClick={e => { e.stopPropagation(); openSignalFlowReceiver('x', 'iq'); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openSignalFlowReceiver('x', 'iq'); } }} style={{ flex: '0 0 auto', height: '100%', aspectRatio: '1/1', background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '1px solid rgba(255,255,255,0.1)' }}></div>
                   <div style={{ position: 'absolute', top: '50%', left: '50%', width: '65%', height: '65%', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '50%' }}></div>
@@ -12440,7 +12453,7 @@ return (
                     </div>
                   ))}
                 </div>
-                <div style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
+                <div role="button" tabIndex={0} aria-label="Open SIM X-band spectrum" onClick={e => { e.stopPropagation(); openSignalFlowReceiver('x', 'spectrum'); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openSignalFlowReceiver('x', 'spectrum'); } }} style={{ flex: 1, background: '#0b1121', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative', overflow: 'hidden', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.8)' }}>
                   <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '10% 20%' }}></div>
                   <svg style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', height: '90%', overflow: 'visible' }} preserveAspectRatio="none" viewBox="0 0 100 100">
                     {rfState.locked ? (
