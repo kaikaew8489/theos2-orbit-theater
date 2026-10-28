@@ -5671,6 +5671,17 @@ const SAT_VISUAL_CSS = `
     .analyzer-modal .rf-analyzer-toolbar .rf-iq-open-btn { margin-left:0; }
   }
 
+  /* Analyzer only: independent frequency axes for simultaneous polarization paths. */
+  .analyzer-modal .rf-channel-stack[data-dual-x="true"] {
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+    grid-auto-rows:minmax(260px,1fr); overflow:auto;
+  }
+  .analyzer-modal .rf-channel-stack[data-dual-x="true"] > [data-band="s"] { grid-column:1 / -1; }
+  .analyzer-modal .rf-channel-stack[data-dual-x="true"] > [data-band="x"] .rf-instrument-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  @container sat-analyzer (max-width:720px) {
+    .analyzer-modal .rf-channel-stack[data-dual-x="true"] { grid-template-columns:minmax(0,1fr); grid-auto-rows:minmax(280px,1fr); }
+  }
+
   .iq-modal { container-type:size; container-name:sat-iq; }
   .rf-iq-popup-body { display:flex; flex-direction:column; flex:1 1 0; min-width:0; min-height:0; gap:7px; padding:0 10px 10px; }
   .rf-iq-popup-toolbar { display:flex; align-items:center; gap:7px; flex-wrap:wrap; color:#b8cad5; font:700 calc(clamp(11px,1.05cqw,18px) * var(--sat-text-scale,1))/1.1 Rajdhani,sans-serif; }
@@ -5680,6 +5691,11 @@ const SAT_VISUAL_CSS = `
   .rf-iq-popup-plot > canvas { position:absolute; inset:0; width:100%; height:100%; }
   .rf-iq-popup-footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; color:#9eb1bf; font:700 calc(clamp(10px,1cqw,16px) * var(--sat-text-scale,1))/1.15 Rajdhani,sans-serif; }
   @container sat-analyzer (max-width:720px) { .rf-instrument-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .rf-analyzer-toolbar .rf-iq-open-btn { margin-left:0; } }
+  .iq-modal .rf-iq-pol-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:minmax(150px,1fr); flex:1 1 0; min-height:0; gap:8px; overflow:auto; }
+  .iq-modal .rf-iq-pol-cell { display:flex; flex-direction:column; min-width:0; min-height:0; gap:4px; }
+  .iq-modal .rf-iq-pol-cell[data-band="s"] { grid-column:1 / -1; }
+  .iq-modal .rf-iq-pol-label { flex:0 0 auto; font:700 clamp(11px,1.2cqw,20px)/1.2 Rajdhani,sans-serif; color:#ffcc00; }
+  @container sat-iq (max-width:480px) { .iq-modal .rf-iq-pol-grid { grid-template-columns:minmax(0,1fr); } }
   .flow-viewport { flex:1 1 0; min-width:0; min-height:0; overflow:visible!important; }
   .flow-content { width:100%; height:100%; min-width:0!important; min-height:0!important; position:relative; container-type:size; container-name:sat-flow; }
   .sat-flow-layout { height:100%; width:100%; box-sizing:border-box; display:grid; grid-template-rows:minmax(38px,.22fr) minmax(0,1fr); gap:5px; padding:0 8px 8px; }
@@ -6730,6 +6746,17 @@ const SIM_RF_PROFILES = {
   '39634': { name: 'SENTINEL-1A', xBand: { freq: 720, bw: 300, mod: 'QPSK' }, sBand: { freq: 70, bw: 2, mod: 'BPSK' } },
 };
 
+// Analyzer-only receive paths. THEOS-2 dual polarization is operator-confirmed;
+// existing RF/IF/BW/modulation remain SIM presets, not measured receiver data.
+// Other spacecraft retain one path with unknown polarization; never infer dual-pol.
+const ANALYZER_X_PATHS = {
+  '58016': [{ id: 'rhcp', polarization: 'RHCP' }, { id: 'lhcp', polarization: 'LHCP' }],
+};
+function getAnalyzerXPaths(catnr, xBand) {
+  return (ANALYZER_X_PATHS[catnr] || [{ id: 'single', polarization: 'UNKNOWN' }])
+    .map(path => ({ ...xBand, ...path }));
+}
+
 function getRfProfile(catnr, config = {}) {
   if (SIM_RF_PROFILES[catnr]) return SIM_RF_PROFILES[catnr];
   let xBand = { freq: 720, bw: 100, mod: 'QPSK' };
@@ -7110,7 +7137,7 @@ function drawRfIqFrame(surface, profile, state, simulatedTimeMs, showXBand, show
     }
     ctx.globalAlpha = 1;
   };
-  if (showXBand) drawChannel(profile.xBand, '#ffcc00', 0);
+  if (showXBand) drawChannel(profile.xBand, '#ffcc00', profile.xBand.polarization === 'LHCP' ? 1000 : 0);
   if (showSBand) drawChannel(profile.sBand, '#00eaff', 2000);
 }
 
@@ -9611,10 +9638,12 @@ const [showSBand, setShowSBand] = useState(true);
 
 // Canvas drawing is owned by this effect only. JSX below never draws.
 const iqCanvasRef = useRef(null);
-const xBandCanvasRef = useRef(null);
+const iqPathCanvasRefs = useRef(new Map());
+const xBandCanvasRefs = useRef(new Map());
+const analyzerXPaths = useMemo(() => getAnalyzerXPaths(selectedCatnr, rfProfile.xBand), [selectedCatnr, rfProfile.xBand]);
 const sBandCanvasRef = useRef(null);
 const analyzerRuntimeRef = useRef(null);
-analyzerRuntimeRef.current = { simulatedTimeMs, rfState, rfProfile, xBandSpan, sBandSpan, showXBand, showSBand, iqDisplayChannel };
+analyzerRuntimeRef.current = { simulatedTimeMs, rfState, rfProfile, xBandSpan, sBandSpan, showXBand, showSBand, iqDisplayChannel, analyzerXPaths };
 const analyzerModulationLabel = [showXBand && `CH1: ${rfProfile.xBand.mod}`, showSBand && `CH2: ${rfProfile.sBand.mod}`].filter(Boolean).join(' | ');
 
 useEffect(() => {
@@ -9654,7 +9683,7 @@ useEffect(() => {
   };
   const draw = now => {
     if (disposed) return;
-    const liveCanvases = [iqCanvasRef.current, xBandCanvasRef.current, sBandCanvasRef.current].filter(Boolean);
+    const liveCanvases = [iqCanvasRef.current, ...iqPathCanvasRefs.current.values(), ...xBandCanvasRefs.current.values(), sBandCanvasRef.current].filter(Boolean);
     // Rebind automatically after a host/document change; never retain a closed window's canvas.
     for (const [canvas, surface] of surfaces) {
       if (!liveCanvases.includes(canvas)) { surface.observer?.disconnect(); surfaces.delete(canvas); }
@@ -9664,9 +9693,21 @@ useEffect(() => {
       const runtime = analyzerRuntimeRef.current;
       const iqSurface = surfaceFor(iqCanvasRef.current);
       if (iqSurface) drawRfIqFrame(iqSurface, runtime.rfProfile, runtime.rfState, runtime.simulatedTimeMs, runtime.iqDisplayChannel !== 's', runtime.iqDisplayChannel !== 'x');
+      if (runtime.analyzerXPaths.length > 1 && runtime.iqDisplayChannel !== 's') {
+        for (const path of runtime.analyzerXPaths) {
+          const surface = surfaceFor(iqPathCanvasRefs.current.get(path.id));
+          if (surface) drawRfIqFrame(surface, { ...runtime.rfProfile, xBand: path }, runtime.rfState, runtime.simulatedTimeMs, true, false);
+        }
+        if (runtime.iqDisplayChannel === 'both') {
+          const surface = surfaceFor(iqPathCanvasRefs.current.get('s'));
+          if (surface) drawRfIqFrame(surface, runtime.rfProfile, runtime.rfState, runtime.simulatedTimeMs, false, true);
+        }
+      }
       if (runtime.showXBand) {
-        const xSurface = surfaceFor(xBandCanvasRef.current);
-        if (xSurface) drawRfSpectrumFrame(xSurface, runtime.rfProfile.xBand, runtime.xBandSpan, runtime.rfState, runtime.simulatedTimeMs, true);
+        for (const path of runtime.analyzerXPaths) {
+          const xSurface = surfaceFor(xBandCanvasRefs.current.get(path.id));
+          if (xSurface) drawRfSpectrumFrame(xSurface, path, runtime.xBandSpan, runtime.rfState, runtime.simulatedTimeMs, true);
+        }
       }
       if (runtime.showSBand) {
         const sSurface = surfaceFor(sBandCanvasRef.current);
@@ -11741,16 +11782,16 @@ return (
             <button type="button" className="rf-iq-open-btn" onClick={()=>{setIsIqOpen(true);bringToFront('iq');}}>IQ CONSTELLATION ↗</button>
           </div>
           <div className="rf-analyzer-body rf-spectrum-only">
-            <div className="rf-channel-stack">
-              {[{show:showXBand,isX:true,channel:rfProfile.xBand,span:xBandSpan,setSpan:setXBandSpan,canvasRef:xBandCanvasRef},{show:showSBand,isX:false,channel:rfProfile.sBand,span:sBandSpan,setSpan:setSBandSpan,canvasRef:sBandCanvasRef}].filter(item=>item.show).map(({isX,channel,span,setSpan,canvasRef})=>{
+            <div className="rf-channel-stack" data-dual-x={showXBand && analyzerXPaths.length > 1 ? 'true' : undefined}>
+              {[...analyzerXPaths.map(channel => ({show:showXBand,isX:true,channel,span:xBandSpan,setSpan:setXBandSpan,canvasRef:node => { if (node) xBandCanvasRefs.current.set(channel.id,node); else xBandCanvasRefs.current.delete(channel.id); }})),{show:showSBand,isX:false,channel:rfProfile.sBand,span:sBandSpan,setSpan:setSBandSpan,canvasRef:sBandCanvasRef}].filter(item=>item.show).map(({isX,channel,span,setSpan,canvasRef})=>{
                 const instrument = getRfInstrumentSettings(channel, span, isX);
                 const rfCenter = Number(channel.rf);
                 const symbolRate = Number(channel.symbolRateMsps);
-                return <div key={isX?'x':'s'} className="rf-spectrum-channel" style={{background:'#0b1121',border:'1px solid #223445',borderRadius:6}}>
-                  <div className="rf-channel-header"><strong style={{color:isX?'#ffcc00':'#00eaff'}}>{isX?'CH1: X-BAND PAYLOAD':'CH2: S-BAND TELEMETRY'} · {channel.mod}</strong><span>{Number.isFinite(rfCenter)?`RF ${rfCenter.toFixed(rfCenter < 3000 ? 3 : 0)} MHz · `:''}IF {channel.freq.toFixed(1)} MHz</span></div>
+                return <div key={isX?`${selectedCatnr}-${channel.id}`:'s'} data-band={isX?'x':'s'} className="rf-spectrum-channel" style={{background:'#0b1121',border:'1px solid #223445',borderRadius:6}}>
+                  <div className="rf-channel-header"><strong style={{color:isX?'#ffcc00':'#00eaff'}}>{isX?`CH1: X-BAND · ${channel.polarization === 'UNKNOWN' ? 'POL: UNKNOWN' : channel.polarization}`:'CH2: S-BAND TELEMETRY'} · {channel.mod}</strong><span>{Number.isFinite(rfCenter)?`RF ${rfCenter.toFixed(rfCenter < 3000 ? 3 : 0)} MHz · `:''}IF {channel.freq.toFixed(1)} MHz</span></div>
                   <div className="rf-span-controls" style={{color:isX?'#ffcc00':'#00eaff'}}>
                     <button type="button" title="Fit the modeled bandwidth to this spectrum" onClick={()=>setSpan(isX?Math.min(1000,Math.max(10,Math.ceil((channel.bw*3.2)/10)*10)):Math.min(50,Math.max(.1,Math.ceil(channel.bw*80)/10)))}>AUTO SPAN</button>
-                    <input type="range" aria-label={isX?'X-band span':'S-band span'} min={isX?1:.1} max={isX?1000:50} step={isX?1:.1} value={span} onChange={e=>setSpan(Number(e.target.value))} className="sci-fi-slider" style={{'--thumb-color':isX?'#ffcc00':'#00eaff','--thumb-glow':isX?'#ffcc0077':'#00eaff77'}}/>
+                    <input type="range" aria-label={isX?`X-band ${channel.polarization} span (linked)`:'S-band span'} min={isX?1:.1} max={isX?1000:50} step={isX?1:.1} value={span} onChange={e=>setSpan(Number(e.target.value))} className="sci-fi-slider" style={{'--thumb-color':isX?'#ffcc00':'#00eaff','--thumb-glow':isX?'#ffcc0077':'#00eaff77'}}/>
                     <output>{span>=1000?`${(span/1000).toFixed(3)} GHz`:`${span.toFixed(1)} MHz`}</output>
                   </div>
                   <div className="rf-instrument-grid">
@@ -11801,7 +11842,19 @@ return (
       <button type="button" data-active={iqDisplayChannel==='s'} style={{color:'#00eaff'}} onClick={()=>setIqDisplayChannel('s')}>CH2 S-BAND · {rfProfile.sBand.mod}</button>
       <button type="button" data-active={iqDisplayChannel==='both'} onClick={()=>setIqDisplayChannel('both')}>BOTH</button>
     </div>
-    <div className="rf-iq-popup-plot"><canvas ref={iqCanvasRef}/></div>
+    {analyzerXPaths.length > 1 && iqDisplayChannel !== 's' ? (
+      <div className="rf-iq-pol-grid">
+        {[...analyzerXPaths.map(channel => ({channel,isX:true})), ...(iqDisplayChannel === 'both' ? [{channel:{...rfProfile.sBand,id:'s'},isX:false}] : [])].map(({channel,isX}) => (
+          <div className="rf-iq-pol-cell" data-band={isX?'x':'s'} key={`${selectedCatnr}-${channel.id}`}>
+            <div className="rf-iq-pol-label" style={{color:isX?'#ffcc00':'#00eaff'}}>{isX?`X-BAND · ${channel.polarization}`:'S-BAND'} · {channel.mod} · SIM</div>
+            <div className="rf-iq-popup-plot"><canvas ref={node => { if (node) iqPathCanvasRefs.current.set(channel.id,node); else iqPathCanvasRefs.current.delete(channel.id); }}/></div>
+          </div>
+        ))}
+      </div>
+    ) : <>
+      {iqDisplayChannel !== 's' && <div className="rf-iq-pol-label">X-BAND · POL: {analyzerXPaths[0].polarization} · SIM</div>}
+      <div className="rf-iq-popup-plot"><canvas ref={iqCanvasRef}/></div>
+    </>}
     <div className="rf-iq-popup-footer">
       <span>{rfState.locked?'LOCKED SYMBOL CLUSTERS':rfState.eligible?'ACQUISITION / PHASE RECOVERY':'NO CARRIER / NOISE CLOUD'}</span>
       <span>SIM MODEL · NOT A RECORDED RF CAPTURE</span>
