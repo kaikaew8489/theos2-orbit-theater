@@ -9126,21 +9126,19 @@ const toggleAudioMute = () => {
     tleFetchControllerRef.current = controller;
     setIsUpdatingTle(true);
     setTleSource('Fetching Live TLE...');
+    // Keep the deadline active until the response body has been read.
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     try {
      // เอา URL จาก Apps Script มาวางตรงนี้ครับ!!!
      const proxyUrl = "https://script.google.com/macros/s/AKfycbyv1ZA8fPvSlK3KhblBbkGTB4UC86nlpFES63jGvRlBiHSbuChYMs2BQgqsSXBQjDRf/exec";
       
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
-      let response;
-      try {
-        response = await fetch(proxyUrl, { signal: controller.signal, cache: 'no-store' });
-      } finally {
-        clearTimeout(timeoutId);
-      }
+      const response = await fetch(proxyUrl, { signal: controller.signal, cache: 'no-store' });
       if (!response.ok) throw new Error(`Network response was not ok (${response.status})`);
 
       const text = await response.text();
+      if (tleFetchControllerRef.current !== controller) return;
+      if (controller.signal.aborted) throw Object.assign(new Error('TLE request timed out'), { name: 'AbortError' });
       if (text.length > 5 * 1024 * 1024) throw new Error('TLE response exceeds 5 MB safety limit');
       const lines = text.trim().split(/\r?\n/);
       const tleUpdates = {};
@@ -9155,8 +9153,13 @@ const toggleAudioMute = () => {
             const catnr = line1.substring(2, 7).trim();
             const line2Catnr = line2.substring(2, 7).trim();
             if (line2Catnr === catnr && SATELLITE_OPTIONS.find(s => s.catnr === catnr) && isUsableTlePair(line1, line2, catnr)) {
-              tleUpdates[catnr] = { line1, line2 };
-              successCount++;
+              const incomingEpoch = getTleEpochMs(line1);
+              if (!Number.isFinite(incomingEpoch)) continue;
+              const queuedEpoch = getTleEpochMs(tleUpdates[catnr]?.line1);
+              if (!Number.isFinite(queuedEpoch) || incomingEpoch >= queuedEpoch) {
+                tleUpdates[catnr] = { line1, line2 };
+                successCount++;
+              }
             }
           }
         }
@@ -9164,7 +9167,14 @@ const toggleAudioMute = () => {
 
       if (successCount > 0) {
         setTles(prev => {
-          const merged = { ...prev, ...tleUpdates };
+          // Live sync must never replace a newer stored orbit with an older epoch.
+          // Manual uploads retain their existing behavior for historical replay.
+          const merged = { ...prev };
+          for (const [catnr, pair] of Object.entries(tleUpdates)) {
+            const previousEpoch = getTleEpochMs(prev[catnr]?.line1);
+            const incomingEpoch = getTleEpochMs(pair.line1);
+            if (!Number.isFinite(previousEpoch) || incomingEpoch >= previousEpoch) merged[catnr] = pair;
+          }
           safeStorageSet('localStorage', 'gistda_tles', JSON.stringify(merged));
           return merged;
         });
@@ -9174,6 +9184,7 @@ const toggleAudioMute = () => {
         setTleSource('Update Failed (Bad Data)');
       }
     } catch (err) {
+      if (tleFetchControllerRef.current !== controller) return;
       if (err?.name === 'AbortError') {
         // A timeout belongs to the current request; an abort caused by a newer request/unmount does not.
         if (tleFetchControllerRef.current === controller) setTleSource('Update Failed (Timeout)');
@@ -9182,6 +9193,7 @@ const toggleAudioMute = () => {
         setTleSource('Update Failed (Network Error)');
       }
     } finally {
+      clearTimeout(timeoutId);
       if (tleFetchControllerRef.current === controller) {
         tleFetchControllerRef.current = null;
         setIsUpdatingTle(false);
@@ -10874,6 +10886,10 @@ return (
                       if (nextState) {
                         setCameraMode('FREE LOOK');
                         isTrackingRef.current = false;
+                      } else if (globeRef.current) {
+                        globeRef.current.controls().autoRotate = false;
+                        // Return only the camera to SRC, using the RESET viewpoint.
+                        globeRef.current.pointOfView({ lat: GS_NETWORK[0].lat, lng: GS_NETWORK[0].lng, altitude: 2.2 }, 1000);
                       }
                      }}
                      disabled={isRealtimePassLock}
@@ -11791,7 +11807,7 @@ return (
           <div className="rf-analyzer-toolbar">
             <button type="button" aria-pressed={showXBand} onClick={()=>{if(showXBand&&!showSBand)return;setShowXBand(!showXBand);}} style={{color:'#ffcc00',background:showXBand?'#302a0a':'transparent'}}>CH1: X-BAND{showXBand?'':' OFF'}</button>
             <button type="button" aria-pressed={showSBand} onClick={()=>{if(showSBand&&!showXBand)return;setShowSBand(!showSBand);}} style={{color:'#00eaff',background:showSBand?'#032d37':'transparent'}}>CH2: S-BAND{showSBand?'':' OFF'}</button>
-            <span className="rf-sim-badge">LOCK EL ≥ {rfState.acquisitionEl.toFixed(1)}° · SIM MODEL</span>
+            <span className="rf-sim-badge" title="Illustrative RF simulation. Lock is an elevation-based scenario, not measured receiver lock. Trace shape and dBm values are not calibrated RF measurements or a link-budget prediction.">SIM LOCK ≥ {rfState.acquisitionEl.toFixed(1)}° · RF DEMO</span>
             <button type="button" className="rf-iq-open-btn" onClick={()=>{setIsIqOpen(true);bringToFront('iq');}}>IQ CONSTELLATION ↗</button>
           </div>
           <div className="rf-analyzer-body rf-spectrum-only">
@@ -11807,7 +11823,7 @@ return (
                     <input type="range" aria-label={isX?`X-band ${channel.polarization} span (linked)`:'S-band span'} min={isX?1:.1} max={isX?1000:50} step={isX?1:.1} value={span} onChange={e=>setSpan(Number(e.target.value))} className="sci-fi-slider" style={{'--thumb-color':isX?'#ffcc00':'#00eaff','--thumb-glow':isX?'#ffcc0077':'#00eaff77'}}/>
                     <output>{span>=1000?`${(span/1000).toFixed(3)} GHz`:`${span.toFixed(1)} MHz`}</output>
                   </div>
-                  <div className="rf-instrument-grid">
+                  <div className="rf-instrument-grid" title="SIM display presets: bandwidth, symbol rate, RBW, VBW and level settings are illustrative; they are not a verified spacecraft receiver configuration.">
                     <span>REF <b>{instrument.refDbm.toFixed(0)} dBm</b></span>
                     <span>ATT <b>{instrument.attenuationDb} dB</b></span>
                     <span>RBW <b>{formatRfMHz(instrument.rbwMHz)}</b></span>
@@ -11870,7 +11886,7 @@ return (
     </>}
     <div className="rf-iq-popup-footer">
       <span>{rfState.locked?'LOCKED SYMBOL CLUSTERS':rfState.eligible?'ACQUISITION / PHASE RECOVERY':'NO CARRIER / NOISE CLOUD'}</span>
-      <span>SIM MODEL · NOT A RECORDED RF CAPTURE</span>
+      <span title="Illustrative symbol clusters, not sampled receiver I/Q. This view does not model channel coding or the half-symbol timing offset of O-QPSK.">ILLUSTRATIVE SIM · NO RF INPUT</span>
     </div>
   </div>
 </div>
